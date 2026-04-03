@@ -7,5 +7,22 @@ description: Testing conventions and strategies
 
 - Run only failing tests first, verify 2-3x, stop
 - Full suite only when explicitly asked
-- Pre-test: `bun fix` passes, kill stale processes, clean test results
+- Pre-test: `bun fix` passes, kill stale processes (`pkill -9 -f "next"`), clean test results (`rm -rf test-results`)
 - Verify before scaling — never run full suites blindly
+
+### Playwright E2E
+
+| Scope | Timeout | Kill |
+| ----------- | -------- | ---- |
+| Single test | 5s | 10s |
+| Single file | 8s/test | 30s |
+| Full suite | 10s/test | 180s |
+
+Troubleshooting:
+
+| Symptom | Fix |
+| --------------------------- | --------------------------------- |
+| Hangs on `fill()`/`click()` | Check element visible/enabled |
+| `networkidle` hangs | Use `waitForSelector()` instead |
+| Element not found | Check testid on element vs parent |
+| Flaky counts | `--workers=1` |

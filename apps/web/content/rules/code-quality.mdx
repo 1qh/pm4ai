@@ -6,21 +6,24 @@ description: Code quality standards and constraints
 ## Must NOT Do
 
 - NEVER write comments (lint ignores allowed)
+- NEVER touch `readonly/ui/` manually
 - NEVER use `!` (non-null assertion), `any`, `as any`, `@ts-ignore`, `@ts-expect-error`
 - NEVER duplicate types — single source of truth
 - NEVER disable lint rules globally/per-directory — fix the code
-- NEVER ignore written source code from linters — only auto-generated code
+- NEVER ignore written source code from linters — only auto-generated code (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`)
 - NEVER reduce lintmax strictness — if upstream removes rules, find replacements
 
 ## Type Safety & Single Source of Truth
 
 Every piece of data flows through exactly one definition:
+
 - Shared constants → define once, import everywhere. If a value appears in 2+ files, extract it.
 - When adding new features, check existing utilities FIRST before writing inline logic.
 
 ## Code Consolidation Checklist
 
 Before writing any new code, verify:
+
 1. Does this function already exist? Check existing utilities first
 2. Is this constant defined elsewhere? Check shared files
 3. Am I adding a wrapper div? Check if parent `gap-*`, `space-*` can handle it
