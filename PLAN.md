@@ -51,14 +51,14 @@ packages/
       sync.ts             # pull rules + configs + readonly/ui + ci workflow
       audit.ts            # dep checks
       infer.ts            # detect project type + auto-infer CLAUDE.md rules from deps
-      maintain.ts         # bun clean && bun i && bun fix
+      maintain.ts         # runs sh up.sh per project
       status.ts           # show status + bun why
       log.ts              # read/write run logs
       swiftbar.ts         # --swiftbar output format
-bunfig.toml               # also the template for consumers
-.gitignore                # also the template for consumers (includes bun.lock)
-turbo.json                # also the template for consumers
-tsconfig.json             # also the template for consumers
+clean.sh                  # copied to consumers — nuke all artifacts
+up.sh                     # copied to consumers — clean.sh + install + fix + check
+bunfig.toml               # copied to consumers
+.gitignore                # copied to consumers (includes bun.lock)
 .github/
   workflows/
     ci.yml                # pm4ai's own CI
@@ -77,7 +77,7 @@ Runs everything in parallel across all discovered projects, streams output as ea
 3. For each consumer project (parallel):
    a. **Sync configs** — copy from local pm4ai repo:
       - `rules/*.mdx` → infer applicable rules from deps → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
-      - Copy verbatim: `bunfig.toml`, `.gitignore`
+      - Copy verbatim: `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`
       - Check exists: `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`, `simple-git-hooks` + `prepare` in package.json
    b. **Sync readonly/ui** — copy from local cnsync repo
    d. **Audit**:
@@ -87,9 +87,8 @@ Runs everything in parallel across all discovered projects, streams output as ea
       - Check `packageManager` field — is bun version latest?
       - Check lintmax version — is it latest on npm?
    e. **Maintain**:
-      - `bun clean && bun i` — pulls latest lintmax (and all deps)
+      - `sh up.sh` — cleans, installs fresh (pulls latest deps), fixes, checks
       - Verify lintmax resolved to actual latest on npm — warn if not
-      - `bun fix`
       - Record pass/fail + timestamp to log
 4. Print summary + status
 
@@ -141,6 +140,8 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 | What | Source |
 |------|--------|
 | CLAUDE.md | pm4ai repo `rules/` — assemble from inferred topics |
+| clean.sh | pm4ai repo root |
+| up.sh | pm4ai repo root |
 | bunfig.toml | pm4ai repo root |
 | .gitignore | pm4ai repo root |
 
@@ -148,7 +149,7 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 
 | What | What to check |
 |------|---------------|
-| .github/workflows/ci.yml | exists, runs `bun clean && bun i && bun fix` |
+| .github/workflows/ci.yml | exists, runs `sh up.sh` |
 | turbo.json | exists |
 | tsconfig.json | exists, extends `lintmax/tsconfig` |
 | vercel.json | exists (only if project has next.config.ts) |
@@ -162,7 +163,7 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 
 - All deps have `"latest"` tag (flag exceptions)
 - No duplicate deps across workspace packages
-- Pinned deps — try bumping to latest in a temp branch, run `bun clean && bun i && bun fix`, report if it passes or what breaks
+- Pinned deps — try bumping to latest in a temp branch, run `sh up.sh`, report if it passes or what breaks
 - `packageManager` bun version is latest release (checked via GitHub API, can't use `"latest"` tag for bun)
 - lintmax resolved version matches latest on npm
 - CI status via GitHub API
@@ -170,11 +171,17 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 
 ## What pm4ai maintains
 
-Per project:
+Per project, runs `sh up.sh`:
 
 ```sh
-bun clean && bun i && bun fix
+# clean.sh
+rm -rf node_modules bun.lock .cache .turbo **/node_modules **/.cache **/.next **/.turbo **/dist
+
+# up.sh
+sh clean.sh && bun i --ignore-scripts && bunx simple-git-hooks && bun run fix && bun run check
 ```
+
+Each project's `fix` and `check` scripts in package.json handle project-specific behavior (e.g. `lintmax fix && turbo build`).
 
 Results logged with timestamp. Failures reported with error output.
 
@@ -191,11 +198,11 @@ pm4ai installs a launchd plist (macOS) to run `pm4ai` on a schedule (e.g. daily)
 pm4ai enforces these across all projects:
 - Never `bun update` — only `bun clean && bun i`
 - All deps on `"latest"` unless explicitly pinned
-- `simple-git-hooks` with `pre-commit: "bun run verify && git add -u"`
+- `simple-git-hooks` with `pre-commit: "sh up.sh && git add -u"`
 - `prepare` script: `bunx simple-git-hooks`
 - `readonly/ui` as the standard component library path (migrate `lib/ui` variants)
 - No lockfile committed (`bun.lock` in `.gitignore`)
-- GitHub Actions CI workflow reproduces the same `bun clean && bun i && bun fix` pattern
+- GitHub Actions CI workflow runs `sh up.sh`
 - `tsdown` for library publishing when project has publishable packages
 
 ## Implementation phases
@@ -224,7 +231,7 @@ pm4ai enforces these across all projects:
 - Check lintmax version via npm registry
 
 ### Phase 5 — Maintain
-- Run `bun clean && bun i && bun fix` per project
+- Run `sh up.sh` per project
 - Parallel execution with streamed output
 - Log results
 
