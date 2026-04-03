@@ -9,3 +9,4 @@ description: Library publishing with tsdown
 - ESM format with declaration files
 - `prepublishOnly` script to build before publish
 - Never bundle dependencies that consumers should install themselves
+- Export all types used in public API — DTS generation fails on unexported internal types leaking through re-exports

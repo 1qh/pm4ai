@@ -9,3 +9,7 @@ description: React 19 and Next.js conventions
 - `'use client'` only when needed — components with hooks must be client components
 - No IIFEs in JSX — extract to a named component instead
 - No raw HTML elements when shadcn has a component — use `Button` not `<button>`, `Table` not `<table>`, `Progress` not nested divs
+- `use*` hook naming enforced
+- Stable array keys — never use indices
+- `<Suspense>` around `useSearchParams()`
+- No `Date.now()` / `Math.random()` in render
