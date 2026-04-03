@@ -36,6 +36,7 @@ apps/
         tailwind.mdx
         lintmax.mdx
         testing.mdx
+        tsdown.mdx
         ...
     src/
       app/
@@ -47,16 +48,20 @@ packages/
     src/
       cli.ts              # entry point
       discover.ts         # fd pm4ai.config.ts ~/
-      sync.ts             # pull rules + configs + readonly/ui
+      sync.ts             # pull rules + configs + readonly/ui + ci workflow
       audit.ts            # dep checks
+      infer.ts            # detect project type + auto-infer rules from deps
       maintain.ts         # bun clean && bun i && bun fix
       status.ts           # show status + bun why
       log.ts              # read/write run logs
       swiftbar.ts         # --swiftbar output format
 bunfig.toml               # also the template for consumers
-.gitignore                # also the template for consumers
+.gitignore                # also the template for consumers (includes bun.lock)
 turbo.json                # also the template for consumers
 tsconfig.json             # also the template for consumers
+.github/
+  workflows/
+    ci.yml                # also the template for consumers (bun clean && bun i && bun fix)
 ```
 
 pm4ai dogfoods its own config files — they ARE the templates copied to consumers.
@@ -117,7 +122,20 @@ pm4ai status --swiftbar
 
 Each `.mdx` file in `apps/web/content/rules/` is a topic. Frontmatter has title and description for the docs site. The body content (minus frontmatter) gets concatenated into CLAUDE.md.
 
-All projects get all rules. Add a file → every project gets it on next sync.
+Rules are selectively merged per project:
+- **Always included**: `bun`, `typescript` (every project is bun + TS)
+- **Auto-inferred from deps**: `next` in deps → `nextjs` rule, `tailwindcss` → `tailwind`, `playwright` → `testing`, `lintmax` → `lintmax`, `tsdown` → `tsdown`
+- **Manual override**: `pm4ai.config.ts` can add rules that can't be inferred
+
+```ts
+// pm4ai.config.ts — most projects: empty, just a marker
+export default {}
+
+// pm4ai.config.ts — when you need extra rules
+export default {
+  rules: ['some-niche-rule']
+}
+```
 
 ## What pm4ai syncs
 
@@ -132,6 +150,7 @@ All projects get all rules. Add a file → every project gets it on next sync.
 | simple-git-hooks config | pm4ai repo root | gitpick |
 | prepare script | pm4ai repo root | gitpick |
 | vercel.json | pm4ai repo root | gitpick |
+| .github/workflows/ci.yml | pm4ai repo root | gitpick |
 | lintmax version | npm registry | audit only |
 | bun version | bun releases | audit only |
 
@@ -171,6 +190,9 @@ pm4ai enforces these across all projects:
 - `simple-git-hooks` with `pre-commit: "bun run verify && git add -u"`
 - `prepare` script: `bunx simple-git-hooks`
 - `readonly/ui` as the standard component library path (migrate `lib/ui` variants)
+- No lockfile committed (`bun.lock` in `.gitignore`)
+- GitHub Actions CI workflow reproduces the same `bun clean && bun i && bun fix` pattern
+- `tsdown` for library publishing when project has publishable packages
 
 ## Implementation phases
 
