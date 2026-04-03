@@ -10,7 +10,8 @@
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix && turbo build",
-    "postinstall": "sherif && cd apps/web && fumadocs-mdx",
+    "gen": "cd apps/web && fumadocs-mdx",
+    "postinstall": "sherif",
     "prepare": "bunx simple-git-hooks"
   },
   "simple-git-hooks": {
