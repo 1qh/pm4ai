@@ -7,7 +7,7 @@ import type { Issue } from './audit.js'
 import { audit } from './audit.js'
 import { discover } from './discover.js'
 import { updateLog } from './log.js'
-import { syncClaudeMd, syncConfigs, syncUi } from './sync.js'
+import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -69,11 +69,12 @@ export const fix = async () => {
   for (const r of pullResults) for (const issue of r.issues) console.log(`${r.name}: ${issue.detail}`)
   const tasks = consumers.map(async project => {
     const issues: Issue[] = []
-    const [configIssues, claudeIssues] = await Promise.all([
+    const [configIssues, claudeIssues, pkgIssues] = await Promise.all([
       syncConfigs(self.path, project.path),
-      syncClaudeMd(self.path, project.path)
+      syncClaudeMd(self.path, project.path),
+      syncPackageJson(project.path)
     ])
-    issues.push(...configIssues, ...claudeIssues)
+    issues.push(...configIssues, ...claudeIssues, ...pkgIssues)
     if (existsSync(join(project.path, 'readonly'))) issues.push(...syncUi(cnsync.path, project.path))
     const auditIssues = await audit(project.path)
     issues.push(...auditIssues)

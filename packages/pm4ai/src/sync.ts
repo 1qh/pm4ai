@@ -51,6 +51,33 @@ export const syncClaudeMd = async (selfPath: string, projectPath: string): Promi
   }
   return issues
 }
+export const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const pkgFile = file(join(projectPath, 'package.json'))
+  if (!(await pkgFile.exists())) return issues
+  const raw = await pkgFile.text()
+  const pkg = JSON.parse(raw) as Record<string, unknown>
+  let changed = false
+  const scripts = (pkg.scripts ?? {}) as Record<string, string>
+  if (!scripts.clean) {
+    scripts.clean = 'sh clean.sh'
+    changed = true
+    issues.push({ detail: 'added clean script', type: 'synced' })
+  }
+  pkg.scripts = scripts
+  if (!pkg['simple-git-hooks']) {
+    pkg['simple-git-hooks'] = { 'pre-commit': 'sh up.sh && git add -u' }
+    changed = true
+    issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
+  }
+  if (!scripts.prepare) {
+    scripts.prepare = 'bunx simple-git-hooks'
+    changed = true
+    issues.push({ detail: 'added prepare script', type: 'synced' })
+  }
+  if (changed) await write(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`)
+  return issues
+}
 export const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const src = join(cnsyncPath, 'readonly', 'ui')
