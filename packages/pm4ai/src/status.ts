@@ -52,6 +52,12 @@ const checkExists = async (projectPath: string): Promise<Issue[]> => {
     if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith('sh clean.sh'))
       issues.push({ detail: 'clean script should start with "sh clean.sh"', type: 'drift' })
   }
+  const vercelFile = file(join(projectPath, 'vercel.json'))
+  if (await vercelFile.exists()) {
+    const vercel = (await vercelFile.json()) as { installCommand?: string }
+    if (vercel.installCommand !== 'bun i')
+      issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
+  }
   const forbidden = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
   for (const f of forbidden)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
