@@ -84,7 +84,10 @@ Runs everything in parallel across all discovered projects, streams output as ea
       - Flag duplicate deps across workspace packages
       - Check `packageManager` field — is bun version latest?
       - Check lintmax version — is it latest on npm?
-   d. **Maintain**:
+   d. **Git check**:
+      - `git status` — flag uncommitted changes
+      - `git fetch && git status` — flag if behind remote, auto-pull if clean
+   e. **Maintain**:
       - `bun clean && bun i && bun fix`
       - Record pass/fail + timestamp to log
 3. Print summary + status
@@ -101,6 +104,8 @@ View only, no changes.
    - Dep audit: what's not on latest, what's pinned, duplicates
    - `bun why lintmax` — resolved version
    - Bun version vs latest
+   - Git status: clean or dirty (uncommitted changes)
+   - Git remote: up to date, behind, or ahead of remote (fetch + compare)
 3. `--swiftbar` flag: output in SwiftBar plugin format
 
 ## SwiftBar integration
