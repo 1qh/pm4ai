@@ -58,6 +58,8 @@ const checkExists = async (projectPath: string): Promise<Issue[]> => {
     if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
     if (!pkg.scripts?.prepare) issues.push({ detail: 'prepare script in package.json', type: 'missing' })
   }
+  if (existsSync(join(projectPath, 'lib', 'ui')))
+    issues.push({ detail: 'lib/ui should be migrated to readonly/ui', type: 'migrate' })
   return issues
 }
 const formatIssues = (projectPath: string, issues: Issue[]): string => {

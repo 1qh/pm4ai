@@ -41,7 +41,7 @@ const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg
   for (const p of wsPkgs) if (p) results.push(p)
   return results
 }
-const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/') || pkgPath.includes('/lib/ui/')
+const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/')
 const scanDeps = (
   pkgs: { path: string; pkg: Record<string, unknown> }[],
   projectPath: string
@@ -65,7 +65,6 @@ const scanDeps = (
         allDeps.set(name, locations)
       }
     }
-
   const duplicateIssues: Issue[] = []
   for (const [name, locations] of allDeps)
     if (locations.length > 1 && !name.startsWith('@types/'))
