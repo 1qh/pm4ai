@@ -19,9 +19,9 @@ One source of truth. Zero manual maintenance.
 - **npm package** (`pm4ai`) — CLI engine, published to npm, run via `bunx pm4ai@latest`
 - **pm4ai repo** — source of truth for rules, configs, and the docs site
 - **cnsync repo** — source of truth for `readonly/ui`
-- **Consumer projects** — just have a `pm4ai.config.ts` marker file
+- **Consumer projects** — any project with `lintmax` in package.json deps (zero config)
 
-The CLI finds the pm4ai and cnsync repos locally (via `fd`), copies directly from them. No network fetch needed for sync — just local file copies. Only the npm package is published; content stays in the repos.
+Zero config. The CLI discovers all projects by scanning for `lintmax` in package.json deps via `rg`. It finds the pm4ai and cnsync repos the same way (by package name). If pm4ai or cnsync repos aren't found locally, it clones them to `~/.pm4ai/repos/`. No config files, no registration, no markers.
 
 ## Repo structure
 
@@ -47,10 +47,10 @@ packages/
   pm4ai/                  # CLI engine
     src/
       cli.ts              # entry point
-      discover.ts         # fd pm4ai.config.ts ~/
+      discover.ts         # rg for lintmax in package.json, auto-clone if needed
       sync.ts             # pull rules + configs + readonly/ui + ci workflow
       audit.ts            # dep checks
-      infer.ts            # detect project type + auto-infer rules from deps
+      infer.ts            # detect project type + auto-infer CLAUDE.md rules from deps
       maintain.ts         # bun clean && bun i && bun fix
       status.ts           # show status + bun why
       log.ts              # read/write run logs
@@ -72,7 +72,7 @@ pm4ai dogfoods its own config files — they ARE the templates copied to consume
 
 Runs everything in parallel across all discovered projects, streams output as each completes.
 
-1. **Discover** — `fd pm4ai.config.ts ~/ --type f` — find all projects (including pm4ai and cnsync themselves)
+1. **Discover** — `rg -l '"lintmax"' ~/ -g 'package.json' -g '!**/node_modules/**'` — find all projects. From results: `"name": "pm4ai"` → source repo, has `readonly/ui` → cnsync. If pm4ai or cnsync not found locally → clone to `~/.pm4ai/repos/`
 2. **Git pull all** — fetch + pull every discovered project first (parallel)
 3. For each consumer project (parallel):
    a. **Sync configs** — copy from local pm4ai repo:
@@ -125,20 +125,11 @@ pm4ai status --swiftbar
 
 Each `.mdx` file in `apps/web/content/rules/` is a topic. Frontmatter has title and description for the docs site. The body content (minus frontmatter) gets concatenated into CLAUDE.md.
 
-Rules are selectively merged per project:
+Rules are selectively merged per project, fully auto-inferred:
 - **Always included**: `bun`, `typescript` (every project is bun + TS)
 - **Auto-inferred from deps**: `next` in deps → `nextjs` rule, `tailwindcss` → `tailwind`, `playwright` → `testing`, `lintmax` → `lintmax`, `tsdown` → `tsdown`
-- **Manual override**: `pm4ai.config.ts` can add rules that can't be inferred
 
-```ts
-// pm4ai.config.ts — most projects: empty, just a marker
-export default {}
-
-// pm4ai.config.ts — when you need extra rules
-export default {
-  rules: ['some-niche-rule']
-}
-```
+No config file needed. pm4ai reads each project's package.json to determine which rules apply.
 
 ## What pm4ai syncs
 
@@ -206,7 +197,7 @@ pm4ai enforces these across all projects:
 - Basic tsconfig, bunfig, gitignore
 
 ### Phase 2 — CLI core
-- `discover.ts` — find projects via fd
+- `discover.ts` — find projects via rg, identify pm4ai/cnsync repos, auto-clone if missing
 - `log.ts` — JSON log read/write (~/.pm4ai/log.json)
 - `cli.ts` — arg parsing, command routing
 
