@@ -68,45 +68,56 @@ pm4ai dogfoods its own config files — they ARE the templates copied to consume
 
 ## CLI
 
+Agent-first. Output is self-documenting plain text. No `--help` flag — the default command IS the guide.
+
 ### `pm4ai`
 
-Runs everything in parallel across all discovered projects, streams output as each completes.
-
-1. **Discover** — `rg -l '"lintmax"' ~/ -g 'package.json' -g '!**/node_modules/**'` — find all projects. From results: `"name": "pm4ai"` → source repo, has `readonly/ui` → cnsync. If pm4ai or cnsync not found locally → clone to `~/.pm4ai/repos/`
-2. **Git pull all** — fetch + pull every discovered project first (parallel)
-3. For each consumer project (parallel):
-   a. **Sync configs** — copy from local pm4ai repo:
-      - `rules/*.mdx` → infer applicable rules from deps → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
-      - Copy verbatim: `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`
-      - Check exists: `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`, `simple-git-hooks` + `prepare` in package.json
-   b. **Sync readonly/ui** — copy from local cnsync repo
-   d. **Audit**:
-      - Scan all `package.json` files in workspace
-      - Flag deps not on `"latest"` tag (except intentional pins)
-      - Flag duplicate deps across workspace packages
-      - Check `packageManager` field — is bun version latest?
-      - Check lintmax version — is it latest on npm?
-   e. **Maintain**:
-      - `sh up.sh` — cleans, installs fresh (pulls latest deps), fixes, checks
-      - Verify lintmax resolved to actual latest on npm — warn if not
-      - Record pass/fail + timestamp to log
-4. Print summary + status
+Prints the guide: what pm4ai is, how it works, output format, available commands. This is the single source of truth for documentation — `llms.txt` on the fumadocs site is generated from this same text.
 
 ### `pm4ai status`
 
-View only, no changes.
+View only, no changes. Discovers all projects, reports issues.
 
-1. Discover all projects
-2. For each project:
-   - Last run: timestamp, pass/fail
+1. **Discover** — `rg -l '"lintmax"' ~/ -g 'package.json' -g '!**/node_modules/**'` — find all projects. `"name": "pm4ai"` → source repo, has `readonly/ui` → cnsync. If pm4ai or cnsync not found locally → clone to `~/.pm4ai/repos/`
+2. For each project (parallel):
+   - Git: dirty (uncommitted changes), behind/ahead of remote
+   - Config drift: `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `CLAUDE.md` out of sync
+   - Missing: `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`, `simple-git-hooks`, `prepare` script
+   - Deps: not on `"latest"` tag, duplicates across workspace packages
+   - Versions: bun version vs latest, lintmax resolved vs latest on npm
+   - Last `up.sh` run: timestamp, pass/fail
    - Last CI: timestamp, pass/fail (GitHub API)
-   - Config drift: any files out of sync with source of truth
-   - Dep audit: what's not on latest, what's pinned, duplicates
-   - `bun why lintmax` — resolved version
-   - Bun version vs latest
-   - Git status: clean or dirty (uncommitted changes)
-   - Git remote: up to date, behind, or ahead of remote (fetch + compare)
-3. `--swiftbar` flag: output in SwiftBar plugin format
+3. Output only issues — no output for healthy projects
+4. `--swiftbar` flag: output in SwiftBar format for menubar
+
+Output format (self-explanatory, no docs needed):
+
+```
+/Users/o/z/cnsync
+  bun 1.3.11 behind latest 1.3.14
+  file clean.sh out of sync
+  git 3 commits behind remote
+
+/Users/o/z/ogrid
+  up.sh failed: next build error
+```
+
+### `pm4ai fix`
+
+Sync + audit + maintain. Streams output as each project completes (parallel).
+
+1. **Discover** — same as status
+2. **Git pull all** — fetch + pull every discovered project first (parallel, skip if dirty)
+3. For each consumer project (parallel):
+   a. **Sync** — from local pm4ai repo:
+      - `rules/*.mdx` → infer applicable rules from deps → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
+      - Copy verbatim: `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`
+   b. **Sync readonly/ui** — copy from local cnsync repo
+   c. **Maintain**:
+      - `sh up.sh` — cleans, installs fresh (pulls latest deps), fixes, checks
+      - Verify lintmax resolved to actual latest on npm — warn if not
+      - Record pass/fail + timestamp to log
+4. Output remaining issues (same format as status)
 
 ## SwiftBar integration
 
