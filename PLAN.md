@@ -61,7 +61,7 @@ turbo.json                # also the template for consumers
 tsconfig.json             # also the template for consumers
 .github/
   workflows/
-    ci.yml                # also the template for consumers (bun clean && bun i && bun fix)
+    ci.yml                # pm4ai's own CI
 ```
 
 pm4ai dogfoods its own config files — they ARE the templates copied to consumers.
@@ -77,7 +77,8 @@ Runs everything in parallel across all discovered projects, streams output as ea
 3. For each consumer project (parallel):
    a. **Sync configs** — copy from local pm4ai repo:
       - `rules/*.mdx` → infer applicable rules from deps → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
-      - Copy config files: `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`
+      - Copy verbatim: `bunfig.toml`, `.gitignore`
+      - Check exists: `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`, `simple-git-hooks` + `prepare` in package.json
    b. **Sync readonly/ui** — copy from local cnsync repo
    d. **Audit**:
       - Scan all `package.json` files in workspace
@@ -88,7 +89,7 @@ Runs everything in parallel across all discovered projects, streams output as ea
    e. **Maintain**:
       - `bun clean && bun i && bun fix`
       - Record pass/fail + timestamp to log
-3. Print summary + status
+4. Print summary + status
 
 ### `pm4ai status`
 
@@ -133,20 +134,27 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 
 ## What pm4ai syncs
 
-| What | Source | Method |
-|------|--------|--------|
-| CLAUDE.md | pm4ai repo `rules/` | local copy + assemble |
-| bunfig.toml | pm4ai repo root | local copy |
-| .gitignore | pm4ai repo root | local copy |
-| turbo.json | pm4ai repo root | local copy |
-| tsconfig.json | pm4ai repo root | local copy |
-| readonly/ui | cnsync repo | local copy |
-| simple-git-hooks config | pm4ai repo root | local copy |
-| prepare script | pm4ai repo root | local copy |
-| vercel.json | pm4ai repo root | local copy |
-| .github/workflows/ci.yml | pm4ai repo root | local copy |
-| lintmax version | npm registry | audit only |
-| bun version | bun releases | audit only |
+**Copy verbatim** (identical across all projects):
+
+| What | Source |
+|------|--------|
+| CLAUDE.md | pm4ai repo `rules/` — assemble from inferred topics |
+| bunfig.toml | pm4ai repo root |
+| .gitignore | pm4ai repo root |
+
+**Check if exists, warn if missing** (project-specific content):
+
+| What | What to check |
+|------|---------------|
+| .github/workflows/ci.yml | exists, runs `bun clean && bun i && bun fix` |
+| turbo.json | exists |
+| tsconfig.json | exists, extends `lintmax/tsconfig` |
+| vercel.json | exists (only if project has next.config.ts) |
+| `simple-git-hooks` in package.json | field exists with pre-commit hook |
+| `prepare` script in package.json | exists, runs `bunx simple-git-hooks` |
+| `readonly/ui` directory | exists |
+| `packageManager` in package.json | exists, bun version is latest |
+| lintmax in deps | exists, resolved version is latest |
 
 ## What pm4ai audits
 
@@ -202,7 +210,7 @@ pm4ai enforces these across all projects:
 - `cli.ts` — arg parsing, command routing
 
 ### Phase 3 — Sync engine
-- Find pm4ai and cnsync repos locally via fd
+- Find pm4ai and cnsync repos locally via rg (same discovery as CLI core)
 - Copy rules from local pm4ai repo, infer applicable rules, assemble CLAUDE.md
 - Copy config files from local pm4ai repo to consumers
 - Copy readonly/ui from local cnsync repo
