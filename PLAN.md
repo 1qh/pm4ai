@@ -30,14 +30,16 @@ apps/
   web/                    # fumadocs site — browse rules as docs
     content/
       rules/
-        bun.mdx
-        typescript.mdx
-        nextjs.mdx
-        tailwind.mdx
-        lintmax.mdx
-        testing.mdx
-        tsdown.mdx
-        ...
+        bun.mdx              # always
+        typescript.mdx        # always
+        code-quality.mdx      # always
+        lintmax.mdx           # always
+        git.mdx               # always
+        react-nextjs.mdx      # has next
+        minimal-dom.mdx       # has tailwindcss
+        shadcn.mdx            # has tailwindcss
+        testing.mdx           # has playwright
+        tsdown.mdx            # has tsdown
     src/
       app/
         docs/             # fumadocs routes
@@ -47,6 +49,7 @@ packages/
   pm4ai/                  # CLI engine
     src/
       cli.ts              # entry point
+      guide.ts            # the guide text — single source for docs + llms.txt
       discover.ts         # rg for lintmax in package.json, auto-clone if needed
       sync.ts             # pull rules + configs + readonly/ui + ci workflow
       audit.ts            # dep checks
@@ -72,7 +75,41 @@ Agent-first. Output is self-documenting plain text. No `--help` flag — the def
 
 ### `pm4ai`
 
-Prints the guide: what pm4ai is, how it works, output format, available commands. This is the single source of truth for documentation — `llms.txt` on the fumadocs site is generated from this same text.
+Prints the guide — the single source of truth for all documentation:
+
+```
+pm4ai — zero-config project manager for TypeScript monorepos
+
+discovers projects by scanning for lintmax in package.json deps
+discovers itself and cnsync the same way (auto-clones if not found)
+
+commands:
+  pm4ai          this guide
+  pm4ai status   view issues across all projects (no changes)
+  pm4ai fix      sync configs + pull latest deps + lint/build check
+
+status output format (only issues shown, healthy = no output):
+  /path/to/project
+    bun 1.3.11 behind latest 1.3.14
+    file clean.sh out of sync
+    git 3 commits behind remote
+    lintmax 0.1.2 behind latest 0.1.3
+    dep react not on latest tag
+    up.sh failed: next build error
+    ci failed 2026-04-02
+
+flags:
+  --swiftbar     output in SwiftBar menubar format
+
+synced files (copied verbatim from pm4ai repo):
+  clean.sh  up.sh  bunfig.toml  .gitignore  CLAUDE.md (generated from rules)
+
+checked files (warn if missing):
+  turbo.json  tsconfig.json  .github/workflows/ci.yml
+  simple-git-hooks + prepare script in package.json
+```
+
+The fumadocs `llms.txt` route imports and serves this same text. One source, zero duplication.
 
 ### `pm4ai status`
 
@@ -121,28 +158,55 @@ Sync + audit + maintain. Streams output as each project completes (parallel).
 
 ## SwiftBar integration
 
-`pm4ai status --swiftbar` outputs SwiftBar-compatible text:
+`pm4ai status --swiftbar` outputs SwiftBar-compatible text using the BitBar plugin protocol:
 
-- Menubar icon: green checkmark or red X
-- Dropdown: per-project status with last run time
-- Refresh interval configured by plugin filename (e.g. `pm4ai.1h.sh`)
+- Line 1 (menubar): green checkmark (`sfimage=checkmark.circle.fill sfcolor=green`) or red X (`sfimage=xmark.circle.fill sfcolor=red`)
+- After `---`: per-project status as dropdown items
+- Healthy projects: `ProjectName | sfimage=checkmark.circle sfcolor=green`
+- Unhealthy projects: `ProjectName | sfimage=xmark.circle sfcolor=red` with `--issue detail` submenus
+- Click project → opens terminal at project path (`bash=/bin/zsh param1=-c param2='cd /path && exec zsh' terminal=true`)
+- Refresh interval configured by plugin filename (e.g. `pm4ai.1h.sh` = every hour)
 
-Plugin file is just:
+Plugin file (`~/.config/swiftbar/pm4ai.1h.sh`):
 
 ```sh
 #!/bin/bash
-pm4ai status --swiftbar
+bunx pm4ai@latest status --swiftbar
 ```
 
 ## Rules (CLAUDE.md generation)
 
 Each `.mdx` file in `apps/web/content/rules/` is a topic. Frontmatter has title and description for the docs site. The body content (minus frontmatter) gets concatenated into CLAUDE.md.
 
-Rules are selectively merged per project, fully auto-inferred:
-- **Always included**: `bun`, `typescript` (every project is bun + TS)
-- **Auto-inferred from deps**: `next` in deps → `nextjs` rule, `tailwindcss` → `tailwind`, `playwright` → `testing`, `lintmax` → `lintmax`, `tsdown` → `tsdown`
+Rules are selectively merged per project, fully auto-inferred from deps:
+
+**Always included** (every project is bun + TS):
+- `bun.mdx` — bun only, never yarn/npm, clean && install pattern, q wrapper, silent success/verbose failure
+- `typescript.mdx` — arrow functions only, exports at end, exhaustive switch, max 3 args, explicit imports, for loops
+- `code-quality.mdx` — no comments, no any/!, no ts-ignore, single source of truth, consolidation checklist
+- `lintmax.mdx` — ignore syntax table, ignore strategy, cross-linter rules, safe-to-ignore rules
+- `git.mdx` — small frequent commits, no AI mentions
+
+**Auto-inferred from deps**:
+- `next` → `react-nextjs.mdx` — server components by default, use client only when needed
+- `tailwindcss` → `minimal-dom.mdx` — fewest nodes, gap/space/divide before wrappers, review checklist
+- `tailwindcss` → `shadcn.mdx` — use as-is, semantic colors, cn() for conditionals
+- `playwright` → `testing.mdx` — testing conventions
+- `tsdown` → `tsdown.mdx` — library publishing conventions
 
 No config file needed. pm4ai reads each project's package.json to determine which rules apply.
+
+### CLAUDE.md and companion files
+
+pm4ai fully owns `CLAUDE.md` — it's entirely generated from rules, no project-specific content mixed in.
+
+Project-specific content goes into companion files (standard across all projects):
+- `LEARNING.md` — lessons learned, gotchas, known issues
+- `RULES.md` — project-specific rules that don't apply to other projects
+- `PROGRESS.md` — tracking ongoing work
+- `PLAN.md` — planning and architecture decisions
+
+pm4ai checks that these files exist (warn if missing) but never writes to them — they are human/agent-maintained per project.
 
 ## What pm4ai syncs
 
@@ -167,6 +231,10 @@ No config file needed. pm4ai reads each project's package.json to determine whic
 | `simple-git-hooks` in package.json | field exists with pre-commit hook |
 | `prepare` script in package.json | exists, runs `bunx simple-git-hooks` |
 | `readonly/ui` directory | exists |
+| `LEARNING.md` | exists |
+| `RULES.md` | exists |
+| `PROGRESS.md` | exists |
+| `PLAN.md` | exists |
 | `packageManager` in package.json | exists, bun version is latest |
 | lintmax in deps | exists, resolved version is latest |
 
@@ -202,7 +270,42 @@ For production systems, pm4ai saves a copy of `bun.lock` after each successful m
 
 ## Periodic auto-run
 
-pm4ai installs a launchd plist (macOS) to run `pm4ai` on a schedule (e.g. daily). This catches upstream breakage early without manual intervention. The SwiftBar plugin shows the result — you just glance at the menubar.
+pm4ai installs a launchd user agent (`~/Library/LaunchAgents/com.pm4ai.fix.plist`) to run `bunx pm4ai@latest fix` daily. Requires full PATH to bun in the plist since launchd doesn't source shell profile.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pm4ai.fix</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/o/.bun/bin/bunx</string>
+        <string>pm4ai@latest</string>
+        <string>fix</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/o/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/pm4ai.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/pm4ai.stderr.log</string>
+</dict>
+</plist>
+```
+
+Load with `launchctl load ~/Library/LaunchAgents/com.pm4ai.fix.plist`. SwiftBar plugin shows the result — just glance at the menubar.
 
 ## Enforced rules
 
@@ -218,44 +321,38 @@ pm4ai enforces these across all projects:
 
 ## Implementation phases
 
-### Phase 1 — Repo scaffold
+### Phase 1 — Repo scaffold + rules content
 - Turborepo monorepo with `packages/pm4ai` and `apps/web`
-- Root configs (dogfooded)
-- Package.json with bin entry
-- Basic tsconfig, bunfig, gitignore
+- Root configs (dogfooded): `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`, `clean.sh`, `up.sh`
+- Package.json with bin entry, `packageManager`, `simple-git-hooks`, `prepare`
+- `.github/workflows/ci.yml`
+- Write all rule topic MDX files extracted from existing ogrid/noboil CLAUDE.md files
+- Fumadocs app scaffold with rules as content
 
-### Phase 2 — CLI core
-- `discover.ts` — find projects via rg, identify pm4ai/cnsync repos, auto-clone if missing
-- `log.ts` — JSON log read/write (~/.pm4ai/log.json)
-- `cli.ts` — arg parsing, command routing
+### Phase 2 — CLI core + discovery
+- `guide.ts` — the guide text (single source of truth for all docs)
+- `cli.ts` — arg parsing (`pm4ai`, `pm4ai status`, `pm4ai fix`, `--swiftbar`)
+- `discover.ts` — `rg` for lintmax in package.json, identify self/cnsync, auto-clone if missing
+- `log.ts` — read/write `~/.pm4ai/log.json`
 
-### Phase 3 — Sync engine
-- Find pm4ai and cnsync repos locally via rg (same discovery as CLI core)
-- Copy rules from local pm4ai repo, infer applicable rules, assemble CLAUDE.md
-- Copy config files from local pm4ai repo to consumers
-- Copy readonly/ui from local cnsync repo
+### Phase 3 — Status + audit
+- `status.ts` — git status, config drift (file comparison), dep audit, version checks
+- `audit.ts` — latest tags, duplicates, pinned deps, bun version (GitHub API), lintmax version (npm registry)
+- `infer.ts` — detect project type + infer CLAUDE.md rules from deps
+- Output format: issues only, self-documenting plain text
+- `swiftbar.ts` — `--swiftbar` flag output
 
-### Phase 4 — Audit
-- Scan package.json files
-- Check latest tags, duplicates, pins
-- Check bun version via GitHub API
-- Check lintmax version via npm registry
+### Phase 4 — Fix (sync + maintain)
+- `sync.ts` — copy verbatim files, assemble CLAUDE.md with markers, copy readonly/ui
+- `maintain.ts` — git pull, `sh up.sh`, verify lintmax version, log results
+- Parallel execution with streamed output per project
 
-### Phase 5 — Maintain
-- Run `sh up.sh` per project
-- Parallel execution with streamed output
-- Log results
-
-### Phase 6 — Status
-- Read logs, query GitHub CI status
-- Terminal formatted output
-- `--swiftbar` flag
-
-### Phase 7 — Fumadocs site
-- Rules as MDX content
+### Phase 5 — Fumadocs site
+- Rules rendered as docs (already have MDX from phase 1)
+- `llms.txt` route imports guide text from CLI package
 - Browse and search rules
-- llms.txt routes
 
-### Phase 8 — Rules content
-- Extract common patterns from existing CLAUDE.md files
-- Write all rule topics as mdx files
+### Phase 6 — Periodic + SwiftBar
+- Generate launchd plist for daily auto-run
+- SwiftBar plugin file generation
+- Setup instructions in guide
