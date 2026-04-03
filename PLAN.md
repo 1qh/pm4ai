@@ -1,0 +1,186 @@
+# pm4ai
+
+Super opinionated project manager that keeps all your TypeScript projects in sync.
+
+One source of truth. Zero manual maintenance.
+
+## Architecture
+
+- **npm package** (`pm4ai`) — CLI engine, published to npm, installed globally
+- **pm4ai repo** — source of truth for rules, configs, and the docs site
+- **cnsync repo** — source of truth for `readonly/ui`
+- **Consumer projects** — just have a `pm4ai.config.ts` marker file
+
+The CLI pulls content from GitHub repos at runtime. No content ships in the npm package.
+
+## Repo structure
+
+```
+apps/
+  web/                    # fumadocs site — browse rules as docs
+    content/
+      rules/
+        bun.mdx
+        typescript.mdx
+        nextjs.mdx
+        tailwind.mdx
+        lintmax.mdx
+        testing.mdx
+        ...
+    src/
+      app/
+        docs/             # fumadocs routes
+        llms.txt/         # agent-readable
+        llms-full.txt/    # agent-readable full
+packages/
+  pm4ai/                  # CLI engine
+    src/
+      cli.ts              # entry point
+      discover.ts         # fd pm4ai.config.ts ~/
+      sync.ts             # pull rules + configs + readonly/ui
+      audit.ts            # dep checks
+      maintain.ts         # bun clean && bun i && bun fix
+      status.ts           # show status + bun why
+      log.ts              # read/write run logs
+      swiftbar.ts         # --swiftbar output format
+bunfig.toml               # also the template for consumers
+.gitignore                # also the template for consumers
+turbo.json                # also the template for consumers
+tsconfig.json             # also the template for consumers
+```
+
+pm4ai dogfoods its own config files — they ARE the templates copied to consumers.
+
+## CLI
+
+### `pm4ai`
+
+Runs everything in parallel across all discovered projects, streams output as each completes.
+
+1. `fd pm4ai.config.ts ~/ --type f` — discover all projects
+2. For each project (parallel):
+   a. **Sync** — pull latest from pm4ai repo:
+      - `rules/*.mdx` → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
+      - Copy config files: `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`
+   b. **Sync readonly/ui** — pull from cnsync via `bunx gitpick`
+   c. **Audit**:
+      - Scan all `package.json` files in workspace
+      - Flag deps not on `"latest"` tag (except intentional pins)
+      - Flag duplicate deps across workspace packages
+      - Check `packageManager` field — is bun version latest?
+      - Check lintmax version — is it latest on npm?
+   d. **Maintain**:
+      - `bun clean && bun i && bun fix`
+      - Record pass/fail + timestamp to log
+3. Print summary + status
+
+### `pm4ai status`
+
+View only, no changes.
+
+1. Discover all projects
+2. For each project:
+   - Last run: timestamp, pass/fail
+   - Last CI: timestamp, pass/fail (GitHub API)
+   - Config drift: any files out of sync with source of truth
+   - Dep audit: what's not on latest, what's pinned, duplicates
+   - `bun why lintmax` — resolved version
+   - Bun version vs latest
+3. `--swiftbar` flag: output in SwiftBar plugin format
+
+## SwiftBar integration
+
+`pm4ai status --swiftbar` outputs SwiftBar-compatible text:
+
+- Menubar icon: green checkmark or red X
+- Dropdown: per-project status with last run time
+- Refresh interval configured by plugin filename (e.g. `pm4ai.1h.sh`)
+
+Plugin file is just:
+
+```sh
+#!/bin/bash
+pm4ai status --swiftbar
+```
+
+## Rules (CLAUDE.md generation)
+
+Each `.mdx` file in `apps/web/content/rules/` is a topic. Frontmatter has title and description for the docs site. The body content (minus frontmatter) gets concatenated into CLAUDE.md.
+
+All projects get all rules. Add a file → every project gets it on next sync.
+
+## What pm4ai syncs
+
+| What | Source | Method |
+|------|--------|--------|
+| CLAUDE.md | pm4ai repo `rules/` | gitpick + assemble |
+| bunfig.toml | pm4ai repo root | gitpick |
+| .gitignore | pm4ai repo root | gitpick |
+| turbo.json | pm4ai repo root | gitpick |
+| tsconfig.json | pm4ai repo root | gitpick |
+| readonly/ui | cnsync repo | gitpick |
+| lintmax version | npm registry | audit only |
+| bun version | bun releases | audit only |
+
+## What pm4ai audits
+
+- All deps have `"latest"` tag (flag exceptions)
+- No duplicate deps across workspace packages
+- Pinned deps — try bumping to latest, report if maintenance passes
+- `packageManager` bun version is latest release
+- lintmax resolved version matches latest on npm
+- CI status via GitHub API
+
+## What pm4ai maintains
+
+Per project:
+
+```sh
+bun clean && bun i && bun fix
+```
+
+Results logged with timestamp. Failures reported with error output.
+
+## Implementation phases
+
+### Phase 1 — Repo scaffold
+- Turborepo monorepo with `packages/pm4ai` and `apps/web`
+- Root configs (dogfooded)
+- Package.json with bin entry
+- Basic tsconfig, bunfig, gitignore
+
+### Phase 2 — CLI core
+- `discover.ts` — find projects via fd
+- `log.ts` — JSON log read/write (~/.pm4ai/log.json)
+- `cli.ts` — arg parsing, command routing
+
+### Phase 3 — Sync engine
+- Pull rules from GitHub via gitpick
+- Assemble CLAUDE.md from mdx files
+- Copy config files to consumers
+- Pull readonly/ui from cnsync
+
+### Phase 4 — Audit
+- Scan package.json files
+- Check latest tags, duplicates, pins
+- Check bun version via GitHub API
+- Check lintmax version via npm registry
+
+### Phase 5 — Maintain
+- Run `bun clean && bun i && bun fix` per project
+- Parallel execution with streamed output
+- Log results
+
+### Phase 6 — Status
+- Read logs, query GitHub CI status
+- Terminal formatted output
+- `--swiftbar` flag
+
+### Phase 7 — Fumadocs site
+- Rules as MDX content
+- Browse and search rules
+- llms.txt routes
+
+### Phase 8 — Rules content
+- Extract common patterns from existing CLAUDE.md files
+- Write all rule topics as mdx files
