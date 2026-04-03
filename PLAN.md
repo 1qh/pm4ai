@@ -16,7 +16,7 @@ One source of truth. Zero manual maintenance.
 
 ## Architecture
 
-- **npm package** (`pm4ai`) — CLI engine, published to npm, installed globally
+- **npm package** (`pm4ai`) — CLI engine, published to npm, run via `bunx pm4ai@latest`
 - **pm4ai repo** — source of truth for rules, configs, and the docs site
 - **cnsync repo** — source of truth for `readonly/ui`
 - **Consumer projects** — just have a `pm4ai.config.ts` marker file
@@ -157,7 +157,7 @@ Results logged with timestamp. Failures reported with error output.
 
 ## bun.lock snapshots
 
-For production systems, pm4ai saves a copy of `bun.lock` after each successful maintenance run to `~/.pm4ai/snapshots/<project-name>/<timestamp>/bun.lock`. This allows quick rollback when a new dep version breaks production — copy the snapshot back, `bun i --frozen-lockfile`.
+For production systems, pm4ai saves a copy of `bun.lock` after each successful maintenance run to `~/.pm4ai/snapshots/<project-name>/bun.lock` (latest only, no history). This allows quick rollback when a new dep version breaks production — copy the snapshot back, `bun i --frozen-lockfile`.
 
 ## Periodic auto-run
 
