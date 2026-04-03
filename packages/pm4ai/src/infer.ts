@@ -1,64 +1,49 @@
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
-
+import { file } from 'bun'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 const alwaysRules = ['general', 'bun', 'typescript', 'code-quality', 'lintmax', 'git']
-
 const depRuleMap: Record<string, string[]> = {
   next: ['react-nextjs'],
-  tailwindcss: ['minimal-dom', 'shadcn'],
   playwright: ['testing'],
+  tailwindcss: ['minimal-dom', 'shadcn'],
   tsdown: ['tsdown']
 }
-
-const getAllDeps = (projectPath: string): Set<string> => {
-  const deps = new Set<string>()
-  const addFromPkg = (pkgPath: string) => {
-    if (!existsSync(pkgPath)) return
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
-    for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
-      if (pkg[field]) {
-        for (const name of Object.keys(pkg[field])) {
-          deps.add(name)
-        }
-      }
-    }
-  }
-
-  addFromPkg(join(projectPath, 'package.json'))
-
-  const rootPkg = JSON.parse(readFileSync(join(projectPath, 'package.json'), 'utf-8'))
-  const workspaces: string[] = rootPkg.workspaces ?? []
+const getPkgPaths = (projectPath: string): string[] => {
+  const rootPkgPath = join(projectPath, 'package.json')
+  const paths = [rootPkgPath]
+  if (!existsSync(rootPkgPath)) return paths
+  const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf8')) as { workspaces?: string[] }
+  const workspaces = rootPkg.workspaces ?? []
   for (const ws of workspaces) {
-    const pattern = ws.replace('/*', '')
-    const { readdirSync } = require('fs')
-    if (!existsSync(join(projectPath, pattern))) {
-      // Not a valid workspace directory
-    } else {
-      const entries = readdirSync(join(projectPath, pattern), { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          addFromPkg(join(projectPath, pattern, entry.name, 'package.json'))
-        }
-      }
+    const wsDir = join(projectPath, ws.replace('/*', ''))
+    if (existsSync(wsDir)) {
+      const entries = readdirSync(wsDir, { withFileTypes: true })
+      for (const entry of entries) if (entry.isDirectory()) paths.push(join(wsDir, entry.name, 'package.json'))
     }
   }
-
+  return paths
+}
+const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
+  const deps = new Set<string>()
+  const pkgPaths = getPkgPaths(projectPath)
+  const pkgs = await Promise.all(
+    pkgPaths.map(async p => {
+      const f = file(p)
+      if (!(await f.exists())) return
+      return (await f.json()) as Record<string, Record<string, string> | undefined>
+    })
+  )
+  const depFields = ['dependencies', 'devDependencies', 'peerDependencies'] as const
+  const names = pkgs
+    .filter((p): p is NonNullable<typeof p> => p !== undefined)
+    .flatMap(pkg => depFields.flatMap(field => (pkg[field] ? Object.keys(pkg[field]) : [])))
+  for (const name of names) deps.add(name)
   return deps
 }
-
-export const inferRules = (projectPath: string): string[] => {
-  const deps = getAllDeps(projectPath)
+export const inferRules = async (projectPath: string): Promise<string[]> => {
+  const deps = await getAllDeps(projectPath)
   const rules = [...alwaysRules]
-
-  for (const [dep, ruleNames] of Object.entries(depRuleMap)) {
-    if (deps.has(dep)) {
-      for (const rule of ruleNames) {
-        if (!rules.includes(rule)) {
-          rules.push(rule)
-        }
-      }
-    }
-  }
-
+  for (const [dep, ruleNames] of Object.entries(depRuleMap))
+    if (deps.has(dep)) for (const rule of ruleNames) if (!rules.includes(rule)) rules.push(rule)
   return rules
 }

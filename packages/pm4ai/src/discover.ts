@@ -1,87 +1,64 @@
-import { homedir } from 'os'
-import { dirname, join } from 'path'
-import { readFileSync, existsSync } from 'fs'
-
-const runCapture = async (cmd: string[]) => {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
-  const stdout = await new Response(proc.stdout).text()
-  await proc.exited
-  return stdout.trim()
-}
-
-export type Project = {
+import { $, file } from 'bun'
+import { existsSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+interface Project {
+  isCnsync: boolean
+  isSelf: boolean
   name: string
   path: string
-  isSelf: boolean
-  isCnsync: boolean
 }
-
-const readPkgName = (dir: string): string | undefined => {
-  const pkgPath = join(dir, 'package.json')
-  if (!existsSync(pkgPath)) return undefined
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+const readPkgName = async (dir: string): Promise<string | undefined> => {
+  const f = file(join(dir, 'package.json'))
+  if (!(await f.exists())) return
+  const pkg = (await f.json()) as { name?: string }
   return pkg.name
 }
-
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
-
 const cloneIfMissing = async (repo: string, dest: string) => {
   if (existsSync(dest)) return dest
-  const { mkdirSync } = await import('fs')
   mkdirSync(dirname(dest), { recursive: true })
-  await Bun.spawn(['git', 'clone', `https://github.com/1qh/${repo}.git`, dest], {
-    stdout: 'ignore',
-    stderr: 'ignore'
-  }).exited
+  await $`git clone https://github.com/1qh/${repo}.git ${dest}`.quiet()
   return dest
 }
-
-export const discover = async (): Promise<{
-  self: Project
+const discover = async (): Promise<{
   cnsync: Project
   consumers: Project[]
+  self: Project
 }> => {
   const home = homedir()
-  const stdout = await runCapture([
-    'rg', '-l', '"lintmax"', home,
-    '-g', 'package.json',
-    '-g', '!**/node_modules/**',
-    '-g', '!**/.cache/**'
-  ])
-
-  const files = stdout.split('\n').filter(Boolean)
-  const allDirs = [...new Set(files.map(f => dirname(f)))].sort()
-
-  const projectDirs = allDirs.filter(dir =>
-    !allDirs.some(other => other !== dir && dir.startsWith(other + '/'))
+  const result = await $`rg -l '"lintmax"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**'`
+    .quiet()
+    .nothrow()
+  const stdout = result.stdout.toString().trim()
+  const found = stdout.split('\n').filter(Boolean)
+  const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted()
+  const projectDirs = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
+  const projects: Project[] = await Promise.all(
+    projectDirs.map(async dir => {
+      const name = (await readPkgName(dir)) ?? dirname(dir).split('/').pop() ?? dir
+      return {
+        isCnsync: hasDirInside(dir, 'readonly/ui') && name !== 'pm4ai-monorepo',
+        isSelf: name === 'pm4ai-monorepo' || name === 'pm4ai',
+        name,
+        path: dir
+      }
+    })
   )
-
-  const projects: Project[] = projectDirs.map(dir => {
-    const name = readPkgName(dir) ?? dirname(dir).split('/').pop() ?? dir
-    return {
-      name,
-      path: dir,
-      isSelf: name === 'pm4ai-monorepo' || name === 'pm4ai',
-      isCnsync: hasDirInside(dir, 'readonly/ui') && name !== 'pm4ai-monorepo'
-    }
-  })
-
   let self = projects.find(p => p.isSelf)
   let cnsync = projects.find(p => p.isCnsync)
-
   if (!self) {
     const dest = join(home, '.pm4ai', 'repos', 'pm4ai')
     await cloneIfMissing('pm4ai', dest)
-    self = { name: 'pm4ai', path: dest, isSelf: true, isCnsync: false }
+    self = { isCnsync: false, isSelf: true, name: 'pm4ai', path: dest }
   }
-
   if (!cnsync) {
     const dest = join(home, '.pm4ai', 'repos', 'cnsync')
     await cloneIfMissing('cnsync', dest)
-    cnsync = { name: 'cnsync', path: dest, isSelf: false, isCnsync: true }
+    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
   }
-
   const consumers = projects.filter(p => !p.isSelf)
-
-  return { self, cnsync, consumers }
+  return { cnsync, consumers, self }
 }
+export type { Project }
+export { discover }

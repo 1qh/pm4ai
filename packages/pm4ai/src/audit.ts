@@ -1,112 +1,91 @@
-import { readFileSync, existsSync, readdirSync } from 'fs'
-import { join } from 'path'
-
-export type Issue = {
-  type: string
+import { $, file } from 'bun'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+interface Issue {
   detail: string
+  type: string
 }
-
-const runCapture = async (cmd: string[], cwd: string) => {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', cwd })
-  const stdout = await new Response(proc.stdout).text()
-  await proc.exited
-  return stdout.trim()
-}
-
 const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => {
   const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`)
-  if (!res.ok) return undefined
-  const data = await res.json()
+  if (!res.ok) return
+  const data = (await res.json()) as { version: string }
   return data.version
 }
-
 const getLatestBunVersion = async (): Promise<string | undefined> => {
   const res = await fetch('https://api.github.com/repos/oven-sh/bun/releases/latest')
-  if (!res.ok) return undefined
-  const data = await res.json()
-  return (data.tag_name as string).replace('bun-v', '')
+  if (!res.ok) return
+  const data = (await res.json()) as { tag_name: string }
+  return data.tag_name.replace('bun-v', '')
 }
-
-const collectPkgJsons = (projectPath: string): { path: string; pkg: Record<string, unknown> }[] => {
-  const results: { path: string; pkg: Record<string, unknown> }[] = []
+const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg: Record<string, unknown> }[]> => {
   const rootPkgPath = join(projectPath, 'package.json')
-  if (!existsSync(rootPkgPath)) return results
-
-  const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'))
-  results.push({ path: rootPkgPath, pkg: rootPkg })
-
-  const workspaces: string[] = rootPkg.workspaces ?? []
-  for (const ws of workspaces) {
-    const pattern = ws.replace('/*', '')
-    const wsDir = join(projectPath, pattern)
-    if (!existsSync(wsDir)) {
-      // Skip missing workspace directories
-    } else {
-      const entries = readdirSync(wsDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const pkgPath = join(wsDir, entry.name, 'package.json')
-          if (existsSync(pkgPath)) {
-            results.push({ path: pkgPath, pkg: JSON.parse(readFileSync(pkgPath, 'utf-8')) })
-          }
-        }
-      }
-    }
-  }
-
+  const rootFile = file(rootPkgPath)
+  if (!(await rootFile.exists())) return []
+  const rootPkg = (await rootFile.json()) as Record<string, unknown>
+  const results = [{ path: rootPkgPath, pkg: rootPkg }]
+  const workspaces = (rootPkg.workspaces as string[] | undefined) ?? []
+  const wsPkgs = await Promise.all(
+    workspaces.flatMap(ws => {
+      const wsDir = join(projectPath, ws.replace('/*', ''))
+      if (!existsSync(wsDir)) return []
+      return readdirSync(wsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(async e => {
+          const pkgPath = join(wsDir, e.name, 'package.json')
+          const pkgFile = file(pkgPath)
+          if (!(await pkgFile.exists())) return
+          return { path: pkgPath, pkg: (await pkgFile.json()) as Record<string, unknown> }
+        })
+    })
+  )
+  for (const p of wsPkgs) if (p) results.push(p)
   return results
 }
-
-export const audit = async (projectPath: string): Promise<Issue[]> => {
+const scanDeps = (
+  pkgs: { path: string; pkg: Record<string, unknown> }[],
+  projectPath: string
+): { depIssues: Issue[]; duplicateIssues: Issue[] } => {
+  const depIssues: Issue[] = []
+  const allDeps = new Map<string, string[]>()
+  for (const { path: pkgPath, pkg } of pkgs) {
+    const shortPath = pkgPath.replace(`${projectPath}/`, '')
+    const depEntries = ['dependencies', 'devDependencies'].flatMap(field => {
+      const deps = pkg[field] as Record<string, string> | undefined
+      return deps ? Object.entries(deps) : []
+    })
+    for (const [name, version] of depEntries) {
+      if (version !== 'latest' && !version.startsWith('workspace:'))
+        depIssues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
+      const locations = allDeps.get(name) ?? []
+      locations.push(shortPath)
+      allDeps.set(name, locations)
+    }
+  }
+  const duplicateIssues: Issue[] = []
+  for (const [name, locations] of allDeps)
+    if (locations.length > 1 && !name.startsWith('@types/'))
+      duplicateIssues.push({ detail: `${name} declared in ${locations.join(', ')}`, type: 'duplicate' })
+  return { depIssues, duplicateIssues }
+}
+const audit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const pkgs = collectPkgJsons(projectPath)
+  const pkgs = await collectPkgJsons(projectPath)
   const rootPkg = pkgs[0]?.pkg
-
   const bunVersion = (rootPkg?.packageManager as string | undefined)?.replace('bun@', '')
   if (bunVersion) {
     const latest = await getLatestBunVersion()
-    if (latest && bunVersion !== latest) {
-      issues.push({ type: 'bun', detail: `${bunVersion} behind latest ${latest}` })
-    }
+    if (latest && bunVersion !== latest) issues.push({ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' })
   }
-
   const lintmaxLatest = await getLatestNpmVersion('lintmax')
   if (lintmaxLatest) {
-    const resolved = await runCapture(['bun', 'why', 'lintmax'], projectPath)
-    if (resolved && !resolved.includes(lintmaxLatest)) {
-      issues.push({ type: 'lintmax', detail: `resolved version behind latest ${lintmaxLatest}` })
-    }
+    const result = await $`bun why lintmax`.cwd(projectPath).quiet().nothrow()
+    const resolved = result.stdout.toString().trim()
+    if (resolved && !resolved.includes(lintmaxLatest))
+      issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
   }
-
-  const allDeps = new Map<string, string[]>()
-
-  for (const { path: pkgPath, pkg } of pkgs) {
-    const shortPath = pkgPath.replace(projectPath + '/', '')
-    for (const field of ['dependencies', 'devDependencies']) {
-      const deps = pkg[field] as Record<string, string> | undefined
-      if (!deps) {
-        // No deps in this field
-      } else {
-        for (const [name, version] of Object.entries(deps)) {
-          if (version !== 'latest' && !version.startsWith('workspace:')) {
-            issues.push({ type: 'dep', detail: `${name} not on latest tag (${version}) in ${shortPath}` })
-          }
-
-          const key = name
-          if (!allDeps.has(key)) {
-            allDeps.set(key, [])
-          }
-          allDeps.get(key)!.push(shortPath)
-        }
-      }
-    }
-  }
-
-  for (const [name, locations] of allDeps) {
-    if (locations.length > 1 && !name.startsWith('@types/')) {
-      issues.push({ type: 'duplicate', detail: `${name} declared in ${locations.join(', ')}` })
-    }
-  }
-
+  const { depIssues, duplicateIssues } = scanDeps(pkgs, projectPath)
+  issues.push(...depIssues, ...duplicateIssues)
   return issues
 }
+export type { Issue }
+export { audit }

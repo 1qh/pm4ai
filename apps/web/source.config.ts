@@ -1,6 +1,5 @@
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema'
 import { defineConfig, defineDocs } from 'fumadocs-mdx/config'
-
 export const docs = defineDocs({
   dir: 'content/rules',
   docs: {
@@ -13,5 +12,4 @@ export const docs = defineDocs({
     schema: metaSchema
   }
 })
-
 export default defineConfig({})

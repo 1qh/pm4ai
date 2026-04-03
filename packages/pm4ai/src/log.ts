@@ -1,35 +1,29 @@
-import { homedir } from 'os'
-import { join } from 'path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-
-export type LogEntry = {
-  project: string
-  path: string
-  pass: boolean
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+interface LogEntry {
   at: string
   error?: string
+  pass: boolean
+  path: string
+  project: string
 }
-
 const logDir = join(homedir(), '.pm4ai')
 const logFile = join(logDir, 'log.json')
-
-export const readLog = (): LogEntry[] => {
+const readLog = (): LogEntry[] => {
   if (!existsSync(logFile)) return []
-  return JSON.parse(readFileSync(logFile, 'utf-8'))
+  return JSON.parse(readFileSync(logFile, 'utf8')) as LogEntry[]
 }
-
-export const writeLog = (entries: LogEntry[]) => {
+const writeLog = (entries: LogEntry[]) => {
   mkdirSync(logDir, { recursive: true })
   writeFileSync(logFile, JSON.stringify(entries, null, 2))
 }
-
-export const updateLog = (entry: LogEntry) => {
+const updateLog = (entry: LogEntry) => {
   const entries = readLog()
   const idx = entries.findIndex(e => e.path === entry.path)
-  if (idx >= 0) {
-    entries[idx] = entry
-  } else {
-    entries.push(entry)
-  }
+  if (idx === -1) entries.push(entry)
+  else entries[idx] = entry
   writeLog(entries)
 }
+export type { LogEntry }
+export { readLog, updateLog, writeLog }
