@@ -7,7 +7,7 @@
 .vercel
 bun.lock
 dist
-node_modules/
 next-env.d.ts
+node_modules/
 playwright-report/
 test-results/
