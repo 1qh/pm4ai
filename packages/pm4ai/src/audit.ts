@@ -5,6 +5,10 @@ interface Issue {
   detail: string
   type: string
 }
+interface PkgEntry {
+  path: string
+  pkg: Record<string, unknown>
+}
 const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => {
   const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`)
   if (!res.ok) return
@@ -17,12 +21,12 @@ const getLatestBunVersion = async (): Promise<string | undefined> => {
   const data = (await res.json()) as { tag_name: string }
   return data.tag_name.replace('bun-v', '')
 }
-const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg: Record<string, unknown> }[]> => {
+const collectPkgJsons = async (projectPath: string): Promise<PkgEntry[]> => {
   const rootPkgPath = join(projectPath, 'package.json')
   const rootFile = file(rootPkgPath)
   if (!(await rootFile.exists())) return []
   const rootPkg = (await rootFile.json()) as Record<string, unknown>
-  const results = [{ path: rootPkgPath, pkg: rootPkg }]
+  const results: PkgEntry[] = [{ path: rootPkgPath, pkg: rootPkg }]
   const workspaces = (rootPkg.workspaces as string[] | undefined) ?? []
   const wsPkgs = await Promise.all(
     workspaces.flatMap(ws => {
@@ -34,7 +38,7 @@ const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg
           const pkgPath = join(wsDir, e.name, 'package.json')
           const pkgFile = file(pkgPath)
           if (!(await pkgFile.exists())) return
-          return { path: pkgPath, pkg: (await pkgFile.json()) as Record<string, unknown> }
+          return { path: pkgPath, pkg: (await pkgFile.json()) as Record<string, unknown> } as PkgEntry
         })
     })
   )
@@ -42,45 +46,70 @@ const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg
   return results
 }
 const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/')
-const scanDeps = (
-  pkgs: { path: string; pkg: Record<string, unknown> }[],
-  projectPath: string
-): { depIssues: Issue[]; duplicateIssues: Issue[] } => {
-  const depIssues: Issue[] = []
-  const allDeps = new Map<string, string[]>()
+const getDepsFromPkg = (pkg: Record<string, unknown>): Map<string, string> => {
+  const result = new Map<string, string>()
+  for (const field of ['dependencies', 'devDependencies']) {
+    const deps = pkg[field] as Record<string, string> | undefined
+    if (deps) for (const [n, v] of Object.entries(deps)) result.set(n, v)
+  }
+  return result
+}
+const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
   for (const { path: pkgPath, pkg } of pkgs)
     if (isAutoSynced(pkgPath)) {
-      // Skip auto-synced packages from dep audit
+      // Skip
     } else {
       const shortPath = pkgPath.replace(`${projectPath}/`, '')
-      const depEntries = ['dependencies', 'devDependencies'].flatMap(field => {
-        const deps = pkg[field] as Record<string, string> | undefined
-        return deps ? Object.entries(deps) : []
-      })
-      for (const [name, version] of depEntries) {
+      for (const [name, version] of getDepsFromPkg(pkg))
         if (version !== 'latest' && !version.startsWith('workspace:'))
-          depIssues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
-        const locations = allDeps.get(name) ?? []
-        locations.push(shortPath)
-        allDeps.set(name, locations)
-      }
+          issues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
     }
-  const duplicateIssues: Issue[] = []
-  for (const [name, locations] of allDeps)
-    if (locations.length > 1 && !name.startsWith('@types/'))
-      duplicateIssues.push({ detail: `${name} declared in ${locations.join(', ')}`, type: 'duplicate' })
-  const forbiddenPrefixes = ['npm ', 'npx ', 'yarn ', 'pnpm ']
-  const usesForbidden = (cmd: string) =>
-    forbiddenPrefixes.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
+  return issues
+}
+const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
+  const pkgDepsByName = new Map<string, Set<string>>()
+  for (const { pkg } of pkgs) {
+    const name = pkg.name as string | undefined
+    if (name) {
+      const deps = new Set<string>()
+      for (const [n, v] of getDepsFromPkg(pkg)) if (!(v.startsWith('workspace:') || n.startsWith('@types/'))) deps.add(n)
+      pkgDepsByName.set(name, deps)
+    } else {
+      // Skip
+    }
+  }
+  for (const { path: pkgPath, pkg } of pkgs)
+    if (isAutoSynced(pkgPath)) {
+      // Skip
+    } else {
+      const shortPath = pkgPath.replace(`${projectPath}/`, '')
+      const allDeps = [...getDepsFromPkg(pkg)]
+      const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
+      const ownDeps = new Set(allDeps.filter(([, v]) => !v.startsWith('workspace:')).map(([n]) => n))
+      const providedByWs = new Set<string>()
+      for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
+      const duplicated = [...ownDeps].filter(d => providedByWs.has(d))
+      for (const dep of duplicated)
+        issues.push({ detail: `${dep} in ${shortPath} already provided by workspace dep`, type: 'duplicate' })
+    }
+  return issues
+}
+const forbiddenPrefixes = ['npm ', 'npx ', 'yarn ', 'pnpm ']
+const usesForbidden = (cmd: string) =>
+  forbiddenPrefixes.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
+const checkForbiddenScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
   for (const { path: pkgPath, pkg } of pkgs) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     const scripts = pkg.scripts as Record<string, string> | undefined
     if (scripts)
       for (const [script, cmd] of Object.entries(scripts))
         if (usesForbidden(cmd))
-          depIssues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
+          issues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
   }
-  return { depIssues, duplicateIssues }
+  return issues
 }
 const audit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -98,8 +127,9 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     if (resolved && !resolved.includes(lintmaxLatest))
       issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
   }
-  const { depIssues, duplicateIssues } = scanDeps(pkgs, projectPath)
-  issues.push(...depIssues, ...duplicateIssues)
+  issues.push(...checkNotLatest(pkgs, projectPath))
+  issues.push(...checkDuplicates(pkgs, projectPath))
+  issues.push(...checkForbiddenScripts(pkgs, projectPath))
   return issues
 }
 export type { Issue }
