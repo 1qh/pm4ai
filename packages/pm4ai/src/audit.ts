@@ -69,6 +69,17 @@ const scanDeps = (
   for (const [name, locations] of allDeps)
     if (locations.length > 1 && !name.startsWith('@types/'))
       duplicateIssues.push({ detail: `${name} declared in ${locations.join(', ')}`, type: 'duplicate' })
+  const forbiddenPrefixes = ['npm ', 'npx ', 'yarn ', 'pnpm ']
+  const usesForbidden = (cmd: string) =>
+    forbiddenPrefixes.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
+  for (const { path: pkgPath, pkg } of pkgs) {
+    const shortPath = pkgPath.replace(`${projectPath}/`, '')
+    const scripts = pkg.scripts as Record<string, string> | undefined
+    if (scripts)
+      for (const [script, cmd] of Object.entries(scripts))
+        if (usesForbidden(cmd))
+          depIssues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
+  }
   return { depIssues, duplicateIssues }
 }
 const audit = async (projectPath: string): Promise<Issue[]> => {
