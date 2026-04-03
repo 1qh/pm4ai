@@ -248,7 +248,6 @@ pm4ai checks that these files exist (warn if missing) but never writes to them �
 - `packageManager` bun version is latest release (checked via GitHub API, can't use `"latest"` tag for bun)
 - lintmax resolved version matches latest on npm
 - CI status via GitHub API
-- Project type inference: has `next.config.ts` → web app, has `exports` in package.json → library, both → both
 
 ## What pm4ai maintains
 
@@ -345,7 +344,7 @@ pm4ai enforces these across all projects:
 - `swiftbar.ts` — `--swiftbar` flag output
 
 ### Phase 4 — Fix (sync + maintain)
-- `sync.ts` — copy verbatim files, assemble CLAUDE.md with markers, copy readonly/ui
+- `sync.ts` — copy verbatim files, assemble CLAUDE.md from inferred rules, copy readonly/ui
 - `maintain.ts` — git pull, `sh up.sh`, verify lintmax version, log results
 - Parallel execution with streamed output per project
 
