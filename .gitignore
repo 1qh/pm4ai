@@ -1,4 +1,7 @@
+*.pem
+*.tsbuildinfo
 .cache/
+.DS_Store
 .env
 .env.local
 .next/
@@ -6,8 +9,11 @@
 .turbo/
 .vercel
 bun.lock
-dist
+build/
+coverage/
+dist/
 next-env.d.ts
 node_modules/
+out/
 playwright-report/
 test-results/
