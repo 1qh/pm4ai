@@ -49,6 +49,8 @@ const checkExists = async (projectPath: string): Promise<Issue[]> => {
     }
     if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
     if (!pkg.scripts?.prepare) issues.push({ detail: 'prepare script in package.json', type: 'missing' })
+    if (pkg.scripts?.clean && pkg.scripts.clean !== 'sh clean.sh')
+      issues.push({ detail: 'clean script should be "sh clean.sh"', type: 'drift' })
   }
   const forbidden = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
   for (const f of forbidden)
