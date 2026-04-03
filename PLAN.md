@@ -21,7 +21,7 @@ One source of truth. Zero manual maintenance.
 - **cnsync repo** — source of truth for `readonly/ui`
 - **Consumer projects** — just have a `pm4ai.config.ts` marker file
 
-The CLI pulls content from GitHub repos at runtime. No content ships in the npm package.
+The CLI finds the pm4ai and cnsync repos locally (via `fd`), copies directly from them. No network fetch needed for sync — just local file copies. Only the npm package is published; content stays in the repos.
 
 ## Repo structure
 
@@ -72,16 +72,13 @@ pm4ai dogfoods its own config files — they ARE the templates copied to consume
 
 Runs everything in parallel across all discovered projects, streams output as each completes.
 
-1. `fd pm4ai.config.ts ~/ --type f` — discover all projects
-2. For each project (parallel):
-   a. **Git sync** — must be first:
-      - `git fetch` — check remote
-      - If behind remote and working tree clean → `git pull`
-      - If dirty → warn and continue (don't lose uncommitted work)
-   b. **Sync** — pull latest from pm4ai repo:
-      - `rules/*.mdx` → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
-      - Copy config files: `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`
-   c. **Sync readonly/ui** — pull from cnsync via `bunx gitpick`
+1. **Discover** — `fd pm4ai.config.ts ~/ --type f` — find all projects (including pm4ai and cnsync themselves)
+2. **Git pull all** — fetch + pull every discovered project first (parallel)
+3. For each consumer project (parallel):
+   a. **Sync configs** — copy from local pm4ai repo:
+      - `rules/*.mdx` → infer applicable rules from deps → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
+      - Copy config files: `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`, `.github/workflows/ci.yml`
+   b. **Sync readonly/ui** — copy from local cnsync repo
    d. **Audit**:
       - Scan all `package.json` files in workspace
       - Flag deps not on `"latest"` tag (except intentional pins)
@@ -147,16 +144,16 @@ export default {
 
 | What | Source | Method |
 |------|--------|--------|
-| CLAUDE.md | pm4ai repo `rules/` | gitpick + assemble |
-| bunfig.toml | pm4ai repo root | gitpick |
-| .gitignore | pm4ai repo root | gitpick |
-| turbo.json | pm4ai repo root | gitpick |
-| tsconfig.json | pm4ai repo root | gitpick |
-| readonly/ui | cnsync repo | gitpick |
-| simple-git-hooks config | pm4ai repo root | gitpick |
-| prepare script | pm4ai repo root | gitpick |
-| vercel.json | pm4ai repo root | gitpick |
-| .github/workflows/ci.yml | pm4ai repo root | gitpick |
+| CLAUDE.md | pm4ai repo `rules/` | local copy + assemble |
+| bunfig.toml | pm4ai repo root | local copy |
+| .gitignore | pm4ai repo root | local copy |
+| turbo.json | pm4ai repo root | local copy |
+| tsconfig.json | pm4ai repo root | local copy |
+| readonly/ui | cnsync repo | local copy |
+| simple-git-hooks config | pm4ai repo root | local copy |
+| prepare script | pm4ai repo root | local copy |
+| vercel.json | pm4ai repo root | local copy |
+| .github/workflows/ci.yml | pm4ai repo root | local copy |
 | lintmax version | npm registry | audit only |
 | bun version | bun releases | audit only |
 
@@ -214,10 +211,10 @@ pm4ai enforces these across all projects:
 - `cli.ts` — arg parsing, command routing
 
 ### Phase 3 — Sync engine
-- Pull rules from GitHub via gitpick
-- Assemble CLAUDE.md from mdx files
-- Copy config files to consumers
-- Pull readonly/ui from cnsync
+- Find pm4ai and cnsync repos locally via fd
+- Copy rules from local pm4ai repo, infer applicable rules, assemble CLAUDE.md
+- Copy config files from local pm4ai repo to consumers
+- Copy readonly/ui from local cnsync repo
 
 ### Phase 4 — Audit
 - Scan package.json files
