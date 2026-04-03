@@ -38,6 +38,5 @@
   },
   "dependencies": {
     "@types/bun": "latest"
-  },
-  "devDependencies": {}
+  }
 }

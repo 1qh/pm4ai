@@ -10,6 +10,7 @@
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
+    "postinstall": "sherif",
     "prepare": "bunx simple-git-hooks"
   },
   "simple-git-hooks": {
@@ -19,6 +20,7 @@
     "@types/bun": "latest",
     "@types/node": "latest",
     "lintmax": "latest",
+    "sherif": "latest",
     "simple-git-hooks": "latest",
     "turbo": "latest",
     "typescript": "latest"

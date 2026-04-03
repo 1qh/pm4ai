@@ -75,6 +75,25 @@ export const syncPackageJson = async (projectPath: string): Promise<Issue[]> => 
     changed = true
     issues.push({ detail: 'added prepare script', type: 'synced' })
   }
+  if (!scripts.postinstall?.includes('sherif')) {
+    scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : 'sherif'
+    changed = true
+    issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
+  }
+  pkg.scripts = scripts
+  const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
+  if (!devDeps.sherif) {
+    devDeps.sherif = 'latest'
+    pkg.devDependencies = devDeps
+    changed = true
+    issues.push({ detail: 'added sherif to devDependencies', type: 'synced' })
+  }
+  if (!devDeps['simple-git-hooks']) {
+    devDeps['simple-git-hooks'] = 'latest'
+    pkg.devDependencies = devDeps
+    changed = true
+    issues.push({ detail: 'added simple-git-hooks to devDependencies', type: 'synced' })
+  }
   if (changed) await write(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`)
   return issues
 }
