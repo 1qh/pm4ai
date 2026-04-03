@@ -34,9 +34,8 @@ export const syncClaudeMd = async (selfPath: string, projectPath: string): Promi
     return issues
   }
   const inferred = await inferRules(projectPath)
-  const ruleFiles = readdirSync(rulesDir)
-    .filter(f => f.endsWith('.mdx'))
-    .toSorted()
+  const allMdx = readdirSync(rulesDir).filter(f => f.endsWith('.mdx'))
+  const ruleFiles = [...allMdx.filter(f => f === 'general.mdx'), ...allMdx.filter(f => f !== 'general.mdx').toSorted()]
   const contents = await Promise.all(
     ruleFiles
       .filter(entry => inferred.includes(entry.replace('.mdx', '')))

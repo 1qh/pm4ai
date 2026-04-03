@@ -41,26 +41,31 @@ const collectPkgJsons = async (projectPath: string): Promise<{ path: string; pkg
   for (const p of wsPkgs) if (p) results.push(p)
   return results
 }
+const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/') || pkgPath.includes('/lib/ui/')
 const scanDeps = (
   pkgs: { path: string; pkg: Record<string, unknown> }[],
   projectPath: string
 ): { depIssues: Issue[]; duplicateIssues: Issue[] } => {
   const depIssues: Issue[] = []
   const allDeps = new Map<string, string[]>()
-  for (const { path: pkgPath, pkg } of pkgs) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const depEntries = ['dependencies', 'devDependencies'].flatMap(field => {
-      const deps = pkg[field] as Record<string, string> | undefined
-      return deps ? Object.entries(deps) : []
-    })
-    for (const [name, version] of depEntries) {
-      if (version !== 'latest' && !version.startsWith('workspace:'))
-        depIssues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
-      const locations = allDeps.get(name) ?? []
-      locations.push(shortPath)
-      allDeps.set(name, locations)
+  for (const { path: pkgPath, pkg } of pkgs)
+    if (isAutoSynced(pkgPath)) {
+      // Skip auto-synced packages from dep audit
+    } else {
+      const shortPath = pkgPath.replace(`${projectPath}/`, '')
+      const depEntries = ['dependencies', 'devDependencies'].flatMap(field => {
+        const deps = pkg[field] as Record<string, string> | undefined
+        return deps ? Object.entries(deps) : []
+      })
+      for (const [name, version] of depEntries) {
+        if (version !== 'latest' && !version.startsWith('workspace:'))
+          depIssues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
+        const locations = allDeps.get(name) ?? []
+        locations.push(shortPath)
+        allDeps.set(name, locations)
+      }
     }
-  }
+
   const duplicateIssues: Issue[] = []
   for (const [name, locations] of allDeps)
     if (locations.length > 1 && !name.startsWith('@types/'))
