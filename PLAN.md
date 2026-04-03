@@ -86,8 +86,10 @@ Runs everything in parallel across all discovered projects, streams output as ea
       - Flag duplicate deps across workspace packages
       - Check `packageManager` field — is bun version latest?
       - Check lintmax version — is it latest on npm?
-   e. **Maintain** (only if lintmax is latest, otherwise warn and skip):
-      - `bun clean && bun i && bun fix`
+   e. **Maintain**:
+      - `bun clean && bun i` — pulls latest lintmax (and all deps)
+      - Verify lintmax resolved to actual latest on npm — warn if not
+      - `bun fix`
       - Record pass/fail + timestamp to log
 4. Print summary + status
 
