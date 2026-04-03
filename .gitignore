@@ -1,0 +1,9 @@
+.cache/
+.next/
+.source/
+.turbo/
+.vercel
+bun.lock
+dist
+node_modules/
+next-env.d.ts

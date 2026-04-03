@@ -1,0 +1,27 @@
+---
+title: shadcn
+description: shadcn component usage conventions
+---
+
+## shadcn — Native Look, No Overrides
+
+Use shadcn components as-is. No custom color overrides, no inline style hacks.
+
+### Colors
+
+Use semantic Tailwind classes ONLY. Never hardcode hex colors in className or style.
+
+- `text-foreground` / `text-muted-foreground` / `text-destructive` — NEVER `text-red-500`, `text-green-500`
+- `bg-primary` / `bg-muted` / `bg-destructive` — NEVER `bg-blue-500`, `bg-red-500`
+- `text-primary` for interactive links — NEVER `text-blue-500`
+
+### Conditional classNames
+
+ALWAYS use `cn()` for conditional classes:
+
+```tsx
+className={cn('base-classes', condition && 'conditional-class')}
+className={cn('base-classes', variant === 'a' ? 'class-a' : 'class-b')}
+```
+
+NEVER use template literals for conditional classNames.

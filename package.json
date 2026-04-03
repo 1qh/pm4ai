@@ -1,0 +1,27 @@
+{
+  "name": "pm4ai-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "check": "lintmax check",
+    "clean": "sh clean.sh",
+    "fix": "lintmax fix",
+    "prepare": "bunx simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "sh up.sh && git add -u"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "lintmax": "latest",
+    "simple-git-hooks": "latest",
+    "turbo": "latest",
+    "typescript": "latest"
+  },
+  "packageManager": "bun@1.3.11"
+}

@@ -1,0 +1,18 @@
+---
+title: TypeScript
+description: TypeScript code style conventions
+---
+
+## Code Style
+
+- Only arrow functions — no `function` declarations
+- All exports at end of file
+- `.tsx` with single component → `export default`; utilities → named exports
+- `for` loops instead of `reduce()` or `forEach()`
+- Exhaustive `switch` with `default: never`
+- `catch (error)` enforced by oxlint — name state vars descriptively to avoid shadow (`chatError`, `formError`)
+- Short map callback names: `t`, `m`, `i`
+- Max 3 positional args — use destructured object for 4+
+- Co-locate components with their page; only move to shared when reused
+- Explicit imports from exact file paths — no barrel `index.ts` files (exception: npm package entry point)
+- Prefer existing libraries over new dependencies

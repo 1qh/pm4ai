@@ -1,0 +1,21 @@
+---
+title: Bun
+description: Bun runtime and package management conventions
+---
+
+## Package Manager
+
+- Only `bun` — yarn/npm/npx/pnpm forbidden
+- Never `bun update` — it replaces `"latest"` with resolved versions
+- Always `bun clean && bun i` to update deps
+- All deps use `"latest"` tag — no pinned versions unless necessary
+- For deps that must be pinned, pin major version only (e.g. `"eslint": "9"`)
+- No lockfile committed (`bun.lock` in `.gitignore`)
+
+## Scripts
+
+- `sh clean.sh` — nuke all artifacts (node_modules, lockfile, caches, dist, .next)
+- `sh up.sh` — clean + install + fix + check (the universal maintenance cycle)
+- Scripts: silent on success, verbose on failure
+- `q` wrapper for noisy commands when available
+- Never use `git clean` — it deletes `.env` and uncommitted files. Use explicit `rm -rf`.

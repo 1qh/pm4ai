@@ -1,0 +1,11 @@
+---
+title: React & Next.js
+description: React 19 and Next.js conventions
+---
+
+## React 19 + Next.js
+
+- Server components by default — layout.tsx, loading.tsx, error.tsx are server components
+- `'use client'` only when needed — components with hooks must be client components
+- No IIFEs in JSX — extract to a named component instead
+- No raw HTML elements when shadcn has a component — use `Button` not `<button>`, `Table` not `<table>`

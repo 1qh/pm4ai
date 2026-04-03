@@ -1,0 +1,33 @@
+---
+title: Minimal DOM
+description: Fewest DOM nodes with React and Tailwind
+---
+
+## Minimal DOM (React + Tailwind)
+
+Same UI, fewest DOM nodes. Every element must earn its place. If you can delete it and nothing breaks → it shouldn't exist.
+
+A node is allowed only if it provides:
+- **Semantics/a11y** — correct elements (`ul/li`, `button`, `label`, `form`, `nav`), ARIA patterns, focus behavior
+- **Layout constraint** — needs its own containing block / positioning / clipping / scroll / stacking context
+- **Behavior** — measurement refs, observers, portals, event boundary
+- **Component API** — can't pass props/classes to the real root
+
+Before adding wrappers:
+- Spacing → parent `gap-*` (flex/grid) or `space-x/y-*`
+- Separators → parent `divide-y / divide-x`
+- Alignment → `flex`/`grid` on existing parent
+- Visual (padding/bg/border/shadow/radius) → on the element that owns the box
+- JSX grouping → `<>...</>` (Fragment), not `<div>`
+
+Styling children — props first, selectors second:
+- Mapped component → pass `className` to the item
+- Uniform direct children → `*:` or `[&>tag]:` to avoid repeating classes
+
+Tailwind selector tools:
+- `*:` direct children · `[&>li]:py-2` targeted · `[&_a]:underline` descendant (sparingly)
+- `group`/`peer` on existing nodes → `group-hover:*`, `peer-focus:*`
+- `data-[state=open]:*`, `aria-expanded:*`, `disabled:*`
+- `first:` `last:` `odd:` `even:` `only:` — structural variants
+
+Review checklist: Can I delete this node? → delete. Can `gap/space/divide` replace it? → do it. Can I pass `className`? → do it. Can `[&>...]:` remove repetition? → do it.

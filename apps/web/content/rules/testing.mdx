@@ -1,0 +1,11 @@
+---
+title: Testing
+description: Testing conventions and strategies
+---
+
+## Testing
+
+- Run only failing tests first, verify 2-3x, stop
+- Full suite only when explicitly asked
+- Pre-test: `bun fix` passes, kill stale processes, clean test results
+- Verify before scaling — never run full suites blindly

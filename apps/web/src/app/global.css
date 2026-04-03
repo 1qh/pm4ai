@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+.dark {
+  --color-fd-background: hsl(0, 0%, 0%);
+  --color-fd-card: hsl(0, 0%, 5%);
+  --color-fd-popover: hsl(0, 0%, 5%);
+  --color-fd-muted: hsl(0, 0%, 8%);
+  --color-fd-secondary: hsl(0, 0%, 8%);
+  --color-fd-border: hsla(0, 0%, 30%, 30%);
+}
+.font-mono,
+pre,
+code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+html {
+  scrollbar-gutter: stable;
+}
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+}

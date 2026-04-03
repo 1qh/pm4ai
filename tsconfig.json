@@ -1,0 +1,7 @@
+{
+  "extends": "lintmax/tsconfig",
+  "compilerOptions": {
+    "types": ["bun-types"]
+  },
+  "include": ["*.ts"]
+}

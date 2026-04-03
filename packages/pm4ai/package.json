@@ -1,0 +1,43 @@
+{
+  "name": "pm4ai",
+  "version": "0.0.1",
+  "description": "Zero-config project manager for TypeScript monorepos",
+  "keywords": [
+    "bun",
+    "lintmax",
+    "monorepo",
+    "project-manager",
+    "sync",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1qh/pm4ai"
+  },
+  "license": "MIT",
+  "author": "1qh",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./guide": {
+      "types": "./dist/guide.d.ts",
+      "import": "./dist/guide.js"
+    }
+  },
+  "bin": {
+    "pm4ai": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist .cache && tsc -p tsconfig.build.json && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.js','utf8');fs.writeFileSync('dist/cli.js','#!/usr/bin/env bun\\n'+c);\" && chmod +x dist/cli.js"
+  },
+  "dependencies": {
+    "@types/bun": "latest"
+  },
+  "devDependencies": {}
+}
