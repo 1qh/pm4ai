@@ -74,19 +74,20 @@ Runs everything in parallel across all discovered projects, streams output as ea
 
 1. `fd pm4ai.config.ts ~/ --type f` — discover all projects
 2. For each project (parallel):
-   a. **Sync** — pull latest from pm4ai repo:
+   a. **Git sync** — must be first:
+      - `git fetch` — check remote
+      - If behind remote and working tree clean → `git pull`
+      - If dirty → warn and continue (don't lose uncommitted work)
+   b. **Sync** — pull latest from pm4ai repo:
       - `rules/*.mdx` → strip frontmatter, join with `\n---\n\n` → write `CLAUDE.md`
       - Copy config files: `bunfig.toml`, `.gitignore`, `turbo.json`, `tsconfig.json`
-   b. **Sync readonly/ui** — pull from cnsync via `bunx gitpick`
-   c. **Audit**:
+   c. **Sync readonly/ui** — pull from cnsync via `bunx gitpick`
+   d. **Audit**:
       - Scan all `package.json` files in workspace
       - Flag deps not on `"latest"` tag (except intentional pins)
       - Flag duplicate deps across workspace packages
       - Check `packageManager` field — is bun version latest?
       - Check lintmax version — is it latest on npm?
-   d. **Git check**:
-      - `git status` — flag uncommitted changes
-      - `git fetch && git status` — flag if behind remote, auto-pull if clean
    e. **Maintain**:
       - `bun clean && bun i && bun fix`
       - Record pass/fail + timestamp to log
