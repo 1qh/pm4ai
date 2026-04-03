@@ -22,5 +22,4 @@ synced files (copied verbatim from pm4ai repo):
   clean.sh  up.sh  bunfig.toml  .gitignore  CLAUDE.md (generated from rules)
 checked files (warn if missing):
   turbo.json  tsconfig.json  .github/workflows/ci.yml
-  simple-git-hooks + prepare script in package.json
-  LEARNING.md  RULES.md  PROGRESS.md  PLAN.md`
+  simple-git-hooks + prepare script in package.json`

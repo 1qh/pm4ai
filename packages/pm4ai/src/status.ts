@@ -39,15 +39,7 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
 }
 const checkExists = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const mustExist = [
-    'turbo.json',
-    'tsconfig.json',
-    '.github/workflows/ci.yml',
-    'LEARNING.md',
-    'RULES.md',
-    'PROGRESS.md',
-    'PLAN.md'
-  ]
+  const mustExist = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
   for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
   const pkgFile = file(join(projectPath, 'package.json'))
   if (await pkgFile.exists()) {
