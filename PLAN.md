@@ -4,6 +4,16 @@ Super opinionated project manager that keeps all your TypeScript projects in syn
 
 One source of truth. Zero manual maintenance.
 
+## Philosophy
+
+- Everything on `"latest"` tag by default to catch upstream changes early
+- Never `bun update` (it replaces `"latest"` with resolved versions) — always `bun clean && bun i`
+- Precommit and CI are robust guards, so upstream breakage is caught immediately
+- For production systems, keep bun.lock snapshots in a separate place for easy rollback
+- For deps that must be pinned, pin major version only (e.g. `"eslint": "9"`)
+- A project can be a web app, a library, or both — inferred from configs, never declared manually
+- `bun fix` means lintmax fix + build everything — verify deps work, not just lint
+
 ## Architecture
 
 - **npm package** (`pm4ai`) — CLI engine, published to npm, installed globally
@@ -119,6 +129,9 @@ All projects get all rules. Add a file → every project gets it on next sync.
 | turbo.json | pm4ai repo root | gitpick |
 | tsconfig.json | pm4ai repo root | gitpick |
 | readonly/ui | cnsync repo | gitpick |
+| simple-git-hooks config | pm4ai repo root | gitpick |
+| prepare script | pm4ai repo root | gitpick |
+| vercel.json | pm4ai repo root | gitpick |
 | lintmax version | npm registry | audit only |
 | bun version | bun releases | audit only |
 
@@ -126,10 +139,11 @@ All projects get all rules. Add a file → every project gets it on next sync.
 
 - All deps have `"latest"` tag (flag exceptions)
 - No duplicate deps across workspace packages
-- Pinned deps — try bumping to latest, report if maintenance passes
-- `packageManager` bun version is latest release
+- Pinned deps — try bumping to latest in a temp branch, run `bun clean && bun i && bun fix`, report if it passes or what breaks
+- `packageManager` bun version is latest release (checked via GitHub API, can't use `"latest"` tag for bun)
 - lintmax resolved version matches latest on npm
 - CI status via GitHub API
+- Project type inference: has `next.config.ts` → web app, has `exports` in package.json → library, both → both
 
 ## What pm4ai maintains
 
@@ -140,6 +154,23 @@ bun clean && bun i && bun fix
 ```
 
 Results logged with timestamp. Failures reported with error output.
+
+## bun.lock snapshots
+
+For production systems, pm4ai saves a copy of `bun.lock` after each successful maintenance run to `~/.pm4ai/snapshots/<project-name>/<timestamp>/bun.lock`. This allows quick rollback when a new dep version breaks production — copy the snapshot back, `bun i --frozen-lockfile`.
+
+## Periodic auto-run
+
+pm4ai installs a launchd plist (macOS) to run `pm4ai` on a schedule (e.g. daily). This catches upstream breakage early without manual intervention. The SwiftBar plugin shows the result — you just glance at the menubar.
+
+## Enforced rules
+
+pm4ai enforces these across all projects:
+- Never `bun update` — only `bun clean && bun i`
+- All deps on `"latest"` unless explicitly pinned
+- `simple-git-hooks` with `pre-commit: "bun run verify && git add -u"`
+- `prepare` script: `bunx simple-git-hooks`
+- `readonly/ui` as the standard component library path (migrate `lib/ui` variants)
 
 ## Implementation phases
 
