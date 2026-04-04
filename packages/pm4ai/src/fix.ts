@@ -89,6 +89,28 @@ export const fix = async (all = false) => {
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
+    const blocked: string[] = []
+    await Promise.all(
+      consumers.map(async project => {
+        const dirty = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+        if (dirty.stdout.toString().trim()) {
+          blocked.push(`${projectName(project.path)}: uncommitted changes`)
+          return
+        }
+        await $`git fetch`.cwd(project.path).quiet().nothrow()
+        const behind = await $`git rev-list --count HEAD..@{u}`.cwd(project.path).quiet().nothrow()
+        const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(project.path).quiet().nothrow()
+        const b = Number.parseInt(behind.stdout.toString().trim(), 10)
+        const a = Number.parseInt(ahead.stdout.toString().trim(), 10)
+        if (b > 0) blocked.push(`${projectName(project.path)}: ${b} commits behind remote`)
+        if (a > 0) blocked.push(`${projectName(project.path)}: ${a} commits ahead of remote, push first`)
+      })
+    )
+    if (blocked.length > 0) {
+      console.log('fix requires clean git state:')
+      for (const msg of blocked) console.log(`  ${msg}`)
+      return
+    }
     const allProjects = [self, cnsync, ...consumers.filter(c => !c.isCnsync)]
     const pullResults = await Promise.all(
       allProjects.map(async p => ({
@@ -117,6 +139,16 @@ export const fix = async (all = false) => {
       }
     })
     await Promise.all(tasks)
+    console.log('--- changes ---')
+    const summaries = await Promise.all(
+      consumers.map(async project => {
+        const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+        const changed = diff.stdout.toString().trim()
+        const count = changed ? changed.split('\n').length : 0
+        return count > 0 ? `${projectName(project.path)}: ${count} files modified` : `${projectName(project.path)}: clean`
+      })
+    )
+    for (const s of summaries) console.log(s)
     await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   } finally {
     rmSync(lockFile, { force: true })
