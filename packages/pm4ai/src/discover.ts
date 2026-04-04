@@ -2,7 +2,7 @@ import { $ } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { GH_ORG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { debug, readPkg } from './utils.js'
 interface Project {
   isCnsync: boolean
@@ -11,11 +11,16 @@ interface Project {
   path: string
 }
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
+const isCnsyncRepo = async (dir: string): Promise<boolean> => {
+  if (!hasDirInside(dir, READONLY_UI)) return false
+  const r = await $`git remote get-url origin`.cwd(dir).quiet().nothrow()
+  const url = r.stdout.toString().trim()
+  return url.includes(`${GH_ORG}/cnsync`)
+}
 const cloneIfMissing = async (repo: string, dest: string) => {
   if (existsSync(dest)) return dest
   debug('cloning', repo, 'to', dest)
   mkdirSync(dirname(dest), { recursive: true })
-  const { GH_ORG } = await import('./constants.js')
   await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
   return dest
 }
@@ -38,7 +43,7 @@ const discover = async (): Promise<{
       const pkg = await readPkg(join(dir, 'package.json'))
       const name = pkg?.name ?? dirname(dir).split('/').pop() ?? dir
       return {
-        isCnsync: hasDirInside(dir, READONLY_UI) && name !== MONOREPO_NAME,
+        isCnsync: await isCnsyncRepo(dir),
         isSelf: name === MONOREPO_NAME || name === PKG_NAME,
         name,
         path: dir
@@ -92,8 +97,9 @@ const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> =>
       }
     }
     if (!cnsync) {
-      const dir = found.find(d => hasDirInside(d, READONLY_UI) && d.split('/').pop() !== MONOREPO_NAME)
-      if (dir) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dir }
+      const checks = await Promise.all(found.map(async d => ({ d, is: await isCnsyncRepo(d) })))
+      const match = checks.find(c => c.is)
+      if (match) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: match.d }
     }
   }
   if (!self) {
@@ -107,4 +113,4 @@ const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> =>
   return { cnsync, self }
 }
 export type { Project }
-export { discover, discoverSources }
+export { discover, discoverSources, isCnsyncRepo }
