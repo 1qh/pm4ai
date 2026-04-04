@@ -14,6 +14,7 @@
     "fumadocs-ui": "latest",
     "lucide-react": "latest",
     "next": "latest",
+    "pm4ai": "workspace:*",
     "react": "latest",
     "react-dom": "latest"
   }

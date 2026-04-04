@@ -1,6 +1,6 @@
 ---
-title: General
-description: Project documentation structure
+title: Getting Started
+description: Zero-config project manager for TypeScript monorepos
 infer: always
 ---
 
@@ -14,3 +14,28 @@ Use companion files for project-specific content:
 - `PROGRESS.md` — tracking ongoing work
 - `PLAN.md` — planning and architecture decisions
 
+## Commands
+
+```sh
+bunx pm4ai@latest           # guide
+bunx pm4ai@latest status    # view issues across all projects
+bunx pm4ai@latest fix       # sync configs + maintain all projects
+bunx pm4ai@latest init app  # scaffold a new project
+bunx pm4ai@latest setup     # install menubar + daily auto-run
+```
+
+## How Discovery Works
+
+pm4ai finds projects by scanning `~/` for any `package.json` containing `lintmax` in deps. No config files needed. It finds itself and cnsync (readonly/ui source) the same way.
+
+## What Gets Synced
+
+`clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore` — copied verbatim from the pm4ai repo.
+
+`CLAUDE.md` — assembled from rule topics based on each project's dependencies.
+
+`readonly/ui` — copied from cnsync.
+
+## What Gets Checked
+
+21 enforcement checks: git status, config drift, dep audit (latest tags, duplicates, pinned format), CI status, Vercel deployments, package conventions, forbidden tools, and more.

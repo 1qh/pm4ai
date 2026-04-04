@@ -1,10 +1,11 @@
+import { guide } from 'pm4ai/guide'
 import { source } from '@/lib/source'
 export const GET = () => {
   const pages = source.getPages()
   const lines = [
-    '# pm4ai',
+    guide,
     '',
-    '## Pages',
+    '## Rules',
     '',
     ...pages.map(page => `- [${page.data.title}](${page.url}): ${page.data.description ?? ''}`)
   ]
