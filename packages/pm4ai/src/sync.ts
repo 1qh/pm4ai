@@ -237,6 +237,43 @@ const hoistDevDeps = ({
   const ws = Object.fromEntries(Object.entries(subDevDeps).filter(([, v]) => v.startsWith('workspace:')))
   return { hoisted, remaining: Object.keys(ws).length === 0 ? undefined : ws }
 }
+interface FixSubEntryArgs {
+  entry: { path: string; pkg: PackageJson }
+  issues: Issue[]
+  projectPath: string
+  repo: string | undefined
+}
+const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boolean => {
+  const rel = entry.path.replace(`${projectPath}/`, '')
+  let changed = false
+  if (rel.startsWith('apps/') && !entry.pkg.private) {
+    entry.pkg.private = true
+    changed = true
+    issues.push({ detail: `${rel} set to private`, type: 'synced' })
+  }
+  const isPublished = !entry.pkg.private && (entry.pkg.exports ?? entry.pkg.main ?? entry.pkg.bin) && entry.pkg.name
+  if (isPublished) changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo }) || changed
+  return fixGitClean(entry.pkg, rel, issues) || changed
+}
+interface HoistSubEntryArgs {
+  entry: { path: string; pkg: PackageJson }
+  issues: Issue[]
+  projectPath: string
+  rootDevDeps: Record<string, string>
+}
+const hoistSubEntry = ({
+  entry,
+  issues,
+  projectPath,
+  rootDevDeps
+}: HoistSubEntryArgs): { changed: boolean; hoisted: boolean; pkg: PackageJson; pkgPath: string } => {
+  const rel = entry.path.replace(`${projectPath}/`, '')
+  const originalDevDeps = entry.pkg.devDependencies
+  const { hoisted, remaining } = hoistDevDeps({ issues, rel, rootDevDeps, subDevDeps: originalDevDeps ?? {} })
+  const changed = remaining !== originalDevDeps && !(remaining === undefined && !originalDevDeps)
+  if (changed) entry.pkg.devDependencies = remaining
+  return { changed, hoisted, pkg: entry.pkg, pkgPath: entry.path }
+}
 const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
@@ -244,18 +281,9 @@ const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)
   const subEntries = entries.filter(e => e.path !== rootPkgPath)
   const writes: Promise<number>[] = []
-  for (const { path: pkgPath, pkg } of subEntries) {
-    const rel = pkgPath.replace(`${projectPath}/`, '')
-    let changed = false
-    if (rel.startsWith('apps/') && !pkg.private) {
-      pkg.private = true
-      changed = true
-      issues.push({ detail: `${rel} set to private`, type: 'synced' })
-    }
-    const isPublished = !pkg.private && (pkg.exports ?? pkg.main ?? pkg.bin) && pkg.name
-    if (isPublished) changed = fixPublishedPkg({ issues, pkg, pkgPath, rel, repo }) || changed
-    changed = fixGitClean(pkg, rel, issues) || changed
-    if (changed) writes.push(write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`))
+  for (const entry of subEntries) {
+    const changed = fixSubEntry({ entry, issues, projectPath, repo })
+    if (changed) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
   }
   await Promise.all(writes)
   const rootPkg = await readPkg(rootPkgPath)
@@ -264,14 +292,10 @@ const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
   const rootDevDeps = rootPkg.devDependencies ?? {}
   const subWrites: Promise<number>[] = []
   const nonSkipped = subEntries.filter(e => !isSkipped(e.path.replace(`${projectPath}/`, '')))
-  for (const { path: pkgPath, pkg } of nonSkipped) {
-    const rel = pkgPath.replace(`${projectPath}/`, '')
-    const { hoisted, remaining } = hoistDevDeps({ issues, rel, rootDevDeps, subDevDeps: pkg.devDependencies ?? {} })
-    if (hoisted) rootChanged = true
-    if (remaining !== pkg.devDependencies) {
-      pkg.devDependencies = remaining
-      subWrites.push(write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`))
-    }
+  for (const entry of nonSkipped) {
+    const result = hoistSubEntry({ entry, issues, projectPath, rootDevDeps })
+    if (result.hoisted) rootChanged = true
+    if (result.changed) subWrites.push(write(file(result.pkgPath), `${JSON.stringify(result.pkg, null, 2)}\n`))
   }
   await Promise.all(subWrites)
   if (rootChanged) {
