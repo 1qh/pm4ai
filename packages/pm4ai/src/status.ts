@@ -100,9 +100,11 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const lockfiles = FORBIDDEN_LOCKFILES
-  for (const f of lockfiles)
+  for (const f of FORBIDDEN_LOCKFILES)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
+  const bunLockTracked = await $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow()
+  if (bunLockTracked.stdout.toString().trim())
+    issues.push({ detail: 'bun.lock tracked in git, should be gitignored', type: 'forbidden' })
   const nestedGitignores =
     await $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow()
   const extraGitignores = nestedGitignores.stdout
