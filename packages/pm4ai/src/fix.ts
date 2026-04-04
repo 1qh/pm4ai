@@ -1,13 +1,15 @@
 /* eslint-disable no-console */
 import { $ } from 'bun'
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Issue } from './audit.js'
+import type { Issue } from './types.js'
 import { audit } from './audit.js'
+import { READONLY_UI } from './constants.js'
 import { discover } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
+import { projectName } from './utils.js'
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -36,7 +38,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   const { exitCode } = result
   const stderr = result.stderr.toString().trim()
   if (exitCode === 0) {
-    const snapshotDir = join(homedir(), '.pm4ai', 'snapshots', projectPath.split('/').pop() ?? 'unknown')
+    const snapshotDir = join(homedir(), '.pm4ai', 'snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
     if (existsSync(lockfile)) {
       mkdirSync(snapshotDir, { recursive: true })
@@ -51,41 +53,52 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
     error: exitCode === 0 ? undefined : stderr.slice(0, 500),
     pass: exitCode === 0,
     path: projectPath,
-    project: projectPath.split('/').pop() ?? 'unknown'
+    project: projectName(projectPath)
   })
   return issues
 }
 export const fix = async () => {
-  const { cnsync, consumers, self } = await discover()
-  console.log(`found ${consumers.length} projects`)
-  console.log()
-  const allProjects = [self, cnsync, ...consumers.filter(c => !c.isCnsync)]
-  const pullResults = await Promise.all(
-    allProjects.map(async p => ({
-      issues: await gitPull(p.path),
-      name: p.name
-    }))
-  )
-  for (const r of pullResults) for (const issue of r.issues) console.log(`${r.name}: ${issue.detail}`)
-  const tasks = consumers.map(async project => {
-    const issues: Issue[] = []
-    const [configIssues, claudeIssues, pkgIssues] = await Promise.all([
-      syncConfigs(self.path, project.path),
-      syncClaudeMd(self.path, project.path),
-      syncPackageJson(project.path)
-    ])
-    issues.push(...configIssues, ...claudeIssues, ...pkgIssues)
-    if (existsSync(join(project.path, 'readonly'))) issues.push(...syncUi(cnsync.path, project.path))
-    const auditIssues = await audit(project.path)
-    issues.push(...auditIssues)
-    const maintainIssues = await maintain(project.path)
-    issues.push(...maintainIssues)
-    if (issues.length > 0) {
-      const lines = [project.path, ...issues.map(i => `  ${i.type} ${i.detail}`)]
-      console.log(lines.join('\n'))
-      console.log()
-    }
-  })
-  await Promise.all(tasks)
-  await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+  const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
+  if (existsSync(lockFile)) {
+    console.log('another fix is already running')
+    return
+  }
+  mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+  writeFileSync(lockFile, `${process.pid}`)
+  try {
+    const { cnsync, consumers, self } = await discover()
+    console.log(`found ${consumers.length} projects`)
+    console.log()
+    const allProjects = [self, cnsync, ...consumers.filter(c => !c.isCnsync)]
+    const pullResults = await Promise.all(
+      allProjects.map(async p => ({
+        issues: await gitPull(p.path),
+        name: p.name
+      }))
+    )
+    for (const r of pullResults) for (const issue of r.issues) console.log(`${r.name}: ${issue.detail}`)
+    const tasks = consumers.map(async project => {
+      const issues: Issue[] = []
+      const [configIssues, claudeIssues, pkgIssues] = await Promise.all([
+        syncConfigs(self.path, project.path),
+        syncClaudeMd(self.path, project.path),
+        syncPackageJson(project.path)
+      ])
+      issues.push(...configIssues, ...claudeIssues, ...pkgIssues)
+      if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
+      const auditIssues = await audit(project.path)
+      issues.push(...auditIssues)
+      const maintainIssues = await maintain(project.path)
+      issues.push(...maintainIssues)
+      if (issues.length > 0) {
+        const lines = [project.path, ...issues.map(i => `  ${i.type} ${i.detail}`)]
+        console.log(lines.join('\n'))
+        console.log()
+      }
+    })
+    await Promise.all(tasks)
+    await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+  } finally {
+    rmSync(lockFile, { force: true })
+  }
 }

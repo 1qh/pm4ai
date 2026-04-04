@@ -2,6 +2,7 @@
 import { $, write } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { getBunVersion } from './utils.js'
 const TURBO_JSON = JSON.stringify(
   {
     $schema: 'https://turbo.build/schema.json',
@@ -36,10 +37,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: sh up.sh
 `
-const getBunVersion = async (): Promise<string> => {
-  const result = await $`bun --version`.quiet().nothrow()
-  return result.stdout.toString().trim()
-}
 const init = async (name: string) => {
   const dir = resolve(process.cwd(), name)
   if (existsSync(dir)) {

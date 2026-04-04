@@ -1,18 +1,14 @@
-import { $, file } from 'bun'
+import { $ } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { readPkg } from './utils.js'
 interface Project {
   isCnsync: boolean
   isSelf: boolean
   name: string
   path: string
-}
-const readPkgName = async (dir: string): Promise<string | undefined> => {
-  const f = file(join(dir, 'package.json'))
-  if (!(await f.exists())) return
-  const pkg = (await f.json()) as { name?: string }
-  return pkg.name
 }
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
 const cloneIfMissing = async (repo: string, dest: string) => {
@@ -37,10 +33,11 @@ const discover = async (): Promise<{
   const projectDirs = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
   const projects: Project[] = await Promise.all(
     projectDirs.map(async dir => {
-      const name = (await readPkgName(dir)) ?? dirname(dir).split('/').pop() ?? dir
+      const pkg = await readPkg(join(dir, 'package.json'))
+      const name = pkg?.name ?? dirname(dir).split('/').pop() ?? dir
       return {
-        isCnsync: hasDirInside(dir, 'readonly/ui') && name !== 'pm4ai-monorepo',
-        isSelf: name === 'pm4ai-monorepo' || name === 'pm4ai',
+        isCnsync: hasDirInside(dir, READONLY_UI) && name !== MONOREPO_NAME,
+        isSelf: name === MONOREPO_NAME || name === PKG_NAME,
         name,
         path: dir
       }
@@ -49,9 +46,9 @@ const discover = async (): Promise<{
   let self = projects.find(p => p.isSelf)
   let cnsync = projects.find(p => p.isCnsync)
   if (!self) {
-    const dest = join(home, '.pm4ai', 'repos', 'pm4ai')
-    await cloneIfMissing('pm4ai', dest)
-    self = { isCnsync: false, isSelf: true, name: 'pm4ai', path: dest }
+    const dest = join(home, '.pm4ai', 'repos', PKG_NAME)
+    await cloneIfMissing(PKG_NAME, dest)
+    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dest }
   }
   if (!cnsync) {
     const dest = join(home, '.pm4ai', 'repos', 'cnsync')

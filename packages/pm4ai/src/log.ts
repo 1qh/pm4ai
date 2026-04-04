@@ -12,7 +12,11 @@ const logDir = join(homedir(), '.pm4ai')
 const logFile = join(logDir, 'log.json')
 const readLog = (): LogEntry[] => {
   if (!existsSync(logFile)) return []
-  return JSON.parse(readFileSync(logFile, 'utf8')) as LogEntry[]
+  try {
+    return JSON.parse(readFileSync(logFile, 'utf8')) as LogEntry[]
+  } catch {
+    return []
+  }
 }
 const writeLog = (entries: LogEntry[]) => {
   mkdirSync(logDir, { recursive: true })

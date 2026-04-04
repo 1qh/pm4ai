@@ -1,6 +1,6 @@
-import { file } from 'bun'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { collectWorkspacePackages } from './utils.js'
 const parseFrontmatter = (content: string): Record<string, string> => {
   if (!content.startsWith('---')) return {}
   const endIdx = content.indexOf('---', 3)
@@ -21,36 +21,12 @@ const getRulesDir = (): string | undefined => {
 }
 const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
   const deps = new Set<string>()
-  const rootFile = file(join(projectPath, 'package.json'))
-  if (!(await rootFile.exists())) return deps
-  const rootPkg = (await rootFile.json()) as {
-    dependencies?: Record<string, string>
-    devDependencies?: Record<string, string>
-    peerDependencies?: Record<string, string>
-    workspaces?: string[]
-  }
-  const addDeps = (pkg: Record<string, Record<string, string> | undefined>) => {
-    for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+  const entries = await collectWorkspacePackages(projectPath)
+  for (const { pkg } of entries)
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
       const d = pkg[field]
       if (d) for (const name of Object.keys(d)) deps.add(name)
     }
-  }
-  addDeps(rootPkg as Record<string, Record<string, string> | undefined>)
-  const wsPkgPaths = (rootPkg.workspaces ?? []).flatMap(ws => {
-    const wsDir = join(projectPath, ws.replace('/*', ''))
-    if (!existsSync(wsDir)) return []
-    return readdirSync(wsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => join(wsDir, e.name, 'package.json'))
-  })
-  const wsPkgs = await Promise.all(
-    wsPkgPaths.map(async p => {
-      const f = file(p)
-      if (!(await f.exists())) return
-      return (await f.json()) as Record<string, Record<string, string> | undefined>
-    })
-  )
-  for (const pkg of wsPkgs) if (pkg) addDeps(pkg)
   return deps
 }
 const inferRules = async (projectPath: string, rulesDir?: string): Promise<string[]> => {
@@ -65,10 +41,7 @@ const inferRules = async (projectPath: string, rulesDir?: string): Promise<strin
     const content = readFileSync(join(dir, mdxFile), 'utf8')
     const fm = parseFrontmatter(content)
     const { infer } = fm
-    if (!infer) {
-      // Skip rules without infer field
-    } else if (infer === 'always') rules.push(mdxFile.replace('.mdx', ''))
-    else if (deps.has(infer)) rules.push(mdxFile.replace('.mdx', ''))
+    if (infer && (infer === 'always' || deps.has(infer))) rules.push(mdxFile.replace('.mdx', ''))
   }
   return rules
 }

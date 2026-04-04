@@ -2,16 +2,11 @@
 import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Issue } from './audit.js'
+import type { Issue, PackageJson } from './types.js'
 import { audit } from './audit.js'
 import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { discover } from './discover.js'
-const ghRepoRe = /github\.com[/:](?<repo>[^/]+\/[^/.]+)/u
-const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
-  const result = await $`git remote get-url origin`.cwd(projectPath).quiet().nothrow()
-  const url = result.stdout.toString().trim()
-  return ghRepoRe.exec(url)?.groups?.repo
-}
+import { getBunVersion, getGhRepo, projectName, readJson } from './utils.js'
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const repo = await getGhRepo(projectPath)
@@ -59,14 +54,8 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
 }
 const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const pkgFile = file(join(projectPath, 'package.json'))
-  if (!(await pkgFile.exists())) return issues
-  const pkg = (await pkgFile.json()) as {
-    packageManager?: string
-    private?: boolean
-    scripts?: Record<string, string>
-    'simple-git-hooks'?: { 'pre-commit'?: string }
-  }
+  const pkg = await readJson<PackageJson>(join(projectPath, 'package.json'))
+  if (!pkg) return issues
   if (!pkg.private) issues.push({ detail: 'root package.json should be private', type: 'drift' })
   if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
   if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
@@ -84,29 +73,30 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const mustExist = MUST_EXIST_FILES
   for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
-  const tsconfigFile = file(join(projectPath, 'tsconfig.json'))
-  if (await tsconfigFile.exists()) {
-    const tsconfig = (await tsconfigFile.json()) as { extends?: string }
-    if (tsconfig.extends !== EXPECTED.tsconfigExtends)
-      issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
-  }
-  const vercelFile = file(join(projectPath, 'vercel.json'))
-  if (await vercelFile.exists()) {
-    const vercel = (await vercelFile.json()) as { installCommand?: string }
-    if (vercel.installCommand !== EXPECTED.vercelInstall)
-      issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
-  }
+  const tsconfig = await readJson<{ extends?: string }>(join(projectPath, 'tsconfig.json'))
+  if (tsconfig && tsconfig.extends !== EXPECTED.tsconfigExtends)
+    issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
+  const vercel = await readJson<{ installCommand?: string }>(join(projectPath, 'vercel.json'))
+  if (vercel && vercel.installCommand !== EXPECTED.vercelInstall)
+    issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
   return issues
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   for (const f of FORBIDDEN_LOCKFILES)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
-  const bunLockTracked = await $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow()
+  const [bunLockTracked, nestedGitignores, postcssFiles, tsNoCheck] = await Promise.all([
+    $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow(),
+    $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow(),
+    $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
+      .quiet()
+      .nothrow(),
+    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
+      .quiet()
+      .nothrow()
+  ])
   if (bunLockTracked.stdout.toString().trim())
     issues.push({ detail: 'bun.lock tracked in git, should be gitignored', type: 'forbidden' })
-  const nestedGitignores =
-    await $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow()
   const extraGitignores = nestedGitignores.stdout
     .toString()
     .trim()
@@ -117,15 +107,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       detail: `nested .gitignore: ${extraGitignores.map(f => f.replace(`${projectPath}/`, '')).join(', ')}`,
       type: 'drift'
     })
-  const postcssFiles =
-    await $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
-      .quiet()
-      .nothrow()
   if (postcssFiles.stdout.toString().trim()) issues.push({ detail: 'postcss.config.mjs should be .ts', type: 'drift' })
-  const tsNoCheck =
-    await $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
-      .quiet()
-      .nothrow()
   const tsNoCheckFiles = tsNoCheck.stdout.toString().trim()
   if (tsNoCheckFiles)
     issues.push({
@@ -151,10 +133,6 @@ const timeAgo = (iso: string): string => {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
-const getBunVer = async (): Promise<string> => {
-  const r = await $`bun --version`.quiet().nothrow()
-  return r.stdout.toString().trim()
-}
 const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
   const uiDirs = allPaths.map(p => join(p, 'readonly', 'ui', 'src')).filter(d => existsSync(d))
   if (uiDirs.length === 0) return '?'
@@ -173,7 +151,7 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   const paths = [...allIssues.keys()]
   const [repos, bunVer, uiSync] = await Promise.all([
     Promise.all(paths.map(async p => getGhRepo(p))),
-    getBunVer(),
+    getBunVersion(),
     getUiSyncTime(paths)
   ])
   const repoMap = new Map(paths.map((p, i) => [p, repos[i]]))
@@ -184,10 +162,10 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   lines.push('---')
   lines.push(`${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`)
   lines.push('---')
-  const maxName = Math.max(...[...allIssues.keys()].map(p => (p.split('/').pop() ?? '').length))
+  const maxName = Math.max(...[...allIssues.keys()].map(p => projectName(p).length))
   const allIssueLines: string[] = []
   for (const [path, issues] of allIssues) {
-    const name = (path.split('/').pop() ?? '').padEnd(maxName)
+    const name = projectName(path).padEnd(maxName)
     const repo = repoMap.get(path)
     const ghUrl = repo ? `https://github.com/${repo}` : ''
     const ciInfo = issues.find(i => i.type === 'info')
@@ -205,13 +183,17 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
     lines.push(`--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`)
     lines.push(`--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`)
     if (realIssues.length > 0) {
-      const issueText = realIssues.map(i => i.detail).join(String.raw`\n`)
+      const issueText = realIssues
+        .map(i => i.detail.replaceAll('"', String.raw`\"`).replaceAll('$', String.raw`\$`))
+        .join(String.raw`\n`)
       lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
     }
   }
   if (totalIssues > 0) {
     lines.push('---')
-    const allText = allIssueLines.join(String.raw`\n`)
+    const allText = allIssueLines
+      .map(l => l.replaceAll('"', String.raw`\"`).replaceAll('$', String.raw`\$`))
+      .join(String.raw`\n`)
     lines.push(
       `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
     )

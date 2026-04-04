@@ -1,9 +1,10 @@
 import { file, write } from 'bun'
 import { cpSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Issue } from './audit.js'
-import { VERBATIM_FILES } from './constants.js'
+import type { Issue } from './types.js'
+import { CLAUDE_MD, READONLY_UI, VERBATIM_FILES } from './constants.js'
 import { inferRules } from './infer.js'
+import { readPkg } from './utils.js'
 const stripFrontmatter = (content: string): string => {
   if (!content.startsWith('---')) return content
   const endIdx = content.indexOf('---', 3)
@@ -37,22 +38,21 @@ export const syncClaudeMd = async (selfPath: string, projectPath: string): Promi
   const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
   const blocks = contents.map(c => stripFrontmatter(c))
   const generated = `${blocks.join('\n\n---\n\n')}\n`
-  const claudeFile = file(join(projectPath, 'CLAUDE.md'))
+  const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
   if (generated !== existing) {
     await write(claudeFile, generated)
-    issues.push({ detail: 'CLAUDE.md updated', type: 'synced' })
+    issues.push({ detail: `${CLAUDE_MD} updated`, type: 'synced' })
   }
   return issues
 }
 export const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const pkgFile = file(join(projectPath, 'package.json'))
-  if (!(await pkgFile.exists())) return issues
-  const raw = await pkgFile.text()
-  const pkg = JSON.parse(raw) as Record<string, unknown>
+  const pkgPath = join(projectPath, 'package.json')
+  const pkg = await readPkg(pkgPath)
+  if (!pkg) return issues
   let changed = false
-  const scripts = (pkg.scripts ?? {}) as Record<string, string>
+  const scripts = pkg.scripts ?? {}
   if (!scripts.clean) {
     scripts.clean = 'sh clean.sh'
     changed = true
@@ -75,7 +75,7 @@ export const syncPackageJson = async (projectPath: string): Promise<Issue[]> => 
     issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
   }
   pkg.scripts = scripts
-  const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
+  const devDeps = pkg.devDependencies ?? {}
   if (!devDeps.sherif) {
     devDeps.sherif = 'latest'
     pkg.devDependencies = devDeps
@@ -88,19 +88,19 @@ export const syncPackageJson = async (projectPath: string): Promise<Issue[]> => 
     changed = true
     issues.push({ detail: 'added simple-git-hooks to devDependencies', type: 'synced' })
   }
-  if (changed) await write(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`)
+  if (changed) await write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`)
   return issues
 }
 export const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  const src = join(cnsyncPath, 'readonly', 'ui')
-  const dst = join(projectPath, 'readonly', 'ui')
+  const src = join(cnsyncPath, READONLY_UI)
+  const dst = join(projectPath, READONLY_UI)
   if (!existsSync(src)) {
-    issues.push({ detail: 'readonly/ui not found in cnsync repo', type: 'error' })
+    issues.push({ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' })
     return issues
   }
   if (projectPath === cnsyncPath) return issues
   cpSync(src, dst, { recursive: true })
-  issues.push({ detail: 'readonly/ui updated', type: 'synced' })
+  issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }
