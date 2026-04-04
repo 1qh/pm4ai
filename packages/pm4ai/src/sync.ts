@@ -13,6 +13,8 @@ import {
 } from './constants.js'
 import { inferRules } from './infer.js'
 import { collectWorkspacePackages, getGhRepo, readPkg } from './utils.js'
+const sortKeys = (obj: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {
   if (!content.startsWith('---')) return content
   const endIdx = content.indexOf('---', 3)
@@ -149,7 +151,10 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
     changed = true
     issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
   }
-  if (changed) await write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`)
+  if (changed) {
+    pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})
+    await write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`)
+  }
   return issues
 }
 interface FixPublishedPkgArgs {
@@ -300,7 +305,7 @@ const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
   }
   await Promise.all(subWrites)
   if (rootChanged) {
-    rootPkg.devDependencies = rootDevDeps
+    rootPkg.devDependencies = sortKeys(rootDevDeps)
     await write(file(rootPkgPath), `${JSON.stringify(rootPkg, null, 2)}\n`)
   }
   return issues
