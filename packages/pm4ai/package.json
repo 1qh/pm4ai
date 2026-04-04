@@ -35,6 +35,8 @@
   ],
   "scripts": {
     "build": "rm -rf dist .cache && tsc -p tsconfig.build.json && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.js','utf8');fs.writeFileSync('dist/cli.js','#!/usr/bin/env bun\\n'+c);\" && chmod +x dist/cli.js",
+    "cleanup-old-versions": "bun script/cleanup-old-versions.ts",
+    "postpublish": "bun run cleanup-old-versions",
     "test": "bun test"
   },
   "dependencies": {
