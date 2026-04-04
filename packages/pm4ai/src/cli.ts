@@ -15,4 +15,7 @@ else if (command === 'status') {
     const { init } = await import('./init.js')
     await init(name)
   } else console.log('usage: pm4ai init <name>')
+} else if (command === 'setup') {
+  const { setup } = await import('./setup.js')
+  await setup()
 } else console.log(guide)
