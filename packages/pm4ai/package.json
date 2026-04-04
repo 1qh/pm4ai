@@ -1,7 +1,7 @@
 {
   "name": "pm4ai",
   "version": "0.0.1",
-  "description": "Zero-config project manager for TypeScript monorepos",
+  "description": "Agent-first anti-slop project management for TypeScript monorepos",
   "keywords": [
     "bun",
     "lintmax",

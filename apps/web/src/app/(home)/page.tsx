@@ -3,8 +3,8 @@ export default function HomePage() {
   return (
     <div className='flex flex-col items-center justify-center flex-1 gap-8 px-4 overflow-hidden'>
       <h1 className='text-6xl font-extrabold tracking-tighter'>pm4ai</h1>
-      <p className='text-xl text-fd-muted-foreground leading-relaxed max-w-lg text-center'>
-        Zero-config project manager for TypeScript monorepos
+      <p className='text-2xl text-fd-muted-foreground whitespace-nowrap'>
+        Agent-first anti-slop project management for TypeScript monorepos
       </p>
       <code className='text-sm bg-fd-muted px-4 py-2 rounded-lg'>bunx pm4ai@latest status</code>
       <Link

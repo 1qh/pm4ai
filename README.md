@@ -1,6 +1,6 @@
 # pm4ai
 
-Zero-config project manager for TypeScript monorepos.
+Agent-first anti-slop project management for TypeScript monorepos.
 
 One source of truth. Zero manual maintenance.
 
