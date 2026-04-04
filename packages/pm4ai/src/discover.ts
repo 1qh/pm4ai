@@ -60,5 +60,47 @@ const discover = async (): Promise<{
   const consumers = projects.filter(p => !p.isSelf)
   return { cnsync, consumers, self }
 }
+const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> => {
+  const home = homedir()
+  const reposDir = join(home, '.pm4ai', 'repos')
+  const selfDir = join(reposDir, PKG_NAME)
+  const cnsyncDir = join(reposDir, 'cnsync')
+  let self: Project | undefined
+  let cnsync: Project | undefined
+  if (existsSync(selfDir)) self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
+  if (existsSync(cnsyncDir)) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
+  if (!(self && cnsync)) {
+    const result =
+      await $`rg -l '"${PKG_NAME}"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**' --max-count 1`
+        .quiet()
+        .nothrow()
+    const found = result.stdout
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(f => dirname(f))
+    if (!self) {
+      const dir = found.find(d => {
+        const name = d.split('/').pop()
+        return name === PKG_NAME || name === MONOREPO_NAME
+      })
+      if (dir) self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dir }
+    }
+    if (!cnsync) {
+      const dir = found.find(d => hasDirInside(d, READONLY_UI) && d.split('/').pop() !== MONOREPO_NAME)
+      if (dir) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dir }
+    }
+  }
+  if (!self) {
+    await cloneIfMissing(PKG_NAME, selfDir)
+    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
+  }
+  if (!cnsync) {
+    await cloneIfMissing('cnsync', cnsyncDir)
+    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
+  }
+  return { cnsync, self }
+}
 export type { Project }
-export { discover }
+export { discover, discoverSources }

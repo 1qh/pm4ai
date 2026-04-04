@@ -6,10 +6,10 @@ import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { READONLY_UI } from './constants.js'
-import { discover } from './discover.js'
+import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
-import { debug, projectName } from './utils.js'
+import { debug, isInsideProject, projectName } from './utils.js'
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -57,7 +57,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   })
   return issues
 }
-export const fix = async () => {
+export const fix = async (all = false) => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   if (existsSync(lockFile)) {
     debug('fix already running')
@@ -67,7 +67,20 @@ export const fix = async () => {
   mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
   writeFileSync(lockFile, `${process.pid}`)
   try {
-    const { cnsync, consumers, self } = await discover()
+    const resolveTargets = async () => {
+      if (all) return discover()
+      const projectPath = await isInsideProject()
+      if (projectPath) {
+        const { self, cnsync } = await discoverSources()
+        return {
+          cnsync,
+          consumers: [{ isCnsync: false, isSelf: false, name: projectPath.split('/').pop() ?? '', path: projectPath }],
+          self
+        }
+      }
+      return discover()
+    }
+    const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
     const allProjects = [self, cnsync, ...consumers.filter(c => !c.isCnsync)]

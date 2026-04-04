@@ -3,7 +3,7 @@
 /* eslint-disable no-empty */
 import { $, file } from 'bun'
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 const readJson = async (path: string): Promise<unknown> => {
   const f = file(path)
@@ -55,4 +55,31 @@ const setVerbose = (v: boolean) => {
 const debug = (...args: unknown[]) => {
   if (verbose) console.error('[pm4ai]', ...args) // eslint-disable-line no-console
 }
-export { collectWorkspacePackages, debug, getBunVersion, getGhRepo, projectName, readJson, readPkg, setVerbose }
+const findGitRoot = (): string | undefined => {
+  let dir = process.cwd()
+  while (dir !== '/') {
+    if (existsSync(join(dir, '.git'))) return dir
+    dir = dirname(dir)
+  }
+}
+const isInsideProject = async (): Promise<string | undefined> => {
+  const root = findGitRoot()
+  if (!root) return
+  const allPkgs = await collectWorkspacePackages(root)
+  const hasLintmax = allPkgs.some(({ pkg }) => {
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+    return 'lintmax' in deps
+  })
+  if (hasLintmax) return root
+}
+export {
+  collectWorkspacePackages,
+  debug,
+  getBunVersion,
+  getGhRepo,
+  isInsideProject,
+  projectName,
+  readJson,
+  readPkg,
+  setVerbose
+}

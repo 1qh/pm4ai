@@ -3,8 +3,9 @@ discovers projects by scanning for lintmax in package.json deps
 discovers itself and cnsync the same way (auto-clones if not found)
 commands:
   pm4ai          this guide
-  pm4ai status   view issues across all projects (no changes)
-  pm4ai fix      sync configs + pull latest deps + lint/build check
+  pm4ai status   check current project (or all if outside a project)
+  pm4ai fix      sync + maintain current project (or all if outside)
+  --all          force global scan across all projects
   pm4ai init <n>  scaffold a new pm4ai-ready project, then run pm4ai fix
   pm4ai setup    install swiftbar plugin + launchd daily auto-run
 status output (only issues shown, healthy projects omitted):

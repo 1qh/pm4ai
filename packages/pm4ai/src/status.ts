@@ -3,17 +3,34 @@ import { $ } from 'bun'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkRootPkg, checkVercel } from './checks.js'
-import { discover } from './discover.js'
+import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
-const status = async (swiftbar = false) => {
-  const { consumers, self } = await discover()
+import { isInsideProject } from './utils.js'
+const status = async (swiftbar = false, all = false) => {
+  let allProjects: { name: string; path: string }[]
+  let selfPath: string
+  if (all) {
+    const { consumers, self } = await discover()
+    selfPath = self.path
+    allProjects = [self, ...consumers]
+  } else {
+    const projectPath = await isInsideProject()
+    if (projectPath) {
+      const { self } = await discoverSources()
+      selfPath = self.path
+      allProjects = [{ name: projectPath.split('/').pop() ?? '', path: projectPath }]
+    } else {
+      const { consumers, self } = await discover()
+      selfPath = self.path
+      allProjects = [self, ...consumers]
+    }
+  }
   const allIssues = new Map<string, Issue[]>()
-  const allProjects = [self, ...consumers]
   const checks = allProjects.map(async project => {
     const issues: Issue[] = []
     const results = await Promise.all([
       checkGit(project.path),
-      checkDrift(self.path, project.path),
+      checkDrift(selfPath, project.path),
       checkRootPkg(project.path),
       checkConfigs(project.path),
       checkForbidden(project.path),

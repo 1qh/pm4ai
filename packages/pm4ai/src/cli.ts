@@ -19,9 +19,9 @@ else if (command === 'init') {
   if (!(await preflight())) throw new Error('missing required tools')
   if (command === 'status') {
     const { status } = await import('./status.js')
-    await status(flags.has('--swiftbar'))
+    await status(flags.has('--swiftbar'), flags.has('--all'))
   } else if (command === 'fix') {
     const { fix } = await import('./fix.js')
-    await fix()
+    await fix(flags.has('--all'))
   } else console.log(guide)
 }
