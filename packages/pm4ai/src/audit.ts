@@ -1,6 +1,7 @@
 import { $, file } from 'bun'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { FORBIDDEN_PM_PREFIXES, SKIP_PATTERNS, TURBO_FLAG } from './constants.js'
 interface Issue {
   detail: string
   type: string
@@ -45,7 +46,7 @@ const collectPkgJsons = async (projectPath: string): Promise<PkgEntry[]> => {
   for (const p of wsPkgs) if (p) results.push(p)
   return results
 }
-const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/') || pkgPath.includes('/.next/')
+const isAutoSynced = (pkgPath: string) => SKIP_PATTERNS.some(p => pkgPath.includes(p))
 const getDepsFromPkg = (pkg: Record<string, unknown>): Map<string, string> => {
   const result = new Map<string, string>()
   for (const field of ['dependencies', 'devDependencies']) {
@@ -120,9 +121,8 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
     }
   return issues
 }
-const forbiddenPrefixes = ['npm ', 'npx ', 'yarn ', 'pnpm ']
 const usesForbidden = (cmd: string) =>
-  forbiddenPrefixes.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
+  FORBIDDEN_PM_PREFIXES.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
 const turboRe = /\bturbo\b/u
 const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
@@ -133,7 +133,7 @@ const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
       for (const [script, cmd] of Object.entries(scripts)) {
         if (usesForbidden(cmd))
           issues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
-        if (turboRe.test(cmd) && !cmd.includes('--output-logs=errors-only') && script !== 'dev')
+        if (turboRe.test(cmd) && !cmd.includes(TURBO_FLAG) && script !== 'dev')
           issues.push({ detail: `script "${script}" missing --output-logs=errors-only in ${shortPath}`, type: 'drift' })
       }
     else {

@@ -2,8 +2,8 @@ import { file, write } from 'bun'
 import { cpSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './audit.js'
+import { VERBATIM_FILES } from './constants.js'
 import { inferRules } from './infer.js'
-const verbatimFiles = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 const stripFrontmatter = (content: string): string => {
   if (!content.startsWith('---')) return content
   const endIdx = content.indexOf('---', 3)
@@ -12,7 +12,7 @@ const stripFrontmatter = (content: string): string => {
 }
 export const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
-    verbatimFiles.map(async name => {
+    VERBATIM_FILES.map(async name => {
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return

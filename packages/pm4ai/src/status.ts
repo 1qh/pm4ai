@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './audit.js'
 import { audit } from './audit.js'
+import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { discover } from './discover.js'
 const ghRepoRe = /github\.com[/:](?<repo>[^/]+\/[^/.]+)/u
 const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
@@ -43,7 +44,7 @@ const checkGit = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
-  const names = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+  const names = VERBATIM_FILES
   const results = await Promise.all(
     names.map(async name => {
       const src = file(join(selfPath, name))
@@ -69,9 +70,9 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   if (!pkg.private) issues.push({ detail: 'root package.json should be private', type: 'drift' })
   if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
   if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
-  else if (pkg['simple-git-hooks']['pre-commit'] !== 'sh up.sh && git add -u')
+  else if (pkg['simple-git-hooks']['pre-commit'] !== EXPECTED.preCommit)
     issues.push({ detail: 'pre-commit should be "sh up.sh && git add -u"', type: 'drift' })
-  if (pkg.scripts?.prepare !== 'bunx simple-git-hooks')
+  if (pkg.scripts?.prepare !== EXPECTED.prepare)
     issues.push({ detail: 'prepare should be "bunx simple-git-hooks"', type: 'drift' })
   if (!pkg.scripts?.postinstall?.includes('sherif'))
     issues.push({ detail: 'postinstall should include sherif', type: 'drift' })
@@ -81,25 +82,25 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const mustExist = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
+  const mustExist = MUST_EXIST_FILES
   for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
   const tsconfigFile = file(join(projectPath, 'tsconfig.json'))
   if (await tsconfigFile.exists()) {
     const tsconfig = (await tsconfigFile.json()) as { extends?: string }
-    if (tsconfig.extends !== 'lintmax/tsconfig')
+    if (tsconfig.extends !== EXPECTED.tsconfigExtends)
       issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
   }
   const vercelFile = file(join(projectPath, 'vercel.json'))
   if (await vercelFile.exists()) {
     const vercel = (await vercelFile.json()) as { installCommand?: string }
-    if (vercel.installCommand !== 'bun i')
+    if (vercel.installCommand !== EXPECTED.vercelInstall)
       issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
   }
   return issues
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const lockfiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
+  const lockfiles = FORBIDDEN_LOCKFILES
   for (const f of lockfiles)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
   const nestedGitignores =
