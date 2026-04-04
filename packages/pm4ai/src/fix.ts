@@ -5,11 +5,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
+import { writeCheckResult } from './check-cache.js'
 import { READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
 import { debug, isInsideProject, projectName } from './utils.js'
+const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -44,9 +46,13 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
       mkdirSync(snapshotDir, { recursive: true })
       copyFileSync(lockfile, join(snapshotDir, 'bun.lock'))
     }
+    writeCheckResult({ pass: true, projectPath, violations: 0 })
   } else {
     const errorLine = stderr.split('\n').findLast(Boolean) ?? 'unknown error'
     issues.push({ detail: `failed: ${errorLine}`, type: 'up.sh' })
+    const violationMatch = violationRe.exec(stderr)
+    const violations = violationMatch?.groups?.count ? Number.parseInt(violationMatch.groups.count, 10) : 1
+    writeCheckResult({ pass: false, projectPath, summary: errorLine, violations })
   }
   updateLog({
     at: new Date().toISOString(),

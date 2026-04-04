@@ -4,6 +4,7 @@ interface Issue {
 }
 type IssueType =
   | 'bun'
+  | 'check'
   | 'ci'
   | 'dep'
   | 'deploy'
