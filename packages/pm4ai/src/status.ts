@@ -56,20 +56,38 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
   )
   return results.filter((r): r is Issue => r !== undefined)
 }
-const checkExists = async (projectPath: string): Promise<Issue[]> => {
+const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const pkgFile = file(join(projectPath, 'package.json'))
+  if (!(await pkgFile.exists())) return issues
+  const pkg = (await pkgFile.json()) as {
+    packageManager?: string
+    private?: boolean
+    scripts?: Record<string, string>
+    'simple-git-hooks'?: { 'pre-commit'?: string }
+  }
+  if (!pkg.private) issues.push({ detail: 'root package.json should be private', type: 'drift' })
+  if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
+  if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
+  else if (pkg['simple-git-hooks']['pre-commit'] !== 'sh up.sh && git add -u')
+    issues.push({ detail: 'pre-commit should be "sh up.sh && git add -u"', type: 'drift' })
+  if (pkg.scripts?.prepare !== 'bunx simple-git-hooks')
+    issues.push({ detail: 'prepare should be "bunx simple-git-hooks"', type: 'drift' })
+  if (!pkg.scripts?.postinstall?.includes('sherif'))
+    issues.push({ detail: 'postinstall should include sherif', type: 'drift' })
+  if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith('sh clean.sh'))
+    issues.push({ detail: 'clean should start with "sh clean.sh"', type: 'drift' })
+  return issues
+}
+const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const mustExist = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
   for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
-  const pkgFile = file(join(projectPath, 'package.json'))
-  if (await pkgFile.exists()) {
-    const pkg = (await pkgFile.json()) as {
-      scripts?: Record<string, string>
-      'simple-git-hooks'?: unknown
-    }
-    if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
-    if (!pkg.scripts?.prepare) issues.push({ detail: 'prepare script in package.json', type: 'missing' })
-    if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith('sh clean.sh'))
-      issues.push({ detail: 'clean script should start with "sh clean.sh"', type: 'drift' })
+  const tsconfigFile = file(join(projectPath, 'tsconfig.json'))
+  if (await tsconfigFile.exists()) {
+    const tsconfig = (await tsconfigFile.json()) as { extends?: string }
+    if (tsconfig.extends !== 'lintmax/tsconfig')
+      issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
   }
   const vercelFile = file(join(projectPath, 'vercel.json'))
   if (await vercelFile.exists()) {
@@ -77,9 +95,43 @@ const checkExists = async (projectPath: string): Promise<Issue[]> => {
     if (vercel.installCommand !== 'bun i')
       issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
   }
-  const forbidden = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
-  for (const f of forbidden)
+  return issues
+}
+const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const lockfiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
+  for (const f of lockfiles)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
+  const nestedGitignores =
+    await $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow()
+  const extraGitignores = nestedGitignores.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(f => f && f !== join(projectPath, '.gitignore'))
+  if (extraGitignores.length > 0)
+    issues.push({
+      detail: `nested .gitignore: ${extraGitignores.map(f => f.replace(`${projectPath}/`, '')).join(', ')}`,
+      type: 'drift'
+    })
+  const postcssFiles =
+    await $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
+      .quiet()
+      .nothrow()
+  if (postcssFiles.stdout.toString().trim()) issues.push({ detail: 'postcss.config.mjs should be .ts', type: 'drift' })
+  const tsNoCheck =
+    await $`rg '@ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
+      .quiet()
+      .nothrow()
+  const tsNoCheckFiles = tsNoCheck.stdout.toString().trim()
+  if (tsNoCheckFiles)
+    issues.push({
+      detail: `@ts-nocheck in: ${tsNoCheckFiles
+        .split('\n')
+        .map(f => f.replace(`${projectPath}/`, ''))
+        .join(', ')}`,
+      type: 'forbidden'
+    })
   return issues
 }
 const formatIssues = (projectPath: string, issues: Issue[]): string => {
@@ -108,14 +160,16 @@ export const status = async (swiftbar = false) => {
   const allIssues = new Map<string, Issue[]>()
   const checks = consumers.map(async project => {
     const issues: Issue[] = []
-    const [gitIssues, driftIssues, existIssues, auditIssues, ciIssues] = await Promise.all([
+    const results = await Promise.all([
       checkGit(project.path),
       checkDrift(self.path, project.path),
-      checkExists(project.path),
+      checkRootPkg(project.path),
+      checkConfigs(project.path),
+      checkForbidden(project.path),
       audit(project.path),
       checkCi(project.path)
     ])
-    issues.push(...gitIssues, ...driftIssues, ...existIssues, ...auditIssues, ...ciIssues)
+    for (const r of results) issues.push(...r)
     allIssues.set(project.path, issues)
   })
   await Promise.all(checks)

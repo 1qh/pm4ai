@@ -45,7 +45,7 @@ const collectPkgJsons = async (projectPath: string): Promise<PkgEntry[]> => {
   for (const p of wsPkgs) if (p) results.push(p)
   return results
 }
-const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/')
+const isAutoSynced = (pkgPath: string) => pkgPath.includes('/readonly/') || pkgPath.includes('/.next/')
 const getDepsFromPkg = (pkg: Record<string, unknown>): Map<string, string> => {
   const result = new Map<string, string>()
   for (const field of ['dependencies', 'devDependencies']) {
@@ -53,6 +53,26 @@ const getDepsFromPkg = (pkg: Record<string, unknown>): Map<string, string> => {
     if (deps) for (const [n, v] of Object.entries(deps)) result.set(n, v)
   }
   return result
+}
+const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
+  for (const { path: pkgPath, pkg } of pkgs)
+    if (isAutoSynced(pkgPath) || pkgPath === join(projectPath, 'package.json')) {
+      // Skip root and auto-synced
+    } else {
+      const shortPath = pkgPath.replace(`${projectPath}/`, '')
+      const isPublished = pkg.private !== true
+      if (isPublished) {
+        if (pkg.type !== 'module') issues.push({ detail: `${shortPath} should have "type": "module"`, type: 'drift' })
+        if (!pkg.exports) issues.push({ detail: `${shortPath} missing "exports" field`, type: 'drift' })
+        if (!pkg.files) issues.push({ detail: `${shortPath} missing "files" field`, type: 'drift' })
+        if (!pkg.license) issues.push({ detail: `${shortPath} missing "license" field`, type: 'drift' })
+        if (!pkg.repository) issues.push({ detail: `${shortPath} missing "repository" field`, type: 'drift' })
+      } else if (!pkg.private) issues.push({ detail: `${shortPath} should be "private": true`, type: 'drift' })
+      if (pkg.devDependencies && Object.keys(pkg.devDependencies as Record<string, string>).length > 0)
+        issues.push({ detail: `${shortPath} devDependencies should be hoisted to root`, type: 'drift' })
+    }
+  return issues
 }
 const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
@@ -138,6 +158,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     if (resolved && !resolved.includes(lintmaxLatest))
       issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
   }
+  issues.push(...checkPackageConventions(pkgs, projectPath))
   issues.push(...checkNotLatest(pkgs, projectPath))
   issues.push(...checkDuplicates(pkgs, projectPath))
   issues.push(...checkScripts(pkgs, projectPath))
