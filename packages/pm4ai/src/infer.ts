@@ -1,7 +1,7 @@
 import { file } from 'bun'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-const alwaysRules = ['general', 'bun', 'typescript', 'code-quality', 'lintmax', 'git']
+const alwaysRules = ['index', 'bun', 'typescript', 'code-quality', 'lintmax', 'git']
 const depRuleMap: Record<string, string[]> = {
   next: ['react-nextjs'],
   playwright: ['testing'],
