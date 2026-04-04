@@ -5,21 +5,33 @@ commands:
   pm4ai          this guide
   pm4ai status   view issues across all projects (no changes)
   pm4ai fix      sync configs + pull latest deps + lint/build check
-status output format (only issues shown, healthy = no output):
+status output (only issues shown, healthy projects omitted):
   /path/to/project
-    bun 1.3.11 behind latest 1.3.14
-    file clean.sh out of sync
     git 3 commits behind remote
-    lintmax 0.1.2 behind latest 0.1.3
-    dep react not on latest tag
-    up.sh failed: next build error
-    ci failed 2026-04-02
-    missing LEARNING.md
+    file clean.sh out of sync
     missing turbo.json
+    drift clean should start with "sh clean.sh"
+    dep react should be "latest" or "^major"
+    duplicate ai already provided by workspace dep
+    forbidden npm found, use bun only
+    ci failed 2026-04-02
 flags:
   --swiftbar     output in SwiftBar menubar format
 synced files (copied verbatim from pm4ai repo):
   clean.sh  up.sh  bunfig.toml  .gitignore  CLAUDE.md (generated from rules)
-checked files (warn if missing):
-  turbo.json  tsconfig.json  .github/workflows/ci.yml
-  simple-git-hooks + prepare script in package.json`
+checks:
+  git status, behind/ahead remote
+  config drift (synced files match source)
+  missing infra (turbo.json, tsconfig.json, ci.yml)
+  root package.json (private, packageManager, hooks, sherif, prepare, clean)
+  tsconfig extends lintmax/tsconfig
+  vercel.json installCommand is bun i
+  deps on latest or ^major, no duplicates across workspaces
+  no npm/yarn/pnpm in scripts or lockfiles
+  turbo scripts have --output-logs=errors-only
+  published packages have type:module, exports, files, license, repository
+  workspace packages have no devDependencies (hoisted to root)
+  no nested .gitignore, no postcss.config.mjs, no @ts-nocheck
+  no bun.lock tracked in git
+  no redundant clean scripts in sub-packages
+  ci status via github api`
