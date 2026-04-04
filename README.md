@@ -19,9 +19,9 @@ bunx pm4ai@latest setup        # menubar + daily auto-run
 
 pm4ai is context-aware. Inside a project, it operates on that project only. Use `--all` to scan everything.
 
-**`pm4ai status`** checks the current project — git status, config drift, dep audit, CI status, Vercel deployments — and reports only issues.
+**`pm4ai status`** checks the current project — git status, config drift, dep audit, CI status, Vercel deployments, background lint check — and reports only issues.
 
-**`pm4ai fix`** syncs dotfiles, generates CLAUDE.md from rules, copies readonly/ui, runs maintenance (`sh up.sh`).
+**`pm4ai fix`** requires clean git state (no uncommitted changes, up to date with remote). Syncs dotfiles, generates CLAUDE.md from rules, copies readonly/ui, runs maintenance (`sh up.sh`). Shows file change summary after completion.
 
 **`pm4ai init`** scaffolds a new project with turbo, lintmax, sherif, simple-git-hooks, CI workflow — everything correct from day one.
 
