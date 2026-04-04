@@ -80,6 +80,11 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
     const ext = 'extends' in tsRaw ? String(tsRaw.extends) : ''
     if (ext && ext !== EXPECTED.tsconfigExtends)
       issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
+    if ('include' in tsRaw)
+      issues.push({
+        detail: 'root tsconfig.json should not have "include" — let lintmax/tsconfig handle it',
+        type: 'drift'
+      })
   }
   const vRaw = await readJson(join(projectPath, 'vercel.json'))
   if (vRaw && typeof vRaw === 'object' && !Array.isArray(vRaw)) {

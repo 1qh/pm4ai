@@ -131,6 +131,7 @@ describe('syncPackageJson', () => {
   })
 })
 describe('syncSubPackages', () => {
+  const selfPath = join(import.meta.dirname, '..', '..')
   const makeProject = (rootPkg: Record<string, unknown>, subPkgs: Record<string, Record<string, unknown>>) => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify(rootPkg))
@@ -143,7 +144,7 @@ describe('syncSubPackages', () => {
   }
   test('sets apps to private', async () => {
     const tmp = makeProject({ private: true, workspaces: ['apps/*'] }, { 'apps/web/package.json': { name: '@a/web' } })
-    const issues = await syncSubPackages(tmp)
+    const issues = await syncSubPackages(selfPath, tmp)
     expect(issues.some(i => i.detail.includes('private'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<string, unknown>
     expect(pkg.private).toBe(true)
@@ -156,7 +157,7 @@ describe('syncSubPackages', () => {
         'apps/web/package.json': { name: '@a/web', private: true, scripts: { clean: 'git clean -xdf .next node_modules' } }
       }
     )
-    const issues = await syncSubPackages(tmp)
+    const issues = await syncSubPackages(selfPath, tmp)
     expect(issues.some(i => i.detail.includes('git clean'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<
       string,
@@ -171,7 +172,7 @@ describe('syncSubPackages', () => {
       { private: true, workspaces: ['packages/*'] },
       { 'packages/lib/package.json': { bin: './cli.js', name: 'my-lib' } }
     )
-    const issues = await syncSubPackages(tmp)
+    const issues = await syncSubPackages(selfPath, tmp)
     expect(issues.some(i => i.detail.includes('postpublish'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<
       string,
@@ -186,7 +187,7 @@ describe('syncSubPackages', () => {
       { private: true, workspaces: ['packages/*'] },
       { 'packages/lib/package.json': { bin: './cli.js', name: 'my-lib' } }
     )
-    await syncSubPackages(tmp)
+    await syncSubPackages(selfPath, tmp)
     const pkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<string, string>
     expect(pkg.type).toBe('module')
     expect(pkg.license).toBe('MIT')
@@ -197,7 +198,7 @@ describe('syncSubPackages', () => {
       { devDependencies: {}, private: true, workspaces: ['apps/*'] },
       { 'apps/web/package.json': { devDependencies: { '@types/react': 'latest' }, name: '@a/web', private: true } }
     )
-    await syncSubPackages(tmp)
+    await syncSubPackages(selfPath, tmp)
     const rootPkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
     expect(rootPkg.devDependencies?.['@types/react']).toBe('latest')
     const subPkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<string, unknown>

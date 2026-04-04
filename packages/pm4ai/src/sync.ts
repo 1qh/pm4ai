@@ -1,5 +1,5 @@
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import {
@@ -12,7 +12,7 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
-import { collectWorkspacePackages, getGhRepo, readPkg } from './utils.js'
+import { collectWorkspacePackages, getGhRepo, readJson, readPkg } from './utils.js'
 const sortKeys = (obj: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {
@@ -21,12 +21,7 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
-const CLEANUP_SCRIPT = `import { spawnSync } from 'node:child_process'
-import pkg from '../package.json' with { type: 'json' }
-const result = spawnSync('npm', ['view', pkg.name, 'versions', '--json'], { encoding: 'utf8' })
-const versions = JSON.parse(result.stdout) as string[]
-for (const v of versions) if (v !== pkg.version) spawnSync('npm', ['unpublish', \`\${pkg.name}@\${v}\`], { stdio: 'inherit' })
-`
+const CLEANUP_SCRIPT_PATH = 'script/cleanup-old-versions.ts'
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
@@ -157,14 +152,28 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
+const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const tsconfigPath = join(projectPath, 'tsconfig.json')
+  const raw = await readJson(tsconfigPath)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return issues
+  const tsconfig = raw as Record<string, unknown>
+  if ('include' in tsconfig) {
+    const rest = Object.fromEntries(Object.entries(tsconfig).filter(([k]) => k !== 'include'))
+    await write(file(tsconfigPath), `${JSON.stringify(rest, null, 2)}\n`)
+    issues.push({ detail: 'removed "include" from root tsconfig.json', type: 'synced' })
+  }
+  return issues
+}
 interface FixPublishedPkgArgs {
   issues: Issue[]
   pkg: PackageJson
   pkgPath: string
   rel: string
   repo: string | undefined
+  selfPath: string
 }
-const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): boolean => {
+const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPublishedPkgArgs): boolean => {
   let changed = false
   if (pkg.type !== 'module') {
     pkg.type = 'module'
@@ -188,11 +197,12 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
   }
   const pubScripts = pkg.scripts ?? {}
   if (!pubScripts.postpublish) {
+    const srcScript = join(selfPath, CLEANUP_SCRIPT_PATH)
     const scriptDir = join(dirname(pkgPath), 'script')
     const scriptFile = join(scriptDir, 'cleanup-old-versions.ts')
-    if (!existsSync(scriptFile)) {
+    if (!existsSync(scriptFile) && existsSync(srcScript)) {
       mkdirSync(scriptDir, { recursive: true })
-      writeFileSync(scriptFile, CLEANUP_SCRIPT)
+      cpSync(srcScript, scriptFile)
       issues.push({ detail: `${rel} created script/cleanup-old-versions.ts`, type: 'synced' })
     }
     pubScripts['cleanup-old-versions'] = 'bun script/cleanup-old-versions.ts'
@@ -248,8 +258,9 @@ interface FixSubEntryArgs {
   issues: Issue[]
   projectPath: string
   repo: string | undefined
+  selfPath: string
 }
-const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boolean => {
+const fixSubEntry = ({ entry, issues, projectPath, repo, selfPath }: FixSubEntryArgs): boolean => {
   const rel = entry.path.replace(`${projectPath}/`, '')
   let changed = false
   if (rel.startsWith('apps/') && !entry.pkg.private) {
@@ -258,7 +269,8 @@ const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boo
     issues.push({ detail: `${rel} set to private`, type: 'synced' })
   }
   const isPublished = !entry.pkg.private && (entry.pkg.exports ?? entry.pkg.main ?? entry.pkg.bin) && entry.pkg.name
-  if (isPublished) changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo }) || changed
+  if (isPublished)
+    changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo, selfPath }) || changed
   return fixGitClean(entry.pkg, rel, issues) || changed
 }
 interface HoistSubEntryArgs {
@@ -280,7 +292,7 @@ const hoistSubEntry = ({
   if (changed) entry.pkg.devDependencies = remaining
   return { changed, hoisted, pkg: entry.pkg, pkgPath: entry.path }
 }
-const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
+const syncSubPackages = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
   const rootPkgPath = join(projectPath, 'package.json')
@@ -288,7 +300,7 @@ const syncSubPackages = async (projectPath: string): Promise<Issue[]> => {
   const subEntries = entries.filter(e => e.path !== rootPkgPath)
   const writes: Promise<number>[] = []
   for (const entry of subEntries) {
-    const changed = fixSubEntry({ entry, issues, projectPath, repo })
+    const changed = fixSubEntry({ entry, issues, projectPath, repo, selfPath })
     if (changed) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
   }
   await Promise.all(writes)
@@ -323,4 +335,4 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }
-export { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncUi }
+export { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi }
