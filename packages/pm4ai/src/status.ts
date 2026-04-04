@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import type { Issue } from './audit.js'
 import { audit } from './audit.js'
 import { discover } from './discover.js'
-import { readLog } from './log.js'
 const ghRepoRe = /github\.com[/:](?<repo>[^/]+\/[^/.]+)/u
 const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
   const result = await $`git remote get-url origin`.cwd(projectPath).quiet().nothrow()
@@ -106,7 +105,6 @@ const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
 }
 export const status = async (swiftbar = false) => {
   const { consumers, self } = await discover()
-  const log = readLog()
   const allIssues = new Map<string, Issue[]>()
   const checks = consumers.map(async project => {
     const issues: Issue[] = []
@@ -118,8 +116,6 @@ export const status = async (swiftbar = false) => {
       checkCi(project.path)
     ])
     issues.push(...gitIssues, ...driftIssues, ...existIssues, ...auditIssues, ...ciIssues)
-    const logEntry = log.find(e => e.path === project.path)
-    if (logEntry && !logEntry.pass) issues.push({ detail: `failed ${logEntry.at}`, type: 'up.sh' })
     allIssues.set(project.path, issues)
   })
   await Promise.all(checks)
