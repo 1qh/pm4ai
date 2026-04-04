@@ -29,6 +29,6 @@ pm4ai is context-aware. Inside a project, it operates on that project only. Use 
 
 ## For Agents
 
-```
-curl https://pm4ai.vercel.app/llms.txt
-```
+Full docs: `curl https://pm4ai.vercel.app/llms-full.txt`
+
+Start prompts for Claude Code sessions: [PM session](prompts/pm.md) · [Project session](prompts/project.md)
