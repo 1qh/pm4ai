@@ -87,4 +87,5 @@ export const fix = async () => {
     }
   })
   await Promise.all(tasks)
+  await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
 }

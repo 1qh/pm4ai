@@ -143,21 +143,66 @@ const formatIssues = (projectPath: string, issues: Issue[]): string => {
   const lines = [projectPath, ...issues.map(issue => `  ${issue.type} ${issue.detail}`)]
   return lines.join('\n')
 }
-const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
+const timeAgo = (iso: string): string => {
+  const ms = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
   const anyReal = [...allIssues.values()].some(hasRealIssues)
+  const total = allIssues.size
+  const clean = [...allIssues.values()].filter(i => !hasRealIssues(i)).length
+  const totalIssues = [...allIssues.values()].flatMap(i => i.filter(x => x.type !== 'info')).length
   const lines: string[] = []
-  if (anyReal) lines.push('| sfimage=xmark.circle.fill sfcolor=red')
-  else lines.push('| sfimage=checkmark.circle.fill sfcolor=green')
+  if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
+  else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
   lines.push('---')
+  const paths = [...allIssues.keys()]
+  const repos = await Promise.all(paths.map(async p => getGhRepo(p)))
+  const repoMap = new Map(paths.map((p, i) => [p, repos[i]]))
+  const allIssueLines: string[] = []
   for (const [path, issues] of allIssues) {
     const name = path.split('/').pop() ?? path
-    const icon = hasRealIssues(issues) ? '✗' : '✓'
+    const repo = repoMap.get(path)
+    const ghUrl = repo ? `https://github.com/${repo}` : ''
     const ciInfo = issues.find(i => i.type === 'info')
-    const ciTime = ciInfo ? ciInfo.detail.replace('passed ', '') : ''
-    const realIssueCount = issues.filter(i => i.type !== 'info').length
-    const suffix = realIssueCount > 0 ? `  ${realIssueCount} issues` : ''
-    lines.push(`${icon} ${name}  ${ciTime}${suffix} | font=Menlo size=12`)
+    const ciTime = ciInfo ? timeAgo(ciInfo.detail.replace('passed ', '').replace('failed ', '')) : ''
+    const realIssues = issues.filter(i => i.type !== 'info')
+    const icon = realIssues.length > 0 ? '🔴' : '🟢'
+    const suffix = realIssues.length > 0 ? `  ⚠ ${realIssues.length}` : ''
+    lines.push(`${icon} ${name.padEnd(12)} CI ${ciTime}${suffix} | font=Menlo`)
+    if (realIssues.length > 0)
+      for (const issue of realIssues) {
+        lines.push(`--${issue.type}: ${issue.detail} | font=Menlo size=12 color=#ff6b6b`)
+        allIssueLines.push(`${name}: ${issue.type}: ${issue.detail}`)
+      }
+    lines.push('---')
+    if (ghUrl) lines.push(`--GitHub | href=${ghUrl} sfimage=safari`)
+    lines.push(
+      `--Open in VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`
+    )
+    lines.push(
+      `--Open in Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`
+    )
+    if (realIssues.length > 0) {
+      const issueText = realIssues.map(i => `${i.type}: ${i.detail}`).join(String.raw`\n`)
+      lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
+    }
+    lines.push('---')
   }
+  if (totalIssues > 0) {
+    const allText = allIssueLines.join(String.raw`\n`)
+    lines.push(
+      `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false sfimage=doc.on.clipboard`
+    )
+    lines.push('---')
+  }
+  lines.push(`${total} projects · ${totalIssues} issues · ${clean} clean | size=11 color=gray`)
+  lines.push('---')
+  lines.push('Refresh | refresh=true sfimage=arrow.clockwise')
   return lines.join('\n')
 }
 export const status = async (swiftbar = false) => {
@@ -179,8 +224,8 @@ export const status = async (swiftbar = false) => {
     allIssues.set(project.path, issues)
   })
   await Promise.all(checks)
-  if (swiftbar) console.log(formatSwiftBar(allIssues))
-  else
+  if (swiftbar) console.log(await formatSwiftBar(allIssues))
+  else {
     for (const [path, issues] of allIssues) {
       const output = formatIssues(path, issues)
       if (output) {
@@ -188,4 +233,6 @@ export const status = async (swiftbar = false) => {
         console.log()
       }
     }
+    await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+  }
 }
