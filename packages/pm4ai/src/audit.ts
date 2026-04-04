@@ -62,8 +62,12 @@ const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
     } else {
       const shortPath = pkgPath.replace(`${projectPath}/`, '')
       for (const [name, version] of getDepsFromPkg(pkg))
-        if (version !== 'latest' && !version.startsWith('workspace:'))
-          issues.push({ detail: `${name} not on latest tag (${version}) in ${shortPath}`, type: 'dep' })
+        if (version === 'latest' || version.startsWith('workspace:')) {
+          // Ok
+        } else if (version.startsWith('^')) {
+          // Pinned major — acceptable
+        } else
+          issues.push({ detail: `${name} should be "latest" or "^major" (got ${version}) in ${shortPath}`, type: 'dep' })
     }
   return issues
 }
