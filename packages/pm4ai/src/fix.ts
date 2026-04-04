@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { $ } from 'bun'
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
@@ -10,7 +10,7 @@ import { READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
-import { debug, isInsideProject, projectName } from './utils.js'
+import { isInsideProject, projectName } from './utils.js'
 const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -66,12 +66,28 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 export const fix = async (all = false) => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   if (existsSync(lockFile)) {
-    debug('fix already running')
-    console.log('another fix is already running')
-    return
+    try {
+      const lock = JSON.parse(readFileSync(lockFile, 'utf8')) as { at: string; pid: number }
+      const age = Date.now() - new Date(lock.at).getTime()
+      const alive = (() => {
+        try {
+          process.kill(lock.pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      })()
+      if (alive && age < 600_000) {
+        console.log('another fix is already running')
+        return
+      }
+    } catch {
+      /* Stale lock */
+    }
+    rmSync(lockFile)
   }
   mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
-  writeFileSync(lockFile, `${process.pid}`)
+  writeFileSync(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
   try {
     const resolveTargets = async () => {
       if (all) return discover()
