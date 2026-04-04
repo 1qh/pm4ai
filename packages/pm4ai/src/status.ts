@@ -193,7 +193,7 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
     const ciInfo = issues.find(i => i.type === 'info')
     const ciTime = (ciInfo ? timeAgo(ciInfo.detail.replace('passed ', '').replace('failed ', '')) : '').padEnd(6)
     const realIssues = issues.filter(i => i.type !== 'info')
-    const mark = realIssues.length > 0 ? '✗' : '✓'
+    const mark = realIssues.length > 0 ? '🔴' : '🟢'
     const warn = realIssues.length > 0 ? ` ${realIssues.length} issues` : ''
     lines.push(`${mark} ${name}  ${ciTime}${warn} ${f}`)
     if (realIssues.length > 0)
