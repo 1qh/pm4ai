@@ -161,6 +161,20 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   issues.push(...checkNotLatest(pkgs, projectPath))
   issues.push(...checkDuplicates(pkgs, projectPath))
   issues.push(...checkScripts(pkgs, projectPath))
+  const publishedPkgs = pkgs.filter(p => !p.pkg.private && (p.pkg.exports ?? p.pkg.main ?? p.pkg.bin) && p.pkg.name)
+  await Promise.all(
+    publishedPkgs.map(async p => {
+      const r = await $`bun pm view ${p.pkg.name} versions --json`.quiet().nothrow()
+      if (r.exitCode !== 0) return
+      try {
+        const versions = JSON.parse(r.stdout.toString()) as string[]
+        if (versions.length > 1)
+          issues.push({ detail: `${p.pkg.name} has ${versions.length} versions published, run cleanup`, type: 'drift' })
+      } catch {
+        /* Noop */
+      }
+    })
+  )
   return issues
 }
 export { audit, checkDuplicates, checkNotLatest, checkPackageConventions, checkScripts, usesForbidden }
