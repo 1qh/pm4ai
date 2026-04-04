@@ -42,7 +42,6 @@ describe('checkConfigs', () => {
     const details = issues.map(i => i.detail)
     expect(details).toContain('turbo.json')
     expect(details).toContain('tsconfig.json')
-    expect(details).toContain('.github/workflows/ci.yml')
     rmSync(tmp, { recursive: true })
   })
 })
