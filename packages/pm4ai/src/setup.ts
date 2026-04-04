@@ -3,8 +3,6 @@ import { write } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-const cliPath = join(import.meta.dir, 'cli.js')
-const runCmd = existsSync(cliPath) ? `bun ${cliPath}` : 'bunx pm4ai@latest'
 const SWIFTBAR_PLUGIN = `#!/bin/bash
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
@@ -12,7 +10,7 @@ const SWIFTBAR_PLUGIN = `#!/bin/bash
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-${runCmd} status --swiftbar
+bunx pm4ai@latest status --swiftbar
 `
 const bunPath = join(homedir(), '.bun', 'bin', 'bunx')
 const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
