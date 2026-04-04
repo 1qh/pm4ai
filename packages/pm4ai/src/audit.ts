@@ -62,14 +62,13 @@ const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[]
       // Skip root and auto-synced
     } else {
       const shortPath = pkgPath.replace(`${projectPath}/`, '')
-      const isPublished = pkg.private !== true
+      const isPublished = !pkg.private && (pkg.exports ?? pkg.main ?? pkg.bin)
       if (isPublished) {
         if (pkg.type !== 'module') issues.push({ detail: `${shortPath} should have "type": "module"`, type: 'drift' })
-        if (!pkg.exports) issues.push({ detail: `${shortPath} missing "exports" field`, type: 'drift' })
         if (!pkg.files) issues.push({ detail: `${shortPath} missing "files" field`, type: 'drift' })
         if (!pkg.license) issues.push({ detail: `${shortPath} missing "license" field`, type: 'drift' })
         if (!pkg.repository) issues.push({ detail: `${shortPath} missing "repository" field`, type: 'drift' })
-      } else if (!pkg.private) issues.push({ detail: `${shortPath} should be "private": true`, type: 'drift' })
+      }
       if (pkg.devDependencies && Object.keys(pkg.devDependencies as Record<string, string>).length > 0)
         issues.push({ detail: `${shortPath} devDependencies should be hoisted to root`, type: 'drift' })
     }
@@ -126,20 +125,22 @@ const usesForbidden = (cmd: string) =>
 const turboRe = /\bturbo\b/u
 const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  for (const { path: pkgPath, pkg } of pkgs) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const scripts = pkg.scripts as Record<string, string> | undefined
-    if (scripts)
-      for (const [script, cmd] of Object.entries(scripts)) {
-        if (usesForbidden(cmd))
-          issues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
-        if (turboRe.test(cmd) && !cmd.includes(TURBO_FLAG) && script !== 'dev')
-          issues.push({ detail: `script "${script}" missing --output-logs=errors-only in ${shortPath}`, type: 'drift' })
-      }
-    else {
+  const rootPkgPath = join(projectPath, 'package.json')
+  for (const { path: pkgPath, pkg } of pkgs)
+    if (isAutoSynced(pkgPath)) {
       // Skip
+    } else {
+      const shortPath = pkgPath.replace(`${projectPath}/`, '')
+      const isRoot = pkgPath === rootPkgPath
+      const scripts = Object.entries((pkg.scripts ?? {}) as Record<string, string>)
+      for (const [script, cmd] of scripts) {
+        if (usesForbidden(cmd)) issues.push({ detail: `"${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
+        if (isRoot && turboRe.test(cmd) && !cmd.includes(TURBO_FLAG) && !script.startsWith('dev'))
+          issues.push({ detail: `"${script}" missing ${TURBO_FLAG}`, type: 'drift' })
+      }
+      if (!isRoot && scripts.some(([s]) => s === 'clean'))
+        issues.push({ detail: `${shortPath} has redundant "clean" script, use root clean.sh`, type: 'drift' })
     }
-  }
   return issues
 }
 const audit = async (projectPath: string): Promise<Issue[]> => {
