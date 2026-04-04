@@ -1,9 +1,9 @@
 import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Issue, PackageJson } from './types.js'
+import type { Issue } from './types.js'
 import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
-import { getGhRepo, readJson } from './utils.js'
+import { debug, getGhRepo, readJson, readPkg } from './utils.js'
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const repo = await getGhRepo(projectPath)
@@ -12,6 +12,7 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
     await $`gh run list --repo ${repo} --limit 1 --json conclusion,createdAt --jq '.[0] | "\(.conclusion) \(.createdAt)"'`
       .quiet()
       .nothrow()
+  if (ciResult.exitCode !== 0) debug('command failed:', `gh run list --repo ${repo}`)
   const ciLine = ciResult.stdout.toString().trim()
   const [ciConclusion, ciTime] = ciLine.split(' ')
   if (ciConclusion === 'failure') issues.push({ detail: `failed ${ciTime ?? ''}`, type: 'ci' })
@@ -21,6 +22,7 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
+  if (statusResult.exitCode !== 0) debug('command failed:', 'git status --porcelain')
   const statusOut = statusResult.stdout.toString().trim()
   if (statusOut) {
     const count = statusOut.split('\n').length
@@ -51,7 +53,7 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
 }
 const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const pkg = await readJson<PackageJson>(join(projectPath, 'package.json'))
+  const pkg = await readPkg(join(projectPath, 'package.json'))
   if (!pkg) return issues
   if (!pkg.private) issues.push({ detail: 'root package.json should be private', type: 'drift' })
   if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
@@ -70,12 +72,18 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const mustExist = MUST_EXIST_FILES
   for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
-  const tsconfig = await readJson<{ extends?: string }>(join(projectPath, 'tsconfig.json'))
-  if (tsconfig && tsconfig.extends !== EXPECTED.tsconfigExtends)
-    issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
-  const vercel = await readJson<{ installCommand?: string }>(join(projectPath, 'vercel.json'))
-  if (vercel && vercel.installCommand !== EXPECTED.vercelInstall)
-    issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
+  const tsRaw = await readJson(join(projectPath, 'tsconfig.json'))
+  if (tsRaw && typeof tsRaw === 'object' && !Array.isArray(tsRaw)) {
+    const ext = 'extends' in tsRaw ? String(tsRaw.extends) : ''
+    if (ext && ext !== EXPECTED.tsconfigExtends)
+      issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
+  }
+  const vRaw = await readJson(join(projectPath, 'vercel.json'))
+  if (vRaw && typeof vRaw === 'object' && !Array.isArray(vRaw)) {
+    const cmd = 'installCommand' in vRaw ? String(vRaw.installCommand) : ''
+    if (cmd && cmd !== EXPECTED.vercelInstall)
+      issues.push({ detail: 'vercel.json installCommand should be "bun i"', type: 'drift' })
+  }
   return issues
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
@@ -120,6 +128,7 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   if (!existsSync(join(projectPath, '.vercel'))) return issues
   const result = await $`vercel ls`.cwd(projectPath).quiet().nothrow()
+  if (result.exitCode !== 0) debug('command failed:', 'vercel ls')
   const out = result.stdout.toString().trim()
   const latestLine = out.split('\n').find(l => l.includes('●'))
   if (latestLine?.includes('● Error')) issues.push({ detail: 'vercel deployment failed', type: 'deploy' })

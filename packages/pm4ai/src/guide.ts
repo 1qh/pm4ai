@@ -19,6 +19,7 @@ status output (only issues shown, healthy projects omitted):
     ci failed 2026-04-02
 flags:
   --swiftbar     output in SwiftBar menubar format
+  --verbose      print debug info to stderr
 synced files (copied verbatim from pm4ai repo):
   clean.sh  up.sh  bunfig.toml  .gitignore  CLAUDE.md (generated from rules)
 checks:

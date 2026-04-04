@@ -9,7 +9,7 @@ import { READONLY_UI } from './constants.js'
 import { discover } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
-import { projectName } from './utils.js'
+import { debug, projectName } from './utils.js'
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -60,6 +60,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 export const fix = async () => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   if (existsSync(lockFile)) {
+    debug('fix already running')
     console.log('another fix is already running')
     return
   }

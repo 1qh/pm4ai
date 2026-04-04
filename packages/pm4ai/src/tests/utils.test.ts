@@ -18,7 +18,7 @@ describe('readJson', () => {
   test('valid JSON file returns parsed object', async () => {
     const p = join(tmpdir(), `test-${Date.now()}.json`)
     writeFileSync(p, '{"a":1}')
-    expect(await readJson<{ a: number }>(p)).toEqual({ a: 1 })
+    expect(await readJson(p)).toEqual({ a: 1 })
   })
   test('malformed JSON returns undefined', async () => {
     const p = join(tmpdir(), `test-bad-${Date.now()}.json`)

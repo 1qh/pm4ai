@@ -1,7 +1,9 @@
 /* eslint-disable no-console */
 import { guide } from './guide.js'
+import { setVerbose } from './utils.js'
 const command = process.argv[2]
 const flags = new Set(process.argv.slice(3))
+if (flags.has('--verbose')) setVerbose(true)
 if (!command) console.log(guide)
 else if (command === 'status') {
   const { status } = await import('./status.js')

@@ -1,2 +1,7 @@
+export { audit } from './audit.js'
+export { discover } from './discover.js'
+export { fix } from './fix.js'
 export { guide } from './guide.js'
+export { inferRules } from './infer.js'
+export { status } from './status.js'
 export type { Issue, IssueType, PackageJson } from './types.js'

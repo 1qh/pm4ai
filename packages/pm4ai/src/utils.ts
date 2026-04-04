@@ -1,20 +1,22 @@
+/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
+/* oxlint-disable no-empty */
+/* eslint-disable no-empty */
 import { $, file } from 'bun'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PackageJson } from './types.js'
-const parseJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text)
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: safe
-  } catch {} // eslint-disable-line no-empty
-}
-const readJson = async <T>(path: string): Promise<T | undefined> => {
+const readJson = async (path: string): Promise<unknown> => {
   const f = file(path)
   if (!(await f.exists())) return
-  const text = await f.text()
-  return parseJson(text) as T | undefined
+  try {
+    return (await f.json()) as unknown
+  } catch {}
 }
-const readPkg = async (path: string) => readJson<PackageJson>(path)
+const isPkg = (v: unknown): v is PackageJson => typeof v === 'object' && v !== null && !Array.isArray(v)
+const readPkg = async (path: string): Promise<PackageJson | undefined> => {
+  const raw = await readJson(path)
+  return isPkg(raw) ? raw : undefined
+}
 const projectName = (path: string): string => path.split('/').pop() ?? ''
 const getBunVersion = async (): Promise<string> => {
   const r = await $`bun --version`.quiet().nothrow()
@@ -46,4 +48,11 @@ const collectWorkspacePackages = async (projectPath: string): Promise<{ path: st
   for (const wp of wsPkgs) if (wp) results.push(wp)
   return results
 }
-export { collectWorkspacePackages, getBunVersion, getGhRepo, projectName, readJson, readPkg }
+let verbose = false
+const setVerbose = (v: boolean) => {
+  verbose = v
+}
+const debug = (...args: unknown[]) => {
+  if (verbose) console.error('[pm4ai]', ...args) // eslint-disable-line no-console
+}
+export { collectWorkspacePackages, debug, getBunVersion, getGhRepo, projectName, readJson, readPkg, setVerbose }

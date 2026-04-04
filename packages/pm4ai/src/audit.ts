@@ -2,15 +2,19 @@ import { $ } from 'bun'
 import { join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { FORBIDDEN_PM_PREFIXES, SKIP_PATTERNS, TURBO_FLAG } from './constants.js'
-import { collectWorkspacePackages } from './utils.js'
+import { collectWorkspacePackages, debug } from './utils.js'
 interface PkgEntry {
   path: string
   pkg: PackageJson
 }
 const latestNpmVersionCache = new Map<string, Promise<string | undefined>>()
 const fetchNpmVersion = async (pkg: string): Promise<string | undefined> => {
-  const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`).catch(() => undefined)
-  if (!res?.ok) return
+  const url = `https://registry.npmjs.org/${pkg}/latest`
+  const res = await fetch(url).catch(() => undefined)
+  if (!res?.ok) {
+    debug('fetch failed:', url)
+    return
+  }
   const data = (await res.json()) as { version: string }
   return data.version
 }
@@ -27,8 +31,12 @@ const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => 
 }
 let latestBunVersionCache: Promise<string | undefined> | undefined
 const fetchBunVersion = async (): Promise<string | undefined> => {
-  const res = await fetch('https://api.github.com/repos/oven-sh/bun/releases/latest').catch(() => undefined)
-  if (!res?.ok) return
+  const url = 'https://api.github.com/repos/oven-sh/bun/releases/latest'
+  const res = await fetch(url).catch(() => undefined)
+  if (!res?.ok) {
+    debug('fetch failed:', url)
+    return
+  }
   const data = (await res.json()) as { tag_name: string }
   return data.tag_name.replace('bun-v', '')
 }
@@ -155,4 +163,5 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   issues.push(...checkScripts(pkgs, projectPath))
   return issues
 }
-export { audit, usesForbidden }
+export { audit, checkDuplicates, checkNotLatest, checkPackageConventions, checkScripts, usesForbidden }
+export type { PkgEntry }

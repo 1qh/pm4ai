@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
-import { readPkg } from './utils.js'
+import { debug, readPkg } from './utils.js'
 interface Project {
   isCnsync: boolean
   isSelf: boolean
@@ -13,6 +13,7 @@ interface Project {
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
 const cloneIfMissing = async (repo: string, dest: string) => {
   if (existsSync(dest)) return dest
+  debug('cloning', repo, 'to', dest)
   mkdirSync(dirname(dest), { recursive: true })
   const { GH_ORG } = await import('./constants.js')
   await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
@@ -28,6 +29,7 @@ const discover = async (): Promise<{
     .quiet()
     .nothrow()
   const stdout = result.stdout.toString().trim()
+  if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
   const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted()
   const projectDirs = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
