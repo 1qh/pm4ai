@@ -76,30 +76,8 @@ const writeCheckResult = (opts: { pass: boolean; projectPath: string; summary?: 
 }
 const spawnBackgroundCheck = (projectPath: string) => {
   if (isCheckRunning(projectPath)) return
-  const cp = cachePath(projectPath)
-  const lp = lockPath(projectPath)
-  const dir = checksDir()
-  const script = [
-    `const {execSync} = require('child_process')`,
-    `const {mkdirSync, writeFileSync, rmSync} = require('fs')`,
-    `mkdirSync(${JSON.stringify(dir)}, {recursive: true})`,
-    `writeFileSync(${JSON.stringify(lp)}, JSON.stringify({pid: process.pid, at: new Date().toISOString()}))`,
-    `let commit = ''`,
-    `try { commit = execSync('git rev-parse HEAD', {cwd: ${JSON.stringify(projectPath)}, stdio: 'pipe'}).toString().trim() } catch {}`,
-    'try {',
-    `  execSync('bun run check', {cwd: ${JSON.stringify(projectPath)}, stdio: 'pipe'})`,
-    `  writeFileSync(${JSON.stringify(cp)}, JSON.stringify({at: new Date().toISOString(), pass: true, violations: 0, commit}))`,
-    '} catch(e) {',
-    `  const out = (e.stderr || e.stdout || '').toString()`,
-    String.raw`  const m = out.match(/(\d+)\s*(error|violation|problem|issue)/i)`,
-    '  const v = m ? parseInt(m[1]) : 1',
-    `  const summary = out.split('\\n').filter(Boolean).slice(-3).join('; ').slice(0, 200)`,
-    `  writeFileSync(${JSON.stringify(cp)}, JSON.stringify({at: new Date().toISOString(), pass: false, violations: v, summary, commit}))`,
-    '} finally {',
-    `  try { rmSync(${JSON.stringify(lp)}) } catch {}`,
-    '}'
-  ].join('\n')
-  const proc = spawn(['bun', '-e', script], { stderr: 'ignore', stdin: 'ignore', stdout: 'ignore' })
+  const workerPath = join(import.meta.dir, 'check-worker.js')
+  const proc = spawn(['bun', workerPath, projectPath], { stderr: 'ignore', stdin: 'ignore', stdout: 'ignore' })
   proc.unref()
 }
 export { getCommitsSince, getHeadCommit, isCheckRunning, readCheckResult, spawnBackgroundCheck, writeCheckResult }

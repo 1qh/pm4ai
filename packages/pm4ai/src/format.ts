@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { getBunVersion, getGhRepo, projectName } from './utils.js'
-const hasRealIssues = (issues: Issue[]) => issues.some(i => i.type !== 'info')
+const isInfoOnly = (i: Issue) => i.type === 'info' || (i.type === 'check' && !i.detail.startsWith('failed'))
+const hasRealIssues = (issues: Issue[]) => issues.some(i => !isInfoOnly(i))
 const formatIssues = (projectPath: string, issues: Issue[]): string => {
   if (issues.length === 0) return ''
   const lines = [projectPath, ...issues.map(issue => `  ${issue.type} ${issue.detail}`)]

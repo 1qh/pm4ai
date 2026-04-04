@@ -136,16 +136,16 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const checkLint = (projectPath: string): Issue[] => {
-  if (isCheckRunning(projectPath)) return [{ detail: 'check: running...', type: 'info' }]
+  if (isCheckRunning(projectPath)) return [{ detail: 'running...', type: 'check' }]
   const result = readCheckResult(projectPath)
-  if (!result) return [{ detail: 'check: never run', type: 'info' }]
+  if (!result) return [{ detail: 'never run', type: 'check' }]
   const ms = Date.now() - new Date(result.at).getTime()
   const mins = Math.floor(ms / 60_000)
   const age =
     mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
   const commitsBehind = getCommitsSince(projectPath, result.commit)
   const freshness = commitsBehind === 0 ? '(current)' : commitsBehind > 0 ? `(before ${commitsBehind} commits)` : ''
-  if (result.pass) return [{ detail: `check: passed ${age} ${freshness}`, type: 'info' }]
-  return [{ detail: `check: failed ${age} ${freshness}, ${result.violations} violations`, type: 'check' }]
+  if (result.pass) return [{ detail: `passed ${age} ${freshness}`, type: 'check' }]
+  return [{ detail: `failed ${age} ${freshness}, ${result.violations} violations`, type: 'check' }]
 }
 export { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkLint, checkRootPkg, checkVercel }
