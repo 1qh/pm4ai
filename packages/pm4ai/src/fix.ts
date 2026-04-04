@@ -92,9 +92,10 @@ export const fix = async (all = false) => {
     const blocked: string[] = []
     await Promise.all(
       consumers.map(async project => {
+        const name = projectName(project.path)
         const dirty = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
         if (dirty.stdout.toString().trim()) {
-          blocked.push(`${projectName(project.path)}: uncommitted changes`)
+          blocked.push(`${name}: uncommitted changes`)
           return
         }
         await $`git fetch`.cwd(project.path).quiet().nothrow()
@@ -102,8 +103,11 @@ export const fix = async (all = false) => {
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(project.path).quiet().nothrow()
         const b = Number.parseInt(behind.stdout.toString().trim(), 10)
         const a = Number.parseInt(ahead.stdout.toString().trim(), 10)
-        if (b > 0) blocked.push(`${projectName(project.path)}: ${b} commits behind remote`)
-        if (a > 0) blocked.push(`${projectName(project.path)}: ${a} commits ahead, push first`)
+        if (b > 0 && a === 0) {
+          await $`git pull`.cwd(project.path).quiet().nothrow()
+          console.log(`${name}: pulled ${b} commits`)
+        } else if (b > 0) blocked.push(`${name}: diverged (${b} behind, ${a} ahead)`)
+        else if (a > 0) blocked.push(`${name}: ${a} commits ahead, push first`)
       })
     )
     if (blocked.length > 0) {
