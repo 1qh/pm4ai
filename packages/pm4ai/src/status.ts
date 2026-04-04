@@ -123,7 +123,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       .nothrow()
   if (postcssFiles.stdout.toString().trim()) issues.push({ detail: 'postcss.config.mjs should be .ts', type: 'drift' })
   const tsNoCheck =
-    await $`rg '@ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
+    await $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
       .quiet()
       .nothrow()
   const tsNoCheckFiles = tsNoCheck.stdout.toString().trim()
