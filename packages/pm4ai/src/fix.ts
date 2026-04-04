@@ -94,7 +94,7 @@ export const fix = async (all = false) => {
       consumers.map(async project => {
         const name = projectName(project.path)
         const dirty = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
-        if (dirty.stdout.toString().trim()) {
+        if (dirty.stdout.toString().trim() && !project.isCnsync) {
           blocked.push(`${name}: uncommitted changes`)
           return
         }

@@ -71,8 +71,13 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const mustExist = MUST_EXIST_FILES
-  for (const entry of mustExist) if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
+  const repo = await getGhRepo(projectPath)
+  const isGitHub = repo?.includes('github.com') ?? false
+  for (const entry of MUST_EXIST_FILES)
+    if (entry.includes('.github/') && !isGitHub) {
+      // Skip GitHub-specific checks for non-GitHub repos
+    } else if (!existsSync(join(projectPath, entry))) issues.push({ detail: entry, type: 'missing' })
+
   const tsRaw = await readJson(join(projectPath, 'tsconfig.json'))
   if (tsRaw && typeof tsRaw === 'object' && !Array.isArray(tsRaw)) {
     const ext = 'extends' in tsRaw ? String(tsRaw.extends) : ''
