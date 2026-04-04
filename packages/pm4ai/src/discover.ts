@@ -85,7 +85,11 @@ const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> =>
         const name = d.split('/').pop()
         return name === PKG_NAME || name === MONOREPO_NAME
       })
-      if (dir) self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dir }
+      if (dir) {
+        const gitRoot = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
+        const root = gitRoot.stdout.toString().trim() || dir
+        self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: root }
+      }
     }
     if (!cnsync) {
       const dir = found.find(d => hasDirInside(d, READONLY_UI) && d.split('/').pop() !== MONOREPO_NAME)
