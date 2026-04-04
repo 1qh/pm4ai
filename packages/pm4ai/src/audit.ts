@@ -103,15 +103,22 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
 const forbiddenPrefixes = ['npm ', 'npx ', 'yarn ', 'pnpm ']
 const usesForbidden = (cmd: string) =>
   forbiddenPrefixes.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
-const checkForbiddenScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+const turboRe = /\bturbo\b/u
+const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   for (const { path: pkgPath, pkg } of pkgs) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     const scripts = pkg.scripts as Record<string, string> | undefined
     if (scripts)
-      for (const [script, cmd] of Object.entries(scripts))
+      for (const [script, cmd] of Object.entries(scripts)) {
         if (usesForbidden(cmd))
           issues.push({ detail: `script "${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
+        if (turboRe.test(cmd) && !cmd.includes('--output-logs=errors-only') && script !== 'dev')
+          issues.push({ detail: `script "${script}" missing --output-logs=errors-only in ${shortPath}`, type: 'drift' })
+      }
+    else {
+      // Skip
+    }
   }
   return issues
 }
@@ -133,7 +140,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   }
   issues.push(...checkNotLatest(pkgs, projectPath))
   issues.push(...checkDuplicates(pkgs, projectPath))
-  issues.push(...checkForbiddenScripts(pkgs, projectPath))
+  issues.push(...checkScripts(pkgs, projectPath))
   return issues
 }
 export type { Issue }
