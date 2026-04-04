@@ -17,11 +17,17 @@
     "pre-commit": "sh up.sh && git add -u"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "latest",
     "@types/bun": "latest",
+    "@types/mdx": "latest",
     "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
     "lintmax": "latest",
+    "postcss": "latest",
     "sherif": "latest",
     "simple-git-hooks": "latest",
+    "tailwindcss": "latest",
     "turbo": "latest",
     "typescript": "latest"
   },
