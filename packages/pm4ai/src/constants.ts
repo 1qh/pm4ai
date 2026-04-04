@@ -14,6 +14,8 @@ const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.y
 const PKG_NAME = 'pm4ai'
 const READONLY_UI = 'readonly/ui'
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
+const REQUIRED_ROOT_DEVDEPS = ['@types/bun', 'lintmax', 'sherif', 'simple-git-hooks', 'turbo', 'typescript']
+const REQUIRED_TRUSTED_DEPS = ['lintmax']
 const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 export {
@@ -27,6 +29,8 @@ export {
   MUST_EXIST_FILES,
   PKG_NAME,
   READONLY_UI,
+  REQUIRED_ROOT_DEVDEPS,
+  REQUIRED_TRUSTED_DEPS,
   SKIP_PATTERNS,
   TURBO_FLAG,
   VERBATIM_FILES

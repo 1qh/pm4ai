@@ -1,7 +1,13 @@
 import { $ } from 'bun'
 import { join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
-import { FORBIDDEN_PM_PREFIXES, SKIP_PATTERNS, TURBO_FLAG } from './constants.js'
+import {
+  FORBIDDEN_PM_PREFIXES,
+  REQUIRED_ROOT_DEVDEPS,
+  REQUIRED_TRUSTED_DEPS,
+  SKIP_PATTERNS,
+  TURBO_FLAG
+} from './constants.js'
 import { collectWorkspacePackages, debug } from './utils.js'
 interface PkgEntry {
   path: string
@@ -136,6 +142,63 @@ const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   }
   return issues
 }
+const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
+  const issues: Issue[] = []
+  const scripts = rootPkg.scripts ?? {}
+  if (!scripts.build?.includes('turbo')) issues.push({ detail: 'root "build" should use turbo', type: 'drift' })
+  if (scripts.check && !scripts.check.includes('lintmax check'))
+    issues.push({ detail: 'root "check" should include "lintmax check"', type: 'drift' })
+  if (scripts.fix && !scripts.fix.includes('lintmax fix'))
+    issues.push({ detail: 'root "fix" should include "lintmax fix"', type: 'drift' })
+  return issues
+}
+const checkRootWorkspacesAndDevDeps = (rootPkg: PackageJson): Issue[] => {
+  const issues: Issue[] = []
+  if (!rootPkg.workspaces || rootPkg.workspaces.length === 0)
+    issues.push({ detail: 'root missing "workspaces" field', type: 'missing' })
+  const allDeps = { ...rootPkg.dependencies, ...rootPkg.devDependencies }
+  for (const dep of REQUIRED_ROOT_DEVDEPS)
+    if (!allDeps[dep]) issues.push({ detail: `root missing "${dep}" in devDependencies`, type: 'missing' })
+  return issues
+}
+const checkTrustedDeps = (rootPkg: PackageJson): Issue[] => {
+  const issues: Issue[] = []
+  const trusted = rootPkg.trustedDependencies ?? []
+  for (const dep of REQUIRED_TRUSTED_DEPS)
+    if (!trusted.includes(dep)) issues.push({ detail: `root missing "${dep}" in trustedDependencies`, type: 'missing' })
+  return issues
+}
+const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
+  const published = pkgs.filter(p => !p.pkg.private && (p.pkg.exports ?? p.pkg.main ?? p.pkg.bin) && p.pkg.name)
+  for (const { path: pkgPath, pkg } of published) {
+    const shortPath = pkgPath.replace(`${projectPath}/`, '')
+    if (!pkg.scripts?.postpublish)
+      issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
+  }
+  return issues
+}
+const checkAppPackages = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
+  for (const { path: pkgPath, pkg } of pkgs) {
+    const rel = pkgPath.replace(`${projectPath}/`, '')
+    if (rel.startsWith('apps/') && !pkg.private) issues.push({ detail: `${rel} should be private`, type: 'drift' })
+  }
+  return issues
+}
+const gitCleanRe = /\bgit\s+clean\b/u
+const checkSubPkgScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
+  const issues: Issue[] = []
+  const rootPkgPath = join(projectPath, 'package.json')
+  const filtered = pkgs.filter(p => !isAutoSynced(p.path) && p.path !== rootPkgPath)
+  for (const { path: pkgPath, pkg } of filtered) {
+    const shortPath = pkgPath.replace(`${projectPath}/`, '')
+    for (const [script, cmd] of Object.entries(pkg.scripts ?? {}))
+      if (gitCleanRe.test(cmd))
+        issues.push({ detail: `"${script}" uses git clean in ${shortPath}, use rm -rf`, type: 'forbidden' })
+  }
+  return issues
+}
 const audit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
@@ -157,10 +220,18 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
         issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
     }
   }
+  if (rootPkg) {
+    issues.push(...checkRootScripts(rootPkg))
+    issues.push(...checkRootWorkspacesAndDevDeps(rootPkg))
+    issues.push(...checkTrustedDeps(rootPkg))
+  }
   issues.push(...checkPackageConventions(pkgs, projectPath))
   issues.push(...checkNotLatest(pkgs, projectPath))
   issues.push(...checkDuplicates(pkgs, projectPath))
   issues.push(...checkScripts(pkgs, projectPath))
+  issues.push(...checkPublishedPkgConventions(pkgs, projectPath))
+  issues.push(...checkAppPackages(pkgs, projectPath))
+  issues.push(...checkSubPkgScripts(pkgs, projectPath))
   const publishedPkgs = pkgs.filter(p => !p.pkg.private && (p.pkg.exports ?? p.pkg.main ?? p.pkg.bin) && p.pkg.name)
   await Promise.all(
     publishedPkgs.map(async p => {
@@ -177,5 +248,18 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   )
   return issues
 }
-export { audit, checkDuplicates, checkNotLatest, checkPackageConventions, checkScripts, usesForbidden }
+export {
+  audit,
+  checkAppPackages,
+  checkDuplicates,
+  checkNotLatest,
+  checkPackageConventions,
+  checkPublishedPkgConventions,
+  checkRootScripts,
+  checkRootWorkspacesAndDevDeps,
+  checkScripts,
+  checkSubPkgScripts,
+  checkTrustedDeps,
+  usesForbidden
+}
 export type { PkgEntry }

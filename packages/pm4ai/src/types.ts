@@ -34,6 +34,7 @@ interface PackageJson {
   repository?: unknown
   scripts?: Record<string, string>
   'simple-git-hooks'?: Record<string, string>
+  trustedDependencies?: string[]
   type?: string
   workspaces?: string[]
 }

@@ -9,7 +9,7 @@ import { writeCheckResult } from './check-cache.js'
 import { READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
-import { syncClaudeMd, syncConfigs, syncPackageJson, syncUi } from './sync.js'
+import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncUi } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const gitPull = async (projectPath: string): Promise<Issue[]> => {
@@ -139,7 +139,8 @@ export const fix = async (all = false) => {
         syncClaudeMd(self.path, project.path),
         syncPackageJson(project.path)
       ])
-      issues.push(...configIssues, ...claudeIssues, ...pkgIssues)
+      const subPkgIssues = await syncSubPackages(project.path)
+      issues.push(...configIssues, ...claudeIssues, ...pkgIssues, ...subPkgIssues)
       if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
       const auditIssues = await audit(project.path)
       issues.push(...auditIssues)
