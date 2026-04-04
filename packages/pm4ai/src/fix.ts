@@ -89,12 +89,13 @@ export const fix = async (all = false) => {
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
-    const blocked: string[] = []
+    await Promise.all([gitPull(self.path), gitPull(cnsync.path)])
+    const gitState = new Map<string, 'ahead' | 'behind' | 'clean' | 'dirty'>()
     await Promise.all(
       consumers.map(async project => {
         const dirty = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
         if (dirty.stdout.toString().trim()) {
-          blocked.push(`${projectName(project.path)}: uncommitted changes`)
+          gitState.set(project.path, 'dirty')
           return
         }
         await $`git fetch`.cwd(project.path).quiet().nothrow()
@@ -102,23 +103,11 @@ export const fix = async (all = false) => {
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(project.path).quiet().nothrow()
         const b = Number.parseInt(behind.stdout.toString().trim(), 10)
         const a = Number.parseInt(ahead.stdout.toString().trim(), 10)
-        if (b > 0) blocked.push(`${projectName(project.path)}: ${b} commits behind remote`)
-        if (a > 0) blocked.push(`${projectName(project.path)}: ${a} commits ahead of remote, push first`)
+        if (b > 0) gitState.set(project.path, 'behind')
+        else if (a > 0) gitState.set(project.path, 'ahead')
+        else gitState.set(project.path, 'clean')
       })
     )
-    if (blocked.length > 0) {
-      console.log('fix requires clean git state:')
-      for (const msg of blocked) console.log(`  ${msg}`)
-      return
-    }
-    const allProjects = [self, cnsync, ...consumers.filter(c => !c.isCnsync)]
-    const pullResults = await Promise.all(
-      allProjects.map(async p => ({
-        issues: await gitPull(p.path),
-        name: p.name
-      }))
-    )
-    for (const r of pullResults) for (const issue of r.issues) console.log(`${r.name}: ${issue.detail}`)
     const tasks = consumers.map(async project => {
       const issues: Issue[] = []
       const [configIssues, claudeIssues, pkgIssues] = await Promise.all([
@@ -130,8 +119,11 @@ export const fix = async (all = false) => {
       if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
       const auditIssues = await audit(project.path)
       issues.push(...auditIssues)
-      const maintainIssues = await maintain(project.path)
-      issues.push(...maintainIssues)
+      const state = gitState.get(project.path)
+      if (state === 'clean') {
+        const maintainIssues = await maintain(project.path)
+        issues.push(...maintainIssues)
+      } else if (state) issues.push({ detail: `maintain skipped (${state})`, type: 'info' })
       if (issues.length > 0) {
         const lines = [project.path, ...issues.map(i => `  ${i.type} ${i.detail}`)]
         console.log(lines.join('\n'))
