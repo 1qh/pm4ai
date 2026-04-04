@@ -127,8 +127,8 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   if (!existsSync(join(projectPath, '.vercel'))) return issues
-  const result = await $`vercel ls`.cwd(projectPath).quiet().nothrow()
-  if (result.exitCode !== 0) debug('command failed:', 'vercel ls')
+  const result = await $`bunx vercel@latest ls`.cwd(projectPath).quiet().nothrow()
+  if (result.exitCode !== 0) debug('command failed:', 'bunx vercel@latest ls')
   const out = result.stdout.toString().trim()
   const latestLine = out.split('\n').find(l => l.includes('●'))
   if (latestLine?.includes('● Error')) issues.push({ detail: 'vercel deployment failed', type: 'deploy' })
