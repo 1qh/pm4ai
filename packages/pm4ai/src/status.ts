@@ -153,8 +153,12 @@ const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
     const name = path.split('/').pop() ?? path
     if (hasRealIssues(issues)) {
       lines.push(`${name} | sfimage=xmark.circle sfcolor=red`)
-      for (const issue of issues) if (issue.type !== 'info') lines.push(`--${issue.detail} | color=red`)
-    } else lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
+      for (const issue of issues)
+        lines.push(`--${issue.type}: ${issue.detail} | color=${issue.type === 'info' ? 'gray' : 'red'}`)
+    } else {
+      lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
+      for (const issue of issues) lines.push(`--${issue.type}: ${issue.detail} | color=gray`)
+    }
   }
   return lines.join('\n')
 }
