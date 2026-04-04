@@ -23,7 +23,7 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const ciLine = ciResult.stdout.toString().trim()
   const [ciConclusion, ciTime] = ciLine.split(' ')
   if (ciConclusion === 'failure') issues.push({ detail: `failed ${ciTime ?? ''}`, type: 'ci' })
-  else if (ciConclusion === 'success') issues.push({ detail: `passed ${ciTime ?? ''}`, type: 'ci' })
+  else if (ciConclusion === 'success') issues.push({ detail: `passed ${ciTime ?? ''}`, type: 'info' })
   return issues
 }
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
@@ -137,24 +137,24 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     })
   return issues
 }
+const hasRealIssues = (issues: Issue[]) => issues.some(i => i.type !== 'info')
 const formatIssues = (projectPath: string, issues: Issue[]): string => {
   if (issues.length === 0) return ''
   const lines = [projectPath, ...issues.map(issue => `  ${issue.type} ${issue.detail}`)]
   return lines.join('\n')
 }
 const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
-  const hasAny = [...allIssues.values()].some(i => i.length > 0)
+  const anyReal = [...allIssues.values()].some(hasRealIssues)
   const lines: string[] = []
-  if (hasAny) lines.push(':xmark.circle.fill: | sfcolor=red')
+  if (anyReal) lines.push(':xmark.circle.fill: | sfcolor=red')
   else lines.push(':checkmark.circle.fill: | sfcolor=green')
   lines.push('---')
   for (const [path, issues] of allIssues) {
     const name = path.split('/').pop() ?? path
-    if (issues.length === 0) lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
-    else {
+    if (hasRealIssues(issues)) {
       lines.push(`${name} | sfimage=xmark.circle sfcolor=red`)
-      for (const issue of issues) lines.push(`--${issue.type}: ${issue.detail}`)
-    }
+      for (const issue of issues) if (issue.type !== 'info') lines.push(`--${issue.type}: ${issue.detail}`)
+    } else lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
   }
   return lines.join('\n')
 }
