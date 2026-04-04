@@ -11,7 +11,8 @@
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
     "postinstall": "sherif",
-    "prepare": "bunx simple-git-hooks"
+    "prepare": "bunx simple-git-hooks",
+    "test": "turbo test --output-logs=errors-only"
   },
   "simple-git-hooks": {
     "pre-commit": "sh up.sh && git add -u"

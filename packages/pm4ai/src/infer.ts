@@ -45,4 +45,4 @@ const inferRules = async (projectPath: string, rulesDir?: string): Promise<strin
   }
   return rules
 }
-export { inferRules }
+export { inferRules, parseFrontmatter }

@@ -155,4 +155,4 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   issues.push(...checkScripts(pkgs, projectPath))
   return issues
 }
-export { audit }
+export { audit, usesForbidden }
