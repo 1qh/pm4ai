@@ -226,7 +226,8 @@ const hoistDevDeps = ({
   subDevDeps
 }: HoistArgs): { hoisted: boolean; remaining: Record<string, string> | undefined } => {
   const external = Object.entries(subDevDeps).filter(([, v]) => !v.startsWith('workspace:'))
-  if (external.length === 0) return { hoisted: false, remaining: subDevDeps }
+  if (external.length === 0)
+    return { hoisted: false, remaining: Object.keys(subDevDeps).length === 0 ? undefined : subDevDeps }
   let hoisted = false
   for (const [name, version] of external)
     if (!rootDevDeps[name]) {
