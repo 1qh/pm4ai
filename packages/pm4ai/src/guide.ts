@@ -5,6 +5,7 @@ commands:
   pm4ai          this guide
   pm4ai status   view issues across all projects (no changes)
   pm4ai fix      sync configs + pull latest deps + lint/build check
+  pm4ai init <n>  scaffold a new pm4ai-ready project, then run pm4ai fix
 status output (only issues shown, healthy projects omitted):
   /path/to/project
     git 3 commits behind remote

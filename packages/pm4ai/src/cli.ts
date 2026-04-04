@@ -9,4 +9,10 @@ else if (command === 'status') {
 } else if (command === 'fix') {
   const { fix } = await import('./fix.js')
   await fix()
+} else if (command === 'init') {
+  const name = process.argv[3]
+  if (name) {
+    const { init } = await import('./init.js')
+    await init(name)
+  } else console.log('usage: pm4ai init <name>')
 } else console.log(guide)
