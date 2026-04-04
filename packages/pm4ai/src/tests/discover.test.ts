@@ -7,7 +7,7 @@ import { isCnsyncRepo } from '../discover.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-discover-'))
 const initGitRepo = (dir: string, remote?: string) => {
   execSync('git init', { cwd: dir, stdio: 'pipe' })
-  execSync('git commit --allow-empty -m init', { cwd: dir, stdio: 'pipe' })
+  execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: dir, stdio: 'pipe' })
   if (remote) execSync(`git remote add origin ${remote}`, { cwd: dir, stdio: 'pipe' })
 }
 describe('isCnsyncRepo', () => {
