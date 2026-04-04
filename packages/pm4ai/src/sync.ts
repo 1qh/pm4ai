@@ -1,5 +1,5 @@
 import { file, write } from 'bun'
-import { cpSync, existsSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './audit.js'
 import { inferRules } from './infer.js'
@@ -33,14 +33,8 @@ export const syncClaudeMd = async (selfPath: string, projectPath: string): Promi
     issues.push({ detail: 'rules directory not found in pm4ai repo', type: 'error' })
     return issues
   }
-  const inferred = await inferRules(projectPath)
-  const allMdx = readdirSync(rulesDir).filter(f => f.endsWith('.mdx'))
-  const ruleFiles = [...allMdx.filter(f => f === 'index.mdx'), ...allMdx.filter(f => f !== 'index.mdx').toSorted()]
-  const contents = await Promise.all(
-    ruleFiles
-      .filter(entry => inferred.includes(entry.replace('.mdx', '')))
-      .map(async entry => file(join(rulesDir, entry)).text())
-  )
+  const inferred = await inferRules(projectPath, rulesDir)
+  const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
   const blocks = contents.map(c => stripFrontmatter(c))
   const generated = `${blocks.join('\n\n---\n\n')}\n`
   const claudeFile = file(join(projectPath, 'CLAUDE.md'))
