@@ -69,7 +69,9 @@ const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[]
         if (!pkg.license) issues.push({ detail: `${shortPath} missing "license" field`, type: 'drift' })
         if (!pkg.repository) issues.push({ detail: `${shortPath} missing "repository" field`, type: 'drift' })
       }
-      if (pkg.devDependencies && Object.keys(pkg.devDependencies as Record<string, string>).length > 0)
+      const devDeps = pkg.devDependencies as Record<string, string> | undefined
+      const externalDevDeps = devDeps ? Object.entries(devDeps).filter(([, v]) => !v.startsWith('workspace:')) : []
+      if (externalDevDeps.length > 0)
         issues.push({ detail: `${shortPath} devDependencies should be hoisted to root`, type: 'drift' })
     }
   return issues
