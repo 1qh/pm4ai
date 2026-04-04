@@ -1,0 +1,40 @@
+import { describe, expect, test } from 'bun:test'
+import { execSync } from 'node:child_process'
+import { join } from 'node:path'
+const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.js')
+const run = (args: string) => execSync(`bun ${cli} ${args}`, { encoding: 'utf8', timeout: 10_000 }).trim()
+describe('guide', () => {
+  test('no args prints guide with all commands', () => {
+    const out = run('')
+    expect(out).toContain('pm4ai')
+    expect(out).toContain('commands:')
+    expect(out).toContain('status')
+    expect(out).toContain('fix')
+    expect(out).toContain('init')
+    expect(out).toContain('setup')
+    expect(out).toContain('--verbose')
+    expect(out).toContain('--all')
+    expect(out).toContain('--swiftbar')
+  })
+  test('unknown command prints guide', () => {
+    const out = run('unknown')
+    expect(out).toContain('commands:')
+  })
+  test('init without name prints usage', () => {
+    const out = run('init')
+    expect(out).toContain('usage')
+  })
+  test('guide includes fix behavior', () => {
+    const out = run('')
+    expect(out).toContain('clean git')
+    expect(out).toContain('syncs')
+    expect(out).toContain('maintains')
+  })
+  test('guide includes checks list', () => {
+    const out = run('')
+    expect(out).toContain('checks:')
+    expect(out).toContain('git status')
+    expect(out).toContain('config drift')
+    expect(out).toContain('ci status')
+  })
+})
