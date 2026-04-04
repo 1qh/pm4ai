@@ -99,8 +99,12 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   for (const { pkg } of pkgs) {
     const name = pkg.name as string | undefined
     if (name) {
-      const deps = new Set<string>()
-      for (const [n, v] of getDepsFromPkg(pkg)) if (!(v.startsWith('workspace:') || n.startsWith('@types/'))) deps.add(n)
+      const prodDeps = pkg.dependencies as Record<string, string> | undefined
+      const deps = new Set(
+        Object.entries(prodDeps ?? {})
+          .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
+          .map(([n]) => n)
+      )
       pkgDepsByName.set(name, deps)
     } else {
       // Skip
@@ -154,12 +158,16 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     const latest = await getLatestBunVersion()
     if (latest && bunVersion !== latest) issues.push({ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' })
   }
-  const lintmaxLatest = await getLatestNpmVersion('lintmax')
-  if (lintmaxLatest) {
-    const result = await $`bun why lintmax`.cwd(projectPath).quiet().nothrow()
-    const resolved = result.stdout.toString().trim()
-    if (resolved && !resolved.includes(lintmaxLatest))
-      issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
+  const rootDeps = getDepsFromPkg(rootPkg ?? {})
+  const lintmaxVersion = rootDeps.get('lintmax')
+  if (lintmaxVersion && !lintmaxVersion.startsWith('workspace:')) {
+    const lintmaxLatest = await getLatestNpmVersion('lintmax')
+    if (lintmaxLatest) {
+      const result = await $`bun why lintmax`.cwd(projectPath).quiet().nothrow()
+      const resolved = result.stdout.toString().trim()
+      if (resolved && !resolved.includes(lintmaxLatest))
+        issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
+    }
   }
   issues.push(...checkPackageConventions(pkgs, projectPath))
   issues.push(...checkNotLatest(pkgs, projectPath))
