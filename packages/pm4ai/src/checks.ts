@@ -2,7 +2,7 @@ import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
-import { getCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
+import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
 import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
@@ -143,7 +143,7 @@ const checkLint = (projectPath: string): Issue[] => {
   const mins = Math.floor(ms / 60_000)
   const age =
     mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
-  const commitsBehind = getCommitsSince(projectPath, result.commit)
+  const commitsBehind = getCodeCommitsSince(projectPath, result.commit)
   const freshness = commitsBehind === 0 ? '(current)' : commitsBehind > 0 ? `(before ${commitsBehind} commits)` : ''
   if (result.pass) return [{ detail: `passed ${age} ${freshness}`, type: 'check' }]
   return [{ detail: `failed ${age} ${freshness}, ${result.violations} violations`, type: 'check' }]

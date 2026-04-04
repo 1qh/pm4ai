@@ -6,6 +6,7 @@ import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
 import { projectName } from './utils.js'
 interface CheckResult {
   at: string
@@ -30,11 +31,14 @@ const getHeadCommit = (projectPath: string): string => {
   } catch {}
   return ''
 }
-const getCommitsSince = (projectPath: string, commit: string): number => {
+const getCodeCommitsSince = (projectPath: string, commit: string): number => {
   if (!commit) return -1
   try {
+    const excludes = [CLAUDE_MD, '*.md', ...VERBATIM_FILES].map(f => `':!${f}'`).join(' ')
     return Number.parseInt(
-      execSync(`git rev-list --count ${commit}..HEAD`, { cwd: projectPath, stdio: 'pipe' }).toString().trim(),
+      execSync(`git rev-list --count ${commit}..HEAD -- ${excludes}`, { cwd: projectPath, stdio: 'pipe' })
+        .toString()
+        .trim(),
       10
     )
   } catch {}
@@ -80,5 +84,5 @@ const spawnBackgroundCheck = (projectPath: string) => {
   const proc = spawn(['bun', workerPath, projectPath], { stderr: 'ignore', stdin: 'ignore', stdout: 'ignore' })
   proc.unref()
 }
-export { getCommitsSince, getHeadCommit, isCheckRunning, readCheckResult, spawnBackgroundCheck, writeCheckResult }
+export { getCodeCommitsSince, getHeadCommit, isCheckRunning, readCheckResult, spawnBackgroundCheck, writeCheckResult }
 export type { CheckResult }
