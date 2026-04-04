@@ -6,6 +6,26 @@ import type { Issue } from './audit.js'
 import { audit } from './audit.js'
 import { discover } from './discover.js'
 import { readLog } from './log.js'
+const ghRepoRe = /github\.com[/:](?<repo>[^/]+\/[^/.]+)/u
+const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
+  const result = await $`git remote get-url origin`.cwd(projectPath).quiet().nothrow()
+  const url = result.stdout.toString().trim()
+  return ghRepoRe.exec(url)?.groups?.repo
+}
+const checkCi = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const repo = await getGhRepo(projectPath)
+  if (!repo) return issues
+  const ciResult =
+    await $`gh run list --repo ${repo} --limit 1 --json conclusion,createdAt --jq '.[0] | "\(.conclusion) \(.createdAt)"'`
+      .quiet()
+      .nothrow()
+  const ciLine = ciResult.stdout.toString().trim()
+  const [ciConclusion, ciTime] = ciLine.split(' ')
+  if (ciConclusion === 'failure') issues.push({ detail: `failed ${ciTime ?? ''}`, type: 'ci' })
+  else if (ciConclusion === 'success') issues.push({ detail: `passed ${ciTime ?? ''}`, type: 'ci' })
+  return issues
+}
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
@@ -90,13 +110,14 @@ export const status = async (swiftbar = false) => {
   const allIssues = new Map<string, Issue[]>()
   const checks = consumers.map(async project => {
     const issues: Issue[] = []
-    const [gitIssues, driftIssues, existIssues, auditIssues] = await Promise.all([
+    const [gitIssues, driftIssues, existIssues, auditIssues, ciIssues] = await Promise.all([
       checkGit(project.path),
       checkDrift(self.path, project.path),
       checkExists(project.path),
-      audit(project.path)
+      audit(project.path),
+      checkCi(project.path)
     ])
-    issues.push(...gitIssues, ...driftIssues, ...existIssues, ...auditIssues)
+    issues.push(...gitIssues, ...driftIssues, ...existIssues, ...auditIssues, ...ciIssues)
     const logEntry = log.find(e => e.path === project.path)
     if (logEntry && !logEntry.pass) issues.push({ detail: `failed ${logEntry.at}`, type: 'up.sh' })
     allIssues.set(project.path, issues)
