@@ -158,9 +158,12 @@ const getBunVer = async (): Promise<string> => {
 const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
   const uiDirs = allPaths.map(p => join(p, 'readonly', 'ui', 'src')).filter(d => existsSync(d))
   if (uiDirs.length === 0) return '?'
-  const r = await $`stat -f %m ${uiDirs[0]}`.quiet().nothrow()
-  const ts = Number.parseInt(r.stdout.toString().trim(), 10)
-  return ts > 0 ? timeAgo(new Date(ts * 1000).toISOString()) : '?'
+  const r = await $`git log -1 --format=%ci -- readonly/ui`
+    .cwd(allPaths.find(p => existsSync(join(p, 'readonly', 'ui', 'src'))) ?? '')
+    .quiet()
+    .nothrow()
+  const out = r.stdout.toString().trim()
+  return out ? timeAgo(new Date(out).toISOString()) : '?'
 }
 const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
   const anyReal = [...allIssues.values()].some(hasRealIssues)
@@ -177,24 +180,26 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   const lines: string[] = []
   if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
   else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
+  const f = '| font=Menlo size=13'
   lines.push('---')
-  lines.push(`${total} projects · ${totalIssues} issues · bun ${bunVer} · ui ${uiSync}`)
+  lines.push(`${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`)
   lines.push('---')
+  const maxName = Math.max(...[...allIssues.keys()].map(p => (p.split('/').pop() ?? '').length))
   const allIssueLines: string[] = []
   for (const [path, issues] of allIssues) {
-    const name = path.split('/').pop() ?? path
+    const name = (path.split('/').pop() ?? '').padEnd(maxName)
     const repo = repoMap.get(path)
     const ghUrl = repo ? `https://github.com/${repo}` : ''
     const ciInfo = issues.find(i => i.type === 'info')
-    const ciTime = ciInfo ? timeAgo(ciInfo.detail.replace('passed ', '').replace('failed ', '')) : ''
+    const ciTime = (ciInfo ? timeAgo(ciInfo.detail.replace('passed ', '').replace('failed ', '')) : '').padEnd(6)
     const realIssues = issues.filter(i => i.type !== 'info')
-    const icon = realIssues.length > 0 ? '🔴' : '🟢'
-    const suffix = realIssues.length > 0 ? `  ⚠ ${realIssues.length}` : ''
-    lines.push(`${icon} ${name.padEnd(12)} ${ciTime}${suffix}`)
+    const mark = realIssues.length > 0 ? '✗' : '✓'
+    const warn = realIssues.length > 0 ? ` ${realIssues.length} issues` : ''
+    lines.push(`${mark} ${name}  ${ciTime}${warn} ${f}`)
     if (realIssues.length > 0)
       for (const issue of realIssues) {
-        lines.push(`--${issue.detail} | color=#ff6b6b`)
-        allIssueLines.push(`${name}: ${issue.detail}`)
+        lines.push(`--${issue.detail} ${f} color=#ff6b6b`)
+        allIssueLines.push(`${name.trim()}: ${issue.detail}`)
       }
     if (ghUrl) lines.push(`--GitHub | href=${ghUrl}`)
     lines.push(`--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`)
