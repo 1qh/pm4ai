@@ -18,7 +18,8 @@ const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
 const cloneIfMissing = async (repo: string, dest: string) => {
   if (existsSync(dest)) return dest
   mkdirSync(dirname(dest), { recursive: true })
-  await $`git clone https://github.com/1qh/${repo}.git ${dest}`.quiet()
+  const { GH_ORG } = await import('./constants.js')
+  await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
   return dest
 }
 const discover = async (): Promise<{

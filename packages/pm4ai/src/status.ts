@@ -7,7 +7,6 @@ import { audit } from './audit.js'
 import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { discover } from './discover.js'
 const ghRepoRe = /github\.com[/:](?<repo>[^/]+\/[^/.]+)/u
-const vercelProjectRe = /1qhs-projects\/(?<name>\S+)/u
 const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
   const result = await $`git remote get-url origin`.cwd(projectPath).quiet().nothrow()
   const url = result.stdout.toString().trim()
@@ -221,29 +220,21 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   lines.push('Refresh | refresh=true')
   return lines.join('\n')
 }
-const fetchVercelStatus = async (): Promise<Map<string, string>> => {
-  const result = await $`vercel ls --scope 1qhs-projects --limit 20`.quiet().nothrow()
+const checkVercel = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  if (!existsSync(join(projectPath, '.vercel'))) return issues
+  const result = await $`vercel ls`.cwd(projectPath).quiet().nothrow()
   const out = result.stdout.toString().trim()
-  const map = new Map<string, string>()
-  for (const line of out.split('\n')) {
-    const readyMatch = line.includes('● Ready')
-    const errorMatch = line.includes('● Error')
-    const projectMatch = vercelProjectRe.exec(line)
-    if (projectMatch?.groups?.name && !map.has(projectMatch.groups.name))
-      map.set(projectMatch.groups.name, readyMatch ? 'ready' : errorMatch ? 'error' : 'unknown')
-  }
-  return map
+  const latestLine = out.split('\n').find(l => l.includes('●'))
+  if (latestLine?.includes('● Error')) issues.push({ detail: 'vercel deployment failed', type: 'deploy' })
+  return issues
 }
 export const status = async (swiftbar = false) => {
   const { consumers, self } = await discover()
   const allIssues = new Map<string, Issue[]>()
   const allProjects = [self, ...consumers]
-  const vercelStatus = await fetchVercelStatus()
   const checks = allProjects.map(async project => {
     const issues: Issue[] = []
-    const projectName = project.path.split('/').pop() ?? ''
-    const deploy = vercelStatus.get(projectName)
-    if (deploy === 'error') issues.push({ detail: 'vercel deployment failed', type: 'deploy' })
     const results = await Promise.all([
       checkGit(project.path),
       checkDrift(self.path, project.path),
@@ -251,7 +242,8 @@ export const status = async (swiftbar = false) => {
       checkConfigs(project.path),
       checkForbidden(project.path),
       audit(project.path),
-      checkCi(project.path)
+      checkCi(project.path),
+      checkVercel(project.path)
     ])
     for (const r of results) issues.push(...r)
     allIssues.set(project.path, issues)

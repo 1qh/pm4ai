@@ -9,11 +9,13 @@ const EXPECTED = {
   tsconfigExtends: 'lintmax/tsconfig',
   vercelInstall: 'bun i'
 }
+const GH_ORG = '1qh'
 const TURBO_FLAG = '--output-logs=errors-only'
 export {
   EXPECTED,
   FORBIDDEN_LOCKFILES,
   FORBIDDEN_PM_PREFIXES,
+  GH_ORG,
   MUST_EXIST_FILES,
   SKIP_PATTERNS,
   TURBO_FLAG,

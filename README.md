@@ -17,7 +17,7 @@ bunx pm4ai@latest setup     # menubar + daily auto-run
 
 pm4ai discovers all your TypeScript projects by scanning for `lintmax` in package.json deps. No config files, no registration.
 
-**`pm4ai status`** checks 21 things across every project — git status, config drift, dep audit, CI status, Vercel deployments — and reports only issues.
+**`pm4ai status`** checks everything across every project — git status, config drift, dep audit, CI status, Vercel deployments — and reports only issues.
 
 **`pm4ai fix`** syncs dotfiles, generates CLAUDE.md from rules, copies readonly/ui, runs maintenance (`sh up.sh`) on every project in parallel.
 
