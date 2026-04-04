@@ -151,21 +151,20 @@ const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
   lines.push('---')
   for (const [path, issues] of allIssues) {
     const name = path.split('/').pop() ?? path
-    if (hasRealIssues(issues)) {
-      lines.push(`${name} | sfimage=xmark.circle sfcolor=red`)
-      for (const issue of issues)
-        lines.push(`--${issue.type}: ${issue.detail} | color=${issue.type === 'info' ? 'gray' : 'red'}`)
-    } else {
-      lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
-      for (const issue of issues) lines.push(`--${issue.type}: ${issue.detail} | color=gray`)
-    }
+    const icon = hasRealIssues(issues) ? '✗' : '✓'
+    const ciInfo = issues.find(i => i.type === 'info')
+    const ciTime = ciInfo ? ciInfo.detail.replace('passed ', '') : ''
+    const realIssueCount = issues.filter(i => i.type !== 'info').length
+    const suffix = realIssueCount > 0 ? `  ${realIssueCount} issues` : ''
+    lines.push(`${icon} ${name}  ${ciTime}${suffix} | font=Menlo size=12`)
   }
   return lines.join('\n')
 }
 export const status = async (swiftbar = false) => {
   const { consumers, self } = await discover()
   const allIssues = new Map<string, Issue[]>()
-  const checks = consumers.map(async project => {
+  const allProjects = [self, ...consumers]
+  const checks = allProjects.map(async project => {
     const issues: Issue[] = []
     const results = await Promise.all([
       checkGit(project.path),
