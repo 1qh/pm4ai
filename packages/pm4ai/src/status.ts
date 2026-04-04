@@ -146,14 +146,14 @@ const formatIssues = (projectPath: string, issues: Issue[]): string => {
 const formatSwiftBar = (allIssues: Map<string, Issue[]>): string => {
   const anyReal = [...allIssues.values()].some(hasRealIssues)
   const lines: string[] = []
-  if (anyReal) lines.push(':xmark.circle.fill: | sfcolor=red')
-  else lines.push(':checkmark.circle.fill: | sfcolor=green')
+  if (anyReal) lines.push('| sfimage=xmark.circle.fill sfcolor=red')
+  else lines.push('| sfimage=checkmark.circle.fill sfcolor=green')
   lines.push('---')
   for (const [path, issues] of allIssues) {
     const name = path.split('/').pop() ?? path
     if (hasRealIssues(issues)) {
       lines.push(`${name} | sfimage=xmark.circle sfcolor=red`)
-      for (const issue of issues) if (issue.type !== 'info') lines.push(`--${issue.type}: ${issue.detail}`)
+      for (const issue of issues) if (issue.type !== 'info') lines.push(`--${issue.detail} | color=red`)
     } else lines.push(`${name} | sfimage=checkmark.circle sfcolor=green`)
   }
   return lines.join('\n')
