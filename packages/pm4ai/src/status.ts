@@ -151,18 +151,35 @@ const timeAgo = (iso: string): string => {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
+const getBunVer = async (): Promise<string> => {
+  const r = await $`bun --version`.quiet().nothrow()
+  return r.stdout.toString().trim()
+}
+const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
+  const uiDirs = allPaths.map(p => join(p, 'readonly', 'ui', 'src')).filter(d => existsSync(d))
+  if (uiDirs.length === 0) return '?'
+  const r = await $`stat -f %m ${uiDirs[0]}`.quiet().nothrow()
+  const ts = Number.parseInt(r.stdout.toString().trim(), 10)
+  return ts > 0 ? timeAgo(new Date(ts * 1000).toISOString()) : '?'
+}
 const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
   const anyReal = [...allIssues.values()].some(hasRealIssues)
   const total = allIssues.size
   const clean = [...allIssues.values()].filter(i => !hasRealIssues(i)).length
   const totalIssues = [...allIssues.values()].flatMap(i => i.filter(x => x.type !== 'info')).length
+  const paths = [...allIssues.keys()]
+  const [repos, bunVer, uiSync] = await Promise.all([
+    Promise.all(paths.map(async p => getGhRepo(p))),
+    getBunVer(),
+    getUiSyncTime(paths)
+  ])
+  const repoMap = new Map(paths.map((p, i) => [p, repos[i]]))
   const lines: string[] = []
   if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
   else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
   lines.push('---')
-  const paths = [...allIssues.keys()]
-  const repos = await Promise.all(paths.map(async p => getGhRepo(p)))
-  const repoMap = new Map(paths.map((p, i) => [p, repos[i]]))
+  lines.push(`${total} projects · ${totalIssues} issues · bun ${bunVer} · ui ${uiSync}`)
+  lines.push('---')
   const allIssueLines: string[] = []
   for (const [path, issues] of allIssues) {
     const name = path.split('/').pop() ?? path
@@ -173,36 +190,29 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
     const realIssues = issues.filter(i => i.type !== 'info')
     const icon = realIssues.length > 0 ? '🔴' : '🟢'
     const suffix = realIssues.length > 0 ? `  ⚠ ${realIssues.length}` : ''
-    lines.push(`${icon} ${name.padEnd(12)} CI ${ciTime}${suffix} | font=Menlo`)
+    lines.push(`${icon} ${name.padEnd(12)} ${ciTime}${suffix}`)
     if (realIssues.length > 0)
       for (const issue of realIssues) {
-        lines.push(`--${issue.type}: ${issue.detail} | font=Menlo size=12 color=#ff6b6b`)
-        allIssueLines.push(`${name}: ${issue.type}: ${issue.detail}`)
+        lines.push(`--${issue.detail} | color=#ff6b6b`)
+        allIssueLines.push(`${name}: ${issue.detail}`)
       }
-    lines.push('---')
-    if (ghUrl) lines.push(`--GitHub | href=${ghUrl} sfimage=safari`)
-    lines.push(
-      `--Open in VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`
-    )
-    lines.push(
-      `--Open in Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`
-    )
+    if (ghUrl) lines.push(`--GitHub | href=${ghUrl}`)
+    lines.push(`--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`)
+    lines.push(`--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`)
     if (realIssues.length > 0) {
-      const issueText = realIssues.map(i => `${i.type}: ${i.detail}`).join(String.raw`\n`)
+      const issueText = realIssues.map(i => i.detail).join(String.raw`\n`)
       lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
     }
-    lines.push('---')
   }
   if (totalIssues > 0) {
+    lines.push('---')
     const allText = allIssueLines.join(String.raw`\n`)
     lines.push(
-      `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false sfimage=doc.on.clipboard`
+      `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
     )
-    lines.push('---')
   }
-  lines.push(`${total} projects · ${totalIssues} issues · ${clean} clean | size=11 color=gray`)
   lines.push('---')
-  lines.push('Refresh | refresh=true sfimage=arrow.clockwise')
+  lines.push('Refresh | refresh=true')
   return lines.join('\n')
 }
 export const status = async (swiftbar = false) => {
