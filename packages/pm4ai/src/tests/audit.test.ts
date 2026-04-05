@@ -72,6 +72,30 @@ describe('checkDuplicates', () => {
     const issues = checkDuplicates([parent, child], PROJECT)
     expect(issues).toHaveLength(0)
   })
+  test('required root devDeps not flagged as duplicates', () => {
+    const root = entry('package.json', {
+      devDependencies: { lintmax: 'workspace:*', typescript: 'latest' },
+      private: true
+    })
+    const lib = entry('packages/lib/package.json', {
+      dependencies: { typescript: 'latest' },
+      name: 'lintmax'
+    })
+    const issues = checkDuplicates([root, lib], PROJECT)
+    expect(issues.filter(i => i.detail.includes('typescript'))).toHaveLength(0)
+  })
+  test('non-required root devDeps still flagged as duplicates', () => {
+    const root = entry('package.json', {
+      devDependencies: { lintmax: 'workspace:*', zod: 'latest' },
+      private: true
+    })
+    const lib = entry('packages/lib/package.json', {
+      dependencies: { zod: '^3' },
+      name: 'lintmax'
+    })
+    const issues = checkDuplicates([root, lib], PROJECT)
+    expect(issues.some(i => i.detail.includes('zod'))).toBe(true)
+  })
 })
 describe('checkPackageConventions', () => {
   test('published package missing files field is flagged', () => {

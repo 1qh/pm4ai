@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { syncConfigs, syncPackageJson, syncSubPackages } from '../sync.js'
+import { syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig } from '../sync.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
@@ -203,6 +203,68 @@ describe('syncSubPackages', () => {
     expect(rootPkg.devDependencies?.['@types/react']).toBe('latest')
     const subPkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<string, unknown>
     expect(subPkg.devDependencies).toBeUndefined()
+    rmSync(tmp, { recursive: true })
+  })
+  test('idempotent — second run produces no issues', async () => {
+    const tmp = makeProject(
+      { private: true, workspaces: ['apps/*'] },
+      { 'apps/web/package.json': { name: '@a/web', private: true } }
+    )
+    await syncSubPackages(selfPath, tmp)
+    const issues = await syncSubPackages(selfPath, tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('does not add empty devDependencies to packages without them', async () => {
+    const tmp = makeProject(
+      { private: true, workspaces: ['packages/*'] },
+      { 'packages/lib/package.json': { dependencies: { zod: 'latest' }, name: '@a/lib', private: true } }
+    )
+    await syncSubPackages(selfPath, tmp)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<string, unknown>
+    expect(pkg.devDependencies).toBeUndefined()
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('syncTsconfig', () => {
+  test('removes include from root tsconfig', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig', include: ['*.ts'] }))
+    const issues = await syncTsconfig(tmp)
+    expect(issues.some(i => i.detail.includes('removed'))).toBe(true)
+    const tsconfig = JSON.parse(readFileSync(join(tmp, 'tsconfig.json'), 'utf8')) as Record<string, unknown>
+    expect(tsconfig.include).toBeUndefined()
+    expect(tsconfig.extends).toBe('lintmax/tsconfig')
+    rmSync(tmp, { recursive: true })
+  })
+  test('no-op when tsconfig has no include', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
+    const issues = await syncTsconfig(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('no-op when tsconfig does not exist', async () => {
+    const tmp = makeTmp()
+    const issues = await syncTsconfig(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('preserves other tsconfig fields', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { types: ['bun-types'] },
+        extends: 'lintmax/tsconfig',
+        include: ['*.ts']
+      })
+    )
+    await syncTsconfig(tmp)
+    const tsconfig = JSON.parse(readFileSync(join(tmp, 'tsconfig.json'), 'utf8')) as Record<string, unknown>
+    expect(tsconfig.extends).toBe('lintmax/tsconfig')
+    expect(tsconfig.compilerOptions).toBeDefined()
+    expect(tsconfig.include).toBeUndefined()
     rmSync(tmp, { recursive: true })
   })
 })

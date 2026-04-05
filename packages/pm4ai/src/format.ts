@@ -85,4 +85,4 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   lines.push('Refresh | refresh=true')
   return lines.join('\n')
 }
-export { formatIssues, formatSwiftBar, getUiSyncTime, hasRealIssues, timeAgo }
+export { formatIssues, formatSwiftBar, getUiSyncTime, hasRealIssues, shellEscape, timeAgo }
