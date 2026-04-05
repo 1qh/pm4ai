@@ -24,16 +24,39 @@ const cloneIfMissing = async (repo: string, dest: string) => {
   await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
   return dest
 }
-const discover = async (): Promise<{
+const rgExcludes = [
+  '-g',
+  '!**/node_modules/**',
+  '-g',
+  '!**/.cache/**',
+  '-g',
+  '!**/.Trash/**',
+  '-g',
+  '!**/Library/**',
+  '-g',
+  '!**/Applications/**',
+  '-g',
+  '!**/.local/**',
+  '-g',
+  '!**/.npm/**',
+  '-g',
+  '!**/.bun/**',
+  '-g',
+  '!**/.docker/**',
+  '-g',
+  '!**/iCloud*/**',
+  '-g',
+  '!**/.git/**'
+]
+const discover = async (
+  searchRoot?: string
+): Promise<{
   cnsync: Project
   consumers: Project[]
   self: Project
 }> => {
-  const home = homedir()
-  const result =
-    await $`rg -l '"lintmax"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**' -g '!**/.Trash/**' -g '!**/Library/**' -g '!**/Applications/**' -g '!**/.local/**' -g '!**/.npm/**' -g '!**/.bun/**' -g '!**/.docker/**' -g '!**/iCloud*/**' -g '!**/.git/**'`
-      .quiet()
-      .nothrow()
+  const home = searchRoot ?? homedir()
+  const result = await $`rg -l '"lintmax"' ${home} -g package.json ${rgExcludes}`.quiet().nothrow()
   const stdout = result.stdout.toString().trim()
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
@@ -53,21 +76,22 @@ const discover = async (): Promise<{
   )
   let self = projects.find(p => p.isSelf)
   let cnsync = projects.find(p => p.isCnsync)
+  const reposDir = join(home, '.pm4ai', 'repos')
   if (!self) {
-    const dest = join(home, '.pm4ai', 'repos', PKG_NAME)
+    const dest = join(reposDir, PKG_NAME)
     await cloneIfMissing(PKG_NAME, dest)
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dest }
   }
   if (!cnsync) {
-    const dest = join(home, '.pm4ai', 'repos', 'cnsync')
+    const dest = join(reposDir, 'cnsync')
     await cloneIfMissing('cnsync', dest)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
   }
   const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))
   return { cnsync, consumers, self }
 }
-const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> => {
-  const home = homedir()
+const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
+  const home = searchRoot ?? homedir()
   const reposDir = join(home, '.pm4ai', 'repos')
   const selfDir = join(reposDir, PKG_NAME)
   const cnsyncDir = join(reposDir, 'cnsync')
@@ -88,8 +112,8 @@ const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> =>
       .map(f => dirname(f))
     if (!self) {
       const dir = found.find(d => {
-        const name = d.split('/').pop()
-        return name === PKG_NAME || name === MONOREPO_NAME
+        const n = d.split('/').pop()
+        return n === PKG_NAME || n === MONOREPO_NAME
       })
       if (dir) {
         const gitRoot = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
