@@ -324,31 +324,13 @@ When idle, falls back to current behavior (🟢/🔴 per project).
 
 ## Implementation Order
 
-### Phase 0: Foundation Fixes (from code review)
+### Phase 0: Remaining Foundation Work
 
-All bugs and issues found by independent code review. Must be fixed before building new features.
+**Code improvements:**
 
-**Fixed (✓):**
-
-- ✓ `fix.ts` — partial-mutation-then-abort: now checks ALL repos (including self/cnsync) before any git pull
-- ✓ `fix.ts` — lockfile race condition: now uses `openSync` with `wx` flag (atomic exclusive create)
-- ✓ `fix.ts` — removed unused `gitPull` function
-- ✓ `fix.ts`, `status.ts` — SwiftBar `open` guarded by `process.platform === ‘darwin’`
-- ✓ `fix.ts`, `status.ts` — use `projectName()` utility instead of duplicated `split(‘/’).pop()`
-- ✓ `check-cache.ts`, `check-worker.ts` — replaced `execSync` with `execFileSync` (no shell injection)
-- ✓ `audit.ts` — failed fetch promises no longer cached permanently
-- ✓ `discover.ts` — `rg` now excludes `.Trash`, `Library`, `Applications`, `.local`, `.npm`, `.bun`, `.docker`, `iCloud*`, `.git`
-- ✓ `init.ts` — removed `include` from generated tsconfig
-- ✓ `cli.ts` — flags parsed separately from positional args (`pm4ai init --verbose` no longer treats `--verbose` as name)
-- ✓ `package.json` — `@types/bun` moved from `dependencies` to `devDependencies`
-- ✓ oRPC router duplicate `status` renamed to `refreshStatus`
-- ✓ “Zero impact” claim corrected to “negligible impact”
-
-**Remaining (not yet fixed):**
-
-- `audit.ts:239` — `bun pm view` output parsed without validation, silent failure
-- `format.ts:57` — ciTime parsing brittle, coupled to `checks.ts:19` string format
-- `utils.ts:35-41` — workspace glob only supports `dir/*` pattern, not nested globs or negations
+- `audit.ts` — `bun pm view` output parsed without validation, silent failure
+- `format.ts` — ciTime parsing brittle, coupled to `checks.ts` string format
+- `utils.ts` — workspace glob only supports `dir/*` pattern, not nested globs or negations
 - Child process → socket race condition for dashboard mutations (document workaround in dashboard code)
 
 **Missing tests (existing code):**
