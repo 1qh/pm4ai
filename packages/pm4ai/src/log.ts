@@ -9,7 +9,8 @@ interface LogEntry {
   project: string
 }
 const logDir = join(homedir(), '.pm4ai', 'logs')
-const logPath = (project: string) => join(logDir, `${project}.json`)
+const leadingUnderscoreRe = /^_/u
+const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '_').replace(leadingUnderscoreRe, '')}.json`)
 const readLog = (): LogEntry[] => {
   if (!existsSync(logDir)) return []
   const files = readdirSync(logDir).filter(f => f.endsWith('.json'))
@@ -24,7 +25,7 @@ const readLog = (): LogEntry[] => {
 }
 const updateLog = (entry: LogEntry) => {
   mkdirSync(logDir, { recursive: true })
-  writeFileSync(logPath(entry.project), JSON.stringify(entry))
+  writeFileSync(logPath(entry.path), JSON.stringify(entry))
 }
 export type { LogEntry }
 export { readLog, updateLog }

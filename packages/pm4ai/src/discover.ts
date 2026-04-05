@@ -63,7 +63,7 @@ const discover = async (): Promise<{
     await cloneIfMissing('cnsync', dest)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
   }
-  const consumers = projects.filter(p => !p.isSelf)
+  const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))
   return { cnsync, consumers, self }
 }
 const discoverSources = async (): Promise<{ cnsync: Project; self: Project }> => {
