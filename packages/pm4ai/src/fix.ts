@@ -46,6 +46,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   })
   return issues
 }
+export { maintain }
 export const fix = async (all = false) => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
