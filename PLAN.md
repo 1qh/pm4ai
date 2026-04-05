@@ -351,6 +351,185 @@ When idle, falls back to current behavior (🟢/🔴 per project).
 
 ---
 
+## Testing Strategy
+
+Every new component gets comprehensive tests. Tests should cover happy paths, edge cases, concurrency, and failure modes.
+
+### Event Emitter (`watch-emitter.test.ts`)
+
+**Socket lifecycle:**
+
+- Creates socket at expected path
+- Cleans up socket file on close
+- Handles socket file already existing (stale from crash)
+- Multiple start/stop cycles without leaking
+
+**Event delivery:**
+
+- Single client receives all events
+- Multiple clients each receive all events
+- Events are valid newline-delimited JSON
+- Event fields match `WatchEvent` interface
+- Events arrive in emission order per project
+
+**No-client behavior:**
+
+- `emit()` is a no-op when no clients connected
+- No errors, no buffering, no memory growth
+- Benchmark: 10,000 emits with no client < 10ms
+
+**Client disconnect:**
+
+- Client disconnect doesn’t crash emitter
+- Remaining clients continue receiving events
+- Reconnecting client receives new events (not replayed)
+
+**Concurrency:**
+
+- Parallel `emit()` calls from multiple async tasks don’t interleave JSON lines
+- Client connecting mid-stream receives events from that point forward
+- Socket handles burst of events (100+ rapid-fire)
+
+### Event Protocol (`watch-types.test.ts`)
+
+- All step values are valid (`sync`, `audit`, `maintain`, `check`, `done`)
+- All status values are valid (`start`, `ok`, `fail`)
+- `at` is a valid ISO timestamp
+- `detail` is optional
+- `project` is never empty
+- Round-trip: emit → receive → parse produces identical event
+
+### Fix Instrumentation (`fix-events.test.ts`)
+
+- `fix` emits `sync.start` → `sync.ok` for each project
+- `fix` emits `audit.start` → `audit.ok` for each project
+- `fix` emits `maintain.start` → `maintain.ok/fail` for each project
+- `fix` emits `done` with file count in detail
+- Failed maintain emits `maintain.fail` with error detail
+- Parallel projects emit interleaved events (correct project attribution)
+- Blocked fix (dirty git) emits no events
+- Single-project fix emits events for one project only
+
+### Status Instrumentation (`status-events.test.ts`)
+
+- `status` emits `check.start` → `check.ok` for each project
+- `status --all` emits events for all projects
+- Single-project status emits events for one project only
+- Check failures emit `check.fail` with detail
+
+### Terminal Watch (`watch.test.ts`)
+
+**Socket connection:**
+
+- Connects to existing socket
+- Handles socket not existing (shows idle state)
+- Reconnects after socket disappears and reappears
+- Graceful shutdown on ctrl+c
+
+**State rendering:**
+
+- Idle state shows cached check results
+- Incoming events update project status
+- Projects appear in consistent order
+- Spinner shown for in-progress steps
+- Check mark shown for completed steps
+- X mark shown for failed steps
+- Elapsed time counter updates during fix
+
+**`--json` mode:**
+
+- Outputs raw newline-delimited JSON to stdout
+- No ink rendering, no ANSI codes
+- Valid JSON on every line
+- Pipe-friendly (works with `jq`)
+
+### Dashboard Auth (`dashboard-auth.test.ts`)
+
+**One-time token flow:**
+
+- Generated token is a valid UUID
+- `/auth/{token}` sets httpOnly cookie and redirects to `/`
+- Same token fails on second use (consumed)
+- Invalid token returns 401
+- Missing token returns 401
+- Cookie is httpOnly (not accessible via document.cookie)
+- Cookie is SameSite=Strict
+
+**Session lifecycle:**
+
+- Authenticated requests succeed with valid cookie
+- Requests without cookie return 401
+- Dashboard restart invalidates all previous cookies
+- Expired/invalid cookie returns 401
+
+**Concurrent auth:**
+
+- Two browsers hitting `/auth/{token}` simultaneously — only one succeeds
+- Race condition on token consumption handled correctly
+
+### Dashboard oRPC (`dashboard-api.test.ts`)
+
+**Queries:**
+
+- `projects` returns all discovered projects with correct shape
+- `status` returns check result for a specific project
+- Unauthenticated query returns 401
+
+**Mutations:**
+
+- `fix` spawns fix process and returns immediately
+- `fix` while fix is already running returns lockfile error
+- `fixProject` targets single project
+- Unauthenticated mutation returns 401
+- Mutation input validation (invalid project name rejected)
+
+**Subscriptions (SSE):**
+
+- Client receives events in real-time
+- Multiple clients receive same events
+- Client reconnect resumes event stream
+- No events when nothing is running (stream stays open, idle)
+- Unauthenticated subscription returns 401
+
+**Type safety:**
+
+- All procedure inputs are validated at runtime
+- All procedure outputs match their type definitions
+- Invalid input shapes are rejected with typed errors
+
+### SwiftBar Streaming (`swiftbar-stream.test.ts`)
+
+- Plugin connects to socket
+- Plugin renders project status with colors
+- Plugin shows spinner during active fix
+- Plugin falls back to polling when socket unavailable
+- Plugin handles socket disconnect gracefully
+- Output format matches SwiftBar streaming spec (`~~~` separator)
+
+### Integration Tests
+
+**Full flow: emit → watch:**
+
+- Start emitter, connect watch, emit events, verify watch state updates
+- Multiple projects in parallel, verify no event loss
+
+**Full flow: emit → dashboard:**
+
+- Start emitter, start dashboard, connect SSE, emit events, verify browser receives them
+- Auth flow → subscribe → receive events → mutation → verify lockfile
+
+**Full flow: fix → watch + dashboard simultaneously:**
+
+- Run fix, connect both watch and dashboard, verify both receive identical events
+
+### Performance Tests
+
+- Emitter: 10,000 events/second with 5 clients, measure latency and memory
+- Dashboard SSE: 1,000 events/second, verify browser keeps up
+- Socket cleanup: verify no file descriptor leaks after 100 connect/disconnect cycles
+
+---
+
 ## Future Extensions
 
 - **Event persistence** — write events to `~/.pm4ai/events.jsonl` for history/timeline view
