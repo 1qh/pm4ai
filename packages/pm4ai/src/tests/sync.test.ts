@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig } from '../sync.js'
+import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig } from '../sync.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
@@ -266,5 +266,60 @@ describe('syncTsconfig', () => {
     expect(tsconfig.compilerOptions).toBeDefined()
     expect(tsconfig.include).toBeUndefined()
     rmSync(tmp, { recursive: true })
+  })
+})
+describe('syncClaudeMd', () => {
+  test('generates CLAUDE.md from always rules', async () => {
+    const selfDir = makeTmp()
+    const projectDir = makeTmp()
+    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    mkdirSync(rulesDir, { recursive: true })
+    writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
+    writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    const issues = await syncClaudeMd(selfDir, projectDir)
+    expect(issues.some(i => i.detail.includes('CLAUDE.md'))).toBe(true)
+    const content = readFileSync(join(projectDir, 'CLAUDE.md'), 'utf8')
+    expect(content).toContain('base content here')
+    rmSync(selfDir, { recursive: true })
+    rmSync(projectDir, { recursive: true })
+  })
+  test('no-op when CLAUDE.md already matches', async () => {
+    const selfDir = makeTmp()
+    const projectDir = makeTmp()
+    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    mkdirSync(rulesDir, { recursive: true })
+    writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
+    writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    await syncClaudeMd(selfDir, projectDir)
+    const issues = await syncClaudeMd(selfDir, projectDir)
+    expect(issues.filter(i => i.detail.includes('CLAUDE.md'))).toHaveLength(0)
+    rmSync(selfDir, { recursive: true })
+    rmSync(projectDir, { recursive: true })
+  })
+  test('returns error when rules dir missing', async () => {
+    const selfDir = makeTmp()
+    const projectDir = makeTmp()
+    const issues = await syncClaudeMd(selfDir, projectDir)
+    expect(issues.some(i => i.type === 'error')).toBe(true)
+    rmSync(selfDir, { recursive: true })
+    rmSync(projectDir, { recursive: true })
+  })
+  test('includes dep-based rules when dep present', async () => {
+    const selfDir = makeTmp()
+    const projectDir = makeTmp()
+    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    mkdirSync(rulesDir, { recursive: true })
+    writeFileSync(join(rulesDir, 'react.mdx'), '---\ntitle: React\ninfer: react\n---\nreact rules')
+    writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase rules')
+    writeFileSync(
+      join(projectDir, 'package.json'),
+      JSON.stringify({ dependencies: { react: 'latest' }, name: 'test', private: true })
+    )
+    await syncClaudeMd(selfDir, projectDir)
+    const content = readFileSync(join(projectDir, 'CLAUDE.md'), 'utf8')
+    expect(content).toContain('base rules')
+    expect(content).toContain('react rules')
+    rmSync(selfDir, { recursive: true })
+    rmSync(projectDir, { recursive: true })
   })
 })

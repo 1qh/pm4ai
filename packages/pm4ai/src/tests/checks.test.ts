@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { execSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkConfigs, checkForbidden, checkRootPkg } from '../checks.js'
+import { checkConfigs, checkForbidden, checkGit, checkLint, checkRootPkg } from '../checks.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {
@@ -103,6 +104,36 @@ describe('checkConfigs tsconfig', () => {
     writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
     const issues = await checkConfigs(tmp)
     expect(issues.filter(i => i.detail.includes('include'))).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkGit', () => {
+  const makeGitRepo = () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: tmp, stdio: 'pipe' })
+    return tmp
+  }
+  test('clean repo reports no git issues', async () => {
+    const tmp = makeGitRepo()
+    const issues = await checkGit(tmp)
+    const gitIssues = issues.filter(i => i.type === 'git')
+    expect(gitIssues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('dirty repo reports uncommitted changes', async () => {
+    const tmp = makeGitRepo()
+    writeFileSync(join(tmp, 'dirty.txt'), 'dirty')
+    const issues = await checkGit(tmp)
+    expect(issues.some(i => i.type === 'git' && i.detail.includes('uncommitted'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkLint', () => {
+  test('returns never run when no check cache', () => {
+    const tmp = makeTmp()
+    const issues = checkLint(tmp)
+    expect(issues.some(i => i.detail.includes('never run'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
 })
