@@ -73,7 +73,7 @@ Example event sequence for `fix --all` (6 projects, parallel):
 
 **File:** `packages/pm4ai/src/watch-emitter.ts`
 
-- Creates Unix socket server at `~/.pm4ai/watch.sock`
+- Creates Unix socket server at `~/.pm4ai/watch.sock` (well under macOS 104-byte path limit)
 - Writes newline-delimited JSON to all connected clients
 - If no clients connected, events are silently dropped (zero overhead)
 - Cleans up socket file on process exit
@@ -160,7 +160,8 @@ Token properties:
 - Session-scoped (lives only while dashboard process runs)
 - One-time use (consumed on first visit)
 - Stored in memory only (not written to disk after auth)
-- httpOnly cookie (not accessible via JavaScript, not in URLs, not in browser history)
+- httpOnly cookie with `Path=/` and `SameSite=Strict` (not accessible via JavaScript, not in URLs, not in browser history)
+- Token consumption must be atomic (single in-memory Map delete, no race)
 
 ### oRPC Layer
 
@@ -310,15 +311,15 @@ When idle, falls back to current behavior (🟢/🔴 per project).
 
 ## Security Model
 
-| Concern              | Mitigation                                                   |
-| -------------------- | ------------------------------------------------------------ |
-| Unauthorized access  | One-time auth token + httpOnly cookie                        |
-| Token leakage        | Token consumed on first use, never in URLs after auth        |
-| Command injection    | Server actions call fixed functions, no string interpolation |
-| Concurrent mutations | Lockfile prevents double fix runs                            |
-| Port forwarding      | Cookie-based auth works over any transport                   |
-| Session hijacking    | Token rotates on every dashboard restart                     |
-| XSS                  | httpOnly cookie not accessible via JavaScript                |
+| Concern              | Mitigation                                                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Unauthorized access  | One-time auth token + httpOnly cookie                                                                                                  |
+| Token leakage        | Token consumed on first use, never in URLs after auth                                                                                  |
+| Command injection    | Server actions call fixed functions, no string interpolation. Project names validated against discovered list before use as arguments. |
+| Concurrent mutations | Lockfile prevents double fix runs                                                                                                      |
+| Port forwarding      | Cookie-based auth works over any transport                                                                                             |
+| Session hijacking    | Token rotates on every dashboard restart                                                                                               |
+| XSS                  | httpOnly cookie not accessible via JavaScript                                                                                          |
 
 ---
 

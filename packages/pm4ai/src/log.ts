@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 interface LogEntry {
@@ -8,26 +8,23 @@ interface LogEntry {
   path: string
   project: string
 }
-const logDir = join(homedir(), '.pm4ai')
-const logFile = join(logDir, 'log.json')
+const logDir = join(homedir(), '.pm4ai', 'logs')
+const logPath = (project: string) => join(logDir, `${project}.json`)
 const readLog = (): LogEntry[] => {
-  if (!existsSync(logFile)) return []
-  try {
-    return JSON.parse(readFileSync(logFile, 'utf8')) as LogEntry[]
-  } catch {
-    return []
-  }
-}
-const writeLog = (entries: LogEntry[]) => {
-  mkdirSync(logDir, { recursive: true })
-  writeFileSync(logFile, JSON.stringify(entries, null, 2))
+  if (!existsSync(logDir)) return []
+  const files = readdirSync(logDir).filter(f => f.endsWith('.json'))
+  const entries: LogEntry[] = []
+  for (const f of files)
+    try {
+      entries.push(JSON.parse(readFileSync(join(logDir, f), 'utf8')) as LogEntry)
+    } catch {
+      /* Corrupt file */
+    }
+  return entries
 }
 const updateLog = (entry: LogEntry) => {
-  const entries = readLog()
-  const idx = entries.findIndex(e => e.path === entry.path)
-  if (idx === -1) entries.push(entry)
-  else entries[idx] = entry
-  writeLog(entries)
+  mkdirSync(logDir, { recursive: true })
+  writeFileSync(logPath(entry.project), JSON.stringify(entry))
 }
 export type { LogEntry }
-export { readLog, updateLog, writeLog }
+export { readLog, updateLog }

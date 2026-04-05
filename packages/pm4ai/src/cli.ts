@@ -8,7 +8,7 @@ const flags = new Set(args.filter(a => a.startsWith('-')))
 const positional = args.filter(a => !a.startsWith('-'))
 const command = positional[0]
 if (flags.has('--verbose')) setVerbose(true)
-if (command === '--version' || command === '-v' || flags.has('--version') || flags.has('-v')) console.log(pkg.version)
+if (flags.has('--version') || flags.has('-v')) console.log(pkg.version)
 else if (!command) console.log(guide)
 else if (command === 'init') {
   const name = positional[1]

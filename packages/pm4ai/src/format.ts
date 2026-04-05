@@ -3,6 +3,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { getBunVersion, getGhRepo, projectName } from './utils.js'
+const shellEscape = (s: string): string =>
+  s
+    .replaceAll('\\', String.raw`\\`)
+    .replaceAll("'", String.raw`\'`)
+    .replaceAll('"', String.raw`\"`)
+    .replaceAll('$', String.raw`\$`)
+    .replaceAll('`', '\\`')
 const isInfoOnly = (i: Issue) => i.type === 'info' || (i.type === 'check' && !i.detail.startsWith('failed'))
 const hasRealIssues = (issues: Issue[]) => issues.some(i => !isInfoOnly(i))
 const formatIssues = (projectPath: string, issues: Issue[]): string => {
@@ -68,17 +75,13 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
     lines.push(`--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`)
     lines.push(`--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`)
     if (realIssues.length > 0) {
-      const issueText = realIssues
-        .map(i => i.detail.replaceAll('"', String.raw`\"`).replaceAll('$', String.raw`\$`))
-        .join(String.raw`\n`)
+      const issueText = realIssues.map(i => shellEscape(i.detail)).join(String.raw`\n`)
       lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
     }
   }
   if (totalIssues > 0) {
     lines.push('---')
-    const allText = allIssueLines
-      .map(l => l.replaceAll('"', String.raw`\"`).replaceAll('$', String.raw`\$`))
-      .join(String.raw`\n`)
+    const allText = allIssueLines.map(l => shellEscape(l)).join(String.raw`\n`)
     lines.push(
       `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
     )

@@ -49,7 +49,18 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 export const fix = async (all = false) => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
-  if (existsSync(lockFile)) {
+  const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
+  const tryAcquireLock = (): boolean => {
+    try {
+      const fd = openSync(lockFile, 'wx')
+      writeFileSync(fd, lockData)
+      closeSync(fd)
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (!tryAcquireLock()) {
     try {
       const lock = JSON.parse(readFileSync(lockFile, 'utf8')) as { at: string; pid: number }
       const age = Date.now() - new Date(lock.at).getTime()
@@ -65,17 +76,13 @@ export const fix = async (all = false) => {
         return
       }
     } catch {
-      /* Stale/corrupt lock */
+      /* Corrupt lock */
     }
-    rmSync(lockFile)
-  }
-  try {
-    const fd = openSync(lockFile, 'wx')
-    writeFileSync(fd, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    closeSync(fd)
-  } catch {
-    console.log('another fix is already running')
-    return
+    rmSync(lockFile, { force: true })
+    if (!tryAcquireLock()) {
+      console.log('another fix is already running')
+      return
+    }
   }
   try {
     const resolveTargets = async () => {
@@ -101,8 +108,7 @@ export const fix = async (all = false) => {
       allRepos.map(async repo => {
         const name = projectName(repo.path)
         const dirty = await $`git status --porcelain`.cwd(repo.path).quiet().nothrow()
-        if (dirty.stdout.toString().trim() && !('isCnsync' in repo && repo.isCnsync))
-          return { name, reason: 'uncommitted changes' }
+        if (dirty.stdout.toString().trim()) return { name, reason: 'uncommitted changes' }
         await $`git fetch`.cwd(repo.path).quiet().nothrow()
         const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()
