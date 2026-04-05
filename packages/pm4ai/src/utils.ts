@@ -1,8 +1,9 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
+/** biome-ignore-all lint/correctness/noUndeclaredVariables: Bun global */
 /* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { $, file } from 'bun'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 const readJson = async (path: string): Promise<unknown> => {
@@ -32,13 +33,15 @@ const collectWorkspacePackages = async (projectPath: string): Promise<{ path: st
   const rootPkg = await readPkg(rootPkgPath)
   if (!rootPkg) return []
   const results = [{ path: rootPkgPath, pkg: rootPkg }]
-  const wsPkgPaths = (rootPkg.workspaces ?? []).flatMap(ws => {
-    const wsDir = join(projectPath, ws.replace('/*', ''))
-    if (!existsSync(wsDir)) return []
-    return readdirSync(wsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => join(wsDir, e.name, 'package.json'))
-  })
+  const workspaces = rootPkg.workspaces ?? []
+  const negated = new Set(workspaces.filter(w => w.startsWith('!')).map(w => w.slice(1)))
+  const positive = workspaces.filter(w => !w.startsWith('!'))
+  const matched = new Set<string>()
+  for (const ws of positive) {
+    const glob = new Bun.Glob(ws)
+    for (const match of glob.scanSync({ cwd: projectPath, onlyFiles: false })) if (!negated.has(match)) matched.add(match)
+  }
+  const wsPkgPaths = [...matched].map(m => join(projectPath, m, 'package.json')).filter(p => existsSync(p))
   const wsPkgs = await Promise.all(
     wsPkgPaths.map(async p => {
       const pkg = await readPkg(p)

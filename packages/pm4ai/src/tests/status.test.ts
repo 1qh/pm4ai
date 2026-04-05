@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
@@ -46,4 +47,35 @@ describe('getUiSyncTime', () => {
     const result = await getUiSyncTime([pm4aiPath])
     expect(result).toBe('?')
   })
+  test('returns ? for empty paths array', async () => {
+    const result = await getUiSyncTime([])
+    expect(result).toBe('?')
+  })
+})
+describe('status module exports', () => {
+  test('status function is exported and callable', async () => {
+    const { status } = await import('../status.js')
+    expect(typeof status).toBe('function')
+  })
+  test('timeAgo is exported from status', async () => {
+    const mod = await import('../status.js')
+    expect(typeof mod.timeAgo).toBe('function')
+  })
+})
+describe('status() via CLI', () => {
+  const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+  const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
+  test('status command runs on real project', () => {
+    const result = execSync(`bun ${cliPath} status`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 30_000 })
+    expect(result).toContain('pm4ai')
+  }, 30_000)
+  test('status --all runs on all projects', () => {
+    const result = execSync(`bun ${cliPath} status --all`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 60_000 })
+    expect(result).toContain('/Users/o/z/')
+  }, 60_000)
+  test('status --swiftbar outputs SwiftBar format', () => {
+    const result = execSync(`bun ${cliPath} status --swiftbar`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 120_000 })
+    expect(result).toContain('sfimage=')
+    expect(result).toContain('Refresh | refresh=true')
+  }, 120_000)
 })

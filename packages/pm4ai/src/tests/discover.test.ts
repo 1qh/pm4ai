@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { discover, isCnsyncRepo } from '../discover.js'
+import { discover, discoverSources, isCnsyncRepo } from '../discover.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-discover-'))
 const initGitRepo = (dir: string, remote?: string) => {
   execSync('git init', { cwd: dir, stdio: 'pipe' })
@@ -147,4 +147,81 @@ describe('discover', () => {
     expect(monoPaths[0]?.path).toBe(mono)
     rmSync(root, { recursive: true })
   })
+  test('project without lintmax dep is not discovered', async () => {
+    const root = makeTmp()
+    makeFakeRepos(root)
+    const noLintmax = join(root, 'no-lintmax')
+    mkdirSync(noLintmax, { recursive: true })
+    writeFileSync(join(noLintmax, 'package.json'), JSON.stringify({ name: 'no-lintmax', private: true }))
+    const result = await discover(root)
+    expect(result.consumers.every(c => c.name !== 'no-lintmax')).toBe(true)
+    rmSync(root, { recursive: true })
+  })
+  test('lintmax in dependencies (not devDeps) is still discovered', async () => {
+    const root = makeTmp()
+    makeFakeRepos(root)
+    const proj = join(root, 'uses-lintmax')
+    mkdirSync(proj, { recursive: true })
+    writeFileSync(
+      join(proj, 'package.json'),
+      JSON.stringify({ dependencies: { lintmax: 'latest' }, name: 'uses-lintmax' })
+    )
+    const result = await discover(root)
+    expect(result.consumers.some(c => c.name === 'uses-lintmax')).toBe(true)
+    rmSync(root, { recursive: true })
+  })
+  test('self path points to pm4ai', async () => {
+    const root = makeProjectTree()
+    const result = await discover(root)
+    expect(result.self.path).toContain('pm4ai')
+    rmSync(root, { recursive: true })
+  })
+  test('cnsync path points to cnsync', async () => {
+    const root = makeProjectTree()
+    const result = await discover(root)
+    expect(result.cnsync.path).toContain('cnsync')
+    rmSync(root, { recursive: true })
+  })
+})
+describe('discoverSources', () => {
+  test('finds self and cnsync from repos dir', async () => {
+    const root = makeTmp()
+    const selfDir = join(root, '.pm4ai', 'repos', 'pm4ai')
+    const cnsyncDir = join(root, '.pm4ai', 'repos', 'cnsync')
+    mkdirSync(selfDir, { recursive: true })
+    mkdirSync(cnsyncDir, { recursive: true })
+    initGitRepo(selfDir)
+    initGitRepo(cnsyncDir)
+    writeFileSync(join(selfDir, 'package.json'), JSON.stringify({ name: 'pm4ai' }))
+    writeFileSync(join(cnsyncDir, 'package.json'), JSON.stringify({ name: 'cnsync' }))
+    const result = await discoverSources(root)
+    expect(result.self).toBeDefined()
+    expect(result.cnsync).toBeDefined()
+    expect(result.self.path).toBe(selfDir)
+    expect(result.cnsync.path).toBe(cnsyncDir)
+    rmSync(root, { recursive: true })
+  })
+  test('self is marked isSelf true', async () => {
+    const root = makeTmp()
+    const selfDir = join(root, '.pm4ai', 'repos', 'pm4ai')
+    const cnsyncDir = join(root, '.pm4ai', 'repos', 'cnsync')
+    mkdirSync(selfDir, { recursive: true })
+    mkdirSync(cnsyncDir, { recursive: true })
+    initGitRepo(selfDir)
+    initGitRepo(cnsyncDir)
+    writeFileSync(join(selfDir, 'package.json'), JSON.stringify({ name: 'pm4ai' }))
+    writeFileSync(join(cnsyncDir, 'package.json'), JSON.stringify({ name: 'cnsync' }))
+    const result = await discoverSources(root)
+    expect(result.self.isSelf).toBe(true)
+    expect(result.cnsync.isCnsync).toBe(true)
+    rmSync(root, { recursive: true })
+  })
+  test('falls back to clone path when repos not found', async () => {
+    const root = makeTmp()
+    const reposDir = join(root, '.pm4ai', 'repos')
+    const result = await discoverSources(root)
+    expect(result.self.path).toBe(join(reposDir, 'pm4ai'))
+    expect(result.cnsync.path).toBe(join(reposDir, 'cnsync'))
+    rmSync(root, { recursive: true })
+  }, 30_000)
 })

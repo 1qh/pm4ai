@@ -109,6 +109,55 @@ describe('collectWorkspacePackages', () => {
     expect(entries).toHaveLength(1)
     rmSync(tmp, { recursive: true })
   })
+  test('handles nested glob pattern packages/**', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'packages', 'group', 'lib'), { recursive: true })
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'root', private: true, workspaces: ['packages/**'] }))
+    writeFileSync(join(tmp, 'packages', 'group', 'lib', 'package.json'), JSON.stringify({ name: '@a/deep' }))
+    const entries = await collectWorkspacePackages(tmp)
+    expect(entries.some(e => e.pkg.name === '@a/deep')).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('handles multiple workspace patterns', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'packages', 'lib'), { recursive: true })
+    mkdirSync(join(tmp, 'apps', 'web'), { recursive: true })
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*', 'apps/*'] })
+    )
+    writeFileSync(join(tmp, 'packages', 'lib', 'package.json'), JSON.stringify({ name: '@a/lib' }))
+    writeFileSync(join(tmp, 'apps', 'web', 'package.json'), JSON.stringify({ name: '@a/web', private: true }))
+    const entries = await collectWorkspacePackages(tmp)
+    expect(entries).toHaveLength(3)
+    rmSync(tmp, { recursive: true })
+  })
+  test('handles negated workspace patterns', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'packages', 'lib'), { recursive: true })
+    mkdirSync(join(tmp, 'packages', 'internal'), { recursive: true })
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*', '!packages/internal'] })
+    )
+    writeFileSync(join(tmp, 'packages', 'lib', 'package.json'), JSON.stringify({ name: '@a/lib' }))
+    writeFileSync(join(tmp, 'packages', 'internal', 'package.json'), JSON.stringify({ name: '@a/internal' }))
+    const entries = await collectWorkspacePackages(tmp)
+    expect(entries).toHaveLength(2)
+    expect(entries.some(e => e.pkg.name === '@a/lib')).toBe(true)
+    expect(entries.some(e => e.pkg.name === '@a/internal')).toBe(false)
+    rmSync(tmp, { recursive: true })
+  })
+  test('skips dirs without package.json', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'packages', 'empty'), { recursive: true })
+    mkdirSync(join(tmp, 'packages', 'lib'), { recursive: true })
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }))
+    writeFileSync(join(tmp, 'packages', 'lib', 'package.json'), JSON.stringify({ name: '@a/lib' }))
+    const entries = await collectWorkspacePackages(tmp)
+    expect(entries).toHaveLength(2)
+    rmSync(tmp, { recursive: true })
+  })
 })
 describe('isInsideProject', () => {
   test('returns path when inside a git repo with lintmax', async () => {

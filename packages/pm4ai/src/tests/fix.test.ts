@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { execSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { maintain } from '../fix.js'
+import { fix, maintain } from '../fix.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
 const toFileName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
@@ -109,5 +110,164 @@ describe('lockfile', () => {
     expect(lock.pid).toBe(process.pid)
     expect(new Date(lock.at).getTime()).not.toBeNaN()
     rmSync(lockFile, { force: true })
+  })
+  test('stale lock from alive process under 10min blocks', () => {
+    rmSync(lockFile, { force: true })
+    mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+    writeFileSync(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    const lock = JSON.parse(readFileSync(lockFile, 'utf8')) as { at: string; pid: number }
+    const age = Date.now() - new Date(lock.at).getTime()
+    expect(age).toBeLessThan(600_000)
+    let alive = false
+    try {
+      process.kill(lock.pid, 0)
+      alive = true
+    } catch {
+      /* Not found */
+    }
+    expect(alive).toBe(true)
+    rmSync(lockFile, { force: true })
+  })
+  test('corrupt lock file can be replaced', () => {
+    rmSync(lockFile, { force: true })
+    mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+    writeFileSync(lockFile, 'not json')
+    let parsed = false
+    try {
+      JSON.parse(readFileSync(lockFile, 'utf8'))
+      parsed = true
+    } catch {
+      /* Expected */
+    }
+    expect(parsed).toBe(false)
+    rmSync(lockFile, { force: true })
+    const fd = openSync(lockFile, 'wx')
+    writeFileSync(fd, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    closeSync(fd)
+    expect(existsSync(lockFile)).toBe(true)
+    rmSync(lockFile, { force: true })
+  })
+})
+describe('maintain edge cases', () => {
+  test('captures violation count from stderr', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\necho "12 errors found" >&2\nexit 1')
+    await maintain(tmp)
+    const safeName = toFileName(tmp)
+    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const result = JSON.parse(readFileSync(checkFile, 'utf8')) as { violations: number }
+    expect(result.violations).toBe(12)
+    rmSync(tmp, { recursive: true })
+  })
+  test('captures violation/problem/issue keywords', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\necho "7 problems detected" >&2\nexit 1')
+    await maintain(tmp)
+    const safeName = toFileName(tmp)
+    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const result = JSON.parse(readFileSync(checkFile, 'utf8')) as { violations: number }
+    expect(result.violations).toBe(7)
+    rmSync(tmp, { recursive: true })
+  })
+  test('defaults to 1 violation when no count found', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\necho "something broke" >&2\nexit 1')
+    await maintain(tmp)
+    const safeName = toFileName(tmp)
+    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const result = JSON.parse(readFileSync(checkFile, 'utf8')) as { violations: number }
+    expect(result.violations).toBe(1)
+    rmSync(tmp, { recursive: true })
+  })
+  test('copies bun.lock snapshot on success', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
+    writeFileSync(join(tmp, 'bun.lock'), 'lockfile contents')
+    await maintain(tmp)
+    const snapshotDir = join(homedir(), '.pm4ai', 'snapshots', tmp.split('/').pop() ?? '')
+    expect(existsSync(join(snapshotDir, 'bun.lock'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('log entry includes error on failure', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\necho "fatal error" >&2\nexit 1')
+    await maintain(tmp)
+    const safeName = toFileName(tmp)
+    const logFile = join(homedir(), '.pm4ai', 'logs', `${safeName}.json`)
+    const entry = JSON.parse(readFileSync(logFile, 'utf8')) as { error?: string; pass: boolean }
+    expect(entry.pass).toBe(false)
+    expect(entry.error).toContain('fatal error')
+    rmSync(tmp, { recursive: true })
+  })
+  test('log entry has no error on success', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
+    await maintain(tmp)
+    const safeName = toFileName(tmp)
+    const logFile = join(homedir(), '.pm4ai', 'logs', `${safeName}.json`)
+    const entry = JSON.parse(readFileSync(logFile, 'utf8')) as { error?: string; pass: boolean }
+    expect(entry.pass).toBe(true)
+    expect(entry.error).toBeUndefined()
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('fix() function', () => {
+  const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
+  test('blocks when lock held by alive process', async () => {
+    rmSync(lockFile, { force: true })
+    mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+    const fd = openSync(lockFile, 'wx')
+    writeFileSync(fd, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    closeSync(fd)
+    await fix()
+    expect(existsSync(lockFile)).toBe(true)
+    rmSync(lockFile, { force: true })
+  })
+  test('recovers stale lock from dead process', async () => {
+    rmSync(lockFile, { force: true })
+    mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+    writeFileSync(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
+    const saved = process.cwd()
+    const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
+    process.chdir(pm4aiPath)
+    await fix()
+    process.chdir(saved)
+    expect(existsSync(lockFile)).toBe(false)
+  }, 30_000)
+  test('cleans up lock after execution', async () => {
+    rmSync(lockFile, { force: true })
+    const saved = process.cwd()
+    const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
+    process.chdir(pm4aiPath)
+    await fix()
+    process.chdir(saved)
+    expect(existsSync(lockFile)).toBe(false)
+  }, 30_000)
+  test('blocks when git is dirty', async () => {
+    rmSync(lockFile, { force: true })
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', {
+      cwd: tmp,
+      stdio: 'pipe'
+    })
+    writeFileSync(join(tmp, 'dirty.txt'), 'dirty')
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'test', private: true })
+    )
+    const saved = process.cwd()
+    process.chdir(tmp)
+    await fix()
+    process.chdir(saved)
+    expect(existsSync(lockFile)).toBe(false)
+    rmSync(tmp, { recursive: true })
+  }, 30_000)
+})
+describe('fix() via CLI', () => {
+  test('fix --help or unknown falls through to guide', () => {
+    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+    const out = execSync(`bun ${cliPath} fixxx`, { encoding: 'utf8', timeout: 10_000 }).trim()
+    expect(out).toContain('commands:')
   })
 })

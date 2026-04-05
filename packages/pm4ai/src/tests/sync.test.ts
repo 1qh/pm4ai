@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig } from '../sync.js'
+import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from '../sync.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
@@ -321,5 +321,127 @@ describe('syncClaudeMd', () => {
     expect(content).toContain('react rules')
     rmSync(selfDir, { recursive: true })
     rmSync(projectDir, { recursive: true })
+  })
+})
+describe('syncUi', () => {
+  test('copies readonly/ui from cnsync to project', () => {
+    const cnsync = makeTmp()
+    const project = makeTmp()
+    const src = join(cnsync, 'readonly', 'ui', 'src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(join(src, 'index.ts'), 'export const x = 1')
+    const issues = syncUi(cnsync, project)
+    expect(issues.some(i => i.detail.includes('updated'))).toBe(true)
+    expect(existsSync(join(project, 'readonly', 'ui', 'src', 'index.ts'))).toBe(true)
+    rmSync(cnsync, { recursive: true })
+    rmSync(project, { recursive: true })
+  })
+  test('returns error when cnsync ui dir missing', () => {
+    const cnsync = makeTmp()
+    const project = makeTmp()
+    const issues = syncUi(cnsync, project)
+    expect(issues.some(i => i.type === 'error')).toBe(true)
+    rmSync(cnsync, { recursive: true })
+    rmSync(project, { recursive: true })
+  })
+  test('skips when project is cnsync itself', () => {
+    const cnsync = makeTmp()
+    const src = join(cnsync, 'readonly', 'ui')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(join(src, 'test.ts'), 'x')
+    const issues = syncUi(cnsync, cnsync)
+    expect(issues).toHaveLength(0)
+    rmSync(cnsync, { recursive: true })
+  })
+})
+describe('syncSubPackages edge cases', () => {
+  const selfPath = join(import.meta.dirname, '..', '..')
+  const makeProject = (rootPkg: Record<string, unknown>, subPkgs: Record<string, Record<string, unknown>>) => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify(rootPkg))
+    for (const [rel, pkg] of Object.entries(subPkgs)) {
+      const dir = join(tmp, rel.replace('/package.json', ''))
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(tmp, rel), JSON.stringify(pkg))
+    }
+    return tmp
+  }
+  test('preserves workspace devDeps during hoisting', async () => {
+    const tmp = makeProject(
+      { devDependencies: {}, private: true, workspaces: ['packages/*'] },
+      {
+        'packages/lib/package.json': {
+          devDependencies: { '@a/other': 'workspace:*', vitest: 'latest' },
+          name: '@a/lib',
+          private: true
+        }
+      }
+    )
+    await syncSubPackages(selfPath, tmp)
+    const subPkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<
+      string,
+      Record<string, string>
+    >
+    expect(subPkg.devDependencies?.['@a/other']).toBe('workspace:*')
+    expect(subPkg.devDependencies?.vitest).toBeUndefined()
+    const rootPkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
+    expect(rootPkg.devDependencies?.vitest).toBe('latest')
+    rmSync(tmp, { recursive: true })
+  })
+  test('sets files field on published packages', async () => {
+    const tmp = makeProject(
+      { private: true, workspaces: ['packages/*'] },
+      { 'packages/lib/package.json': { exports: { '.': './dist/index.js' }, name: 'my-lib' } }
+    )
+    await syncSubPackages(selfPath, tmp)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<string, unknown>
+    expect(pkg.files).toEqual(['dist'])
+    rmSync(tmp, { recursive: true })
+  })
+  test('does not modify private packages with no exports', async () => {
+    const tmp = makeProject(
+      { private: true, workspaces: ['packages/*'] },
+      { 'packages/internal/package.json': { name: '@a/internal', private: true } }
+    )
+    const issues = await syncSubPackages(selfPath, tmp)
+    expect(issues.filter(i => i.detail.includes('type') || i.detail.includes('license'))).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('handles project with no sub-packages', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'solo', private: true }))
+    const issues = await syncSubPackages(selfPath, tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('syncPackageJson edge cases', () => {
+  test('returns empty for missing package.json', async () => {
+    const tmp = makeTmp()
+    const issues = await syncPackageJson(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('sorts devDependencies alphabetically', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({ devDependencies: { axios: 'latest', zod: 'latest' }, name: 'test', private: true })
+    )
+    await syncPackageJson(tmp)
+    const raw = readFileSync(join(tmp, 'package.json'), 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, Record<string, string>>
+    const keys = Object.keys(parsed.devDependencies ?? {})
+    const sorted = [...keys].toSorted()
+    expect(keys).toEqual(sorted)
+    rmSync(tmp, { recursive: true })
+  })
+  test('does not overwrite existing packageManager', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', packageManager: 'bun@1.0.0', private: true }))
+    await syncPackageJson(tmp)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, string>
+    expect(pkg.packageManager).toBe('bun@1.0.0')
+    rmSync(tmp, { recursive: true })
   })
 })

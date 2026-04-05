@@ -235,9 +235,9 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
       const r = await $`bun pm view ${p.pkg.name} versions --json`.quiet().nothrow()
       if (r.exitCode !== 0) return
       try {
-        const versions = JSON.parse(r.stdout.toString()) as string[]
-        if (versions.length > 1)
-          issues.push({ detail: `${p.pkg.name} has ${versions.length} versions published, run cleanup`, type: 'drift' })
+        const parsed: unknown = JSON.parse(r.stdout.toString())
+        if (Array.isArray(parsed) && parsed.length > 1)
+          issues.push({ detail: `${p.pkg.name} has ${parsed.length} versions published, run cleanup`, type: 'drift' })
       } catch {
         /* Noop */
       }

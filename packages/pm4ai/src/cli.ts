@@ -27,5 +27,8 @@ else if (command === 'init') {
   } else if (command === 'fix') {
     const { fix } = await import('./fix.js')
     await fix(flags.has('--all'))
+  } else if (command === 'watch') {
+    const { watch } = await import('./watch.js')
+    await watch(flags.has('--json'))
   } else console.log(guide)
 }

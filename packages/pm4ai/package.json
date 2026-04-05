@@ -38,5 +38,9 @@
     "cleanup-old-versions": "bun script/cleanup-old-versions.ts",
     "postpublish": "bun run cleanup-old-versions",
     "test": "bun test"
+  },
+  "dependencies": {
+    "ink": "^6.8.0",
+    "react": "^19.2.4"
   }
 }

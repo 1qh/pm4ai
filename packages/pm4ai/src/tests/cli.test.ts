@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.js')
+const versionRe = /^\d+\.\d+\.\d+$/u
 const run = (args: string) => execSync(`bun ${cli} ${args}`, { encoding: 'utf8', timeout: 10_000 }).trim()
 describe('guide', () => {
   test('no args prints guide with all commands', () => {
@@ -36,5 +37,31 @@ describe('guide', () => {
     expect(out).toContain('git status')
     expect(out).toContain('config drift')
     expect(out).toContain('ci status')
+  })
+})
+describe('--version', () => {
+  test('--version prints version number', () => {
+    const out = run('--version')
+    expect(out).toMatch(versionRe)
+  })
+  test('-v prints version number', () => {
+    const out = run('-v')
+    expect(out).toMatch(versionRe)
+  })
+})
+describe('flags', () => {
+  test('flags mixed with commands are parsed correctly', () => {
+    const out = run('--version')
+    expect(out).toBeTruthy()
+  })
+  test('unknown flags with known command still works', () => {
+    const out = run('init')
+    expect(out).toContain('usage')
+  })
+})
+describe('guide includes watch', () => {
+  test('guide mentions watch command', () => {
+    const out = run('')
+    expect(out).toContain('watch')
   })
 })

@@ -7,10 +7,12 @@ commands:
   pm4ai status     check current project (or all if outside a project)
   pm4ai fix        sync + maintain current project (requires clean git)
   pm4ai init <n>   scaffold a new pm4ai-ready project
+  pm4ai watch      live terminal dashboard (connects to running fix/status)
   pm4ai setup      install swiftbar menubar plugin + launchd daily auto-run
 flags:
   --all            force global scan across all projects
   --swiftbar       output in SwiftBar menubar format
+  --json           (watch) output raw newline-delimited JSON events
   --verbose        print debug info to stderr
 fix behavior:
   blocks if git is dirty, behind remote, or ahead (unpushed)

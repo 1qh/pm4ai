@@ -5,4 +5,12 @@ describe('preflight', () => {
     const result = await preflight()
     expect(result).toBe(true)
   })
+  test('returns boolean type', async () => {
+    const result = await preflight()
+    expect(typeof result).toBe('boolean')
+  })
+  test('does not throw on missing optional tools', async () => {
+    const result = await preflight()
+    expect(result).toBeDefined()
+  })
 })

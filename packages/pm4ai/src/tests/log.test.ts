@@ -36,4 +36,24 @@ describe('updateLog + readLog', () => {
     expect(a?.pass).toBe(true)
     expect(b?.pass).toBe(false)
   })
+  test('stores error message on failure', () => {
+    const entry = {
+      at: new Date().toISOString(),
+      error: 'lint failed with 3 errors',
+      pass: false,
+      path: '/tmp/error-log-test',
+      project: 'error-log-test'
+    }
+    updateLog(entry)
+    const logs = readLog()
+    const found = logs.find(e => e.project === 'error-log-test')
+    expect(found?.error).toBe('lint failed with 3 errors')
+  })
+  test('entry has valid ISO timestamp', () => {
+    const entry = { at: new Date().toISOString(), pass: true, path: '/tmp/ts-test', project: 'ts-test' }
+    updateLog(entry)
+    const logs = readLog()
+    const found = logs.find(e => e.project === 'ts-test')
+    expect(new Date(found?.at ?? '').getTime()).not.toBeNaN()
+  })
 })

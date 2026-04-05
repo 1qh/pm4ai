@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import type { Issue } from '../types.js'
-import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape } from '../format.js'
+import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
 describe('formatIssues', () => {
   test('empty issues returns empty string', () => {
     expect(formatIssues('/tmp/test', [])).toBe('')
@@ -113,5 +113,50 @@ describe('formatSwiftBar', () => {
     const result = await formatSwiftBar(issues)
     expect(result).toContain('VS Code')
     expect(result).toContain('Ghostty')
+  })
+  test('includes GitHub link for git repos', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('GitHub')
+  })
+  test('handles multiple projects', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'passed 2026-01-01T00:00:00Z', type: 'info' }])
+    issues.set(join(testPath, '..', 'lintmax'), [])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('2 projects')
+  })
+  test('shows ci time from info issues', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'failed 2026-04-05T10:00:00Z', type: 'ci' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('🔴')
+  })
+  test('handles Copy All Issues button', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'drift', type: 'drift' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('Copy All Issues')
+  })
+})
+describe('timeAgo', () => {
+  test('shows minutes for recent times', () => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() - 5)
+    expect(timeAgo(now.toISOString())).toBe('5m ago')
+  })
+  test('shows hours for older times', () => {
+    const now = new Date()
+    now.setHours(now.getHours() - 3)
+    expect(timeAgo(now.toISOString())).toBe('3h ago')
+  })
+  test('shows days for very old times', () => {
+    const now = new Date()
+    now.setDate(now.getDate() - 2)
+    expect(timeAgo(now.toISOString())).toBe('2d ago')
+  })
+  test('shows 0m for just now', () => {
+    expect(timeAgo(new Date().toISOString())).toBe('0m ago')
   })
 })

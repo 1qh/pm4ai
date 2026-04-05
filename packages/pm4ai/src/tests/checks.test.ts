@@ -138,6 +138,48 @@ describe('checkGit', () => {
     expect(issues.some(i => i.type === 'git' && i.detail.includes('uncommitted'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
+  test('counts number of uncommitted changes', async () => {
+    const tmp = makeGitRepo()
+    writeFileSync(join(tmp, 'a.txt'), 'a')
+    writeFileSync(join(tmp, 'b.txt'), 'b')
+    writeFileSync(join(tmp, 'c.txt'), 'c')
+    const issues = await checkGit(tmp)
+    expect(issues.some(i => i.detail.includes('3 uncommitted'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('behind remote detected with real remote', async () => {
+    const remote = makeTmp()
+    execSync('git init --bare', { cwd: remote, stdio: 'pipe' })
+    const local = makeTmp()
+    execSync(`git clone ${remote} ${local}`, { stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: local, stdio: 'pipe' })
+    execSync('git push', { cwd: local, stdio: 'pipe' })
+    const local2 = makeTmp()
+    execSync(`git clone ${remote} ${local2}`, { stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m second', { cwd: local, stdio: 'pipe' })
+    execSync('git push', { cwd: local, stdio: 'pipe' })
+    const issues = await checkGit(local2)
+    expect(issues.some(i => i.type === 'git' && i.detail.includes('behind'))).toBe(true)
+    rmSync(remote, { recursive: true })
+    rmSync(local, { recursive: true })
+    rmSync(local2, { recursive: true })
+  })
+  test('ahead of remote detected', async () => {
+    const remote = makeTmp()
+    execSync('git init --bare', { cwd: remote, stdio: 'pipe' })
+    const local = makeTmp()
+    execSync(`git clone ${remote} ${local}`, { stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: local, stdio: 'pipe' })
+    execSync('git push', { cwd: local, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m unpushed', {
+      cwd: local,
+      stdio: 'pipe'
+    })
+    const issues = await checkGit(local)
+    expect(issues.some(i => i.type === 'git' && i.detail.includes('ahead'))).toBe(true)
+    rmSync(remote, { recursive: true })
+    rmSync(local, { recursive: true })
+  })
 })
 describe('checkLint', () => {
   test('returns never run when no check cache', () => {
@@ -211,6 +253,138 @@ describe('checkVercel', () => {
     const tmp = makeTmp()
     const issues = await checkVercel(tmp)
     expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkRootPkg edge cases', () => {
+  test('reports wrong pre-commit hook', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        packageManager: 'bun@1.2.0',
+        private: true,
+        scripts: { postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
+        'simple-git-hooks': { 'pre-commit': 'wrong command' }
+      })
+    )
+    const issues = await checkRootPkg(tmp)
+    expect(issues.some(i => i.detail.includes('pre-commit'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('reports wrong prepare script', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        packageManager: 'bun@1.2.0',
+        private: true,
+        scripts: { postinstall: 'sherif', prepare: 'wrong' },
+        'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' }
+      })
+    )
+    const issues = await checkRootPkg(tmp)
+    expect(issues.some(i => i.detail.includes('prepare'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('reports postinstall without sherif', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        packageManager: 'bun@1.2.0',
+        private: true,
+        scripts: { postinstall: 'echo hello', prepare: 'bunx simple-git-hooks' },
+        'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' }
+      })
+    )
+    const issues = await checkRootPkg(tmp)
+    expect(issues.some(i => i.detail.includes('sherif'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns empty for missing package.json', async () => {
+    const tmp = makeTmp()
+    const issues = await checkRootPkg(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('reports clean script not starting with sh clean.sh', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        packageManager: 'bun@1.2.0',
+        private: true,
+        scripts: { clean: 'rm -rf dist', postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
+        'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' }
+      })
+    )
+    const issues = await checkRootPkg(tmp)
+    expect(issues.some(i => i.detail.includes('clean'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkLint edge cases', () => {
+  test('shows commit staleness info', () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: tmp, stdio: 'pipe' })
+    writeCheckResult({ pass: true, projectPath: tmp, violations: 0 })
+    const issues = checkLint(tmp)
+    expect(issues.some(i => i.detail.includes('passed') && i.detail.includes('current'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkForbidden edge cases', () => {
+  test('flags @ts-nocheck in TypeScript files', async () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    mkdirSync(join(tmp, 'src'), { recursive: true })
+    writeFileSync(join(tmp, 'src', 'bad.ts'), '// @ts-nocheck\nconst x = 1')
+    const issues = await checkForbidden(tmp)
+    expect(issues.some(i => i.detail.includes('@ts-nocheck'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags pnpm-lock.yaml', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'pnpm-lock.yaml'), 'lockfileVersion: 5')
+    const issues = await checkForbidden(tmp)
+    expect(issues.some(i => i.detail.includes('pnpm-lock.yaml'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('no issues for clean project', async () => {
+    const tmp = makeTmp()
+    const issues = await checkForbidden(tmp)
+    const lockIssues = issues.filter(i => i.type === 'forbidden' && !i.detail.includes('bun.lock'))
+    expect(lockIssues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkConfigs edge cases', () => {
+  test('reports wrong tsconfig extends', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'turbo.json'), '{}')
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: '@other/config' }))
+    const issues = await checkConfigs(tmp)
+    expect(issues.some(i => i.detail.includes('should extend lintmax/tsconfig'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('reports wrong vercel installCommand', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'turbo.json'), '{}')
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
+    writeFileSync(join(tmp, 'vercel.json'), JSON.stringify({ installCommand: 'npm install' }))
+    const issues = await checkConfigs(tmp)
+    expect(issues.some(i => i.detail.includes('installCommand'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('no vercel issue when installCommand is correct', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'turbo.json'), '{}')
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
+    writeFileSync(join(tmp, 'vercel.json'), JSON.stringify({ installCommand: 'bun i' }))
+    const issues = await checkConfigs(tmp)
+    expect(issues.filter(i => i.detail.includes('installCommand'))).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
 })

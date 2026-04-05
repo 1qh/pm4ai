@@ -1,10 +1,19 @@
 import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getCodeCommitsSince, getHeadCommit, isCheckRunning, readCheckResult, writeCheckResult } from '../check-cache.js'
+import {
+  getCodeCommitsSince,
+  getHeadCommit,
+  isCheckRunning,
+  readCheckResult,
+  spawnBackgroundCheck,
+  writeCheckResult
+} from '../check-cache.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-cc-'))
+const leadingSepRe = /^--/u
+const toSafeName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
 describe('writeCheckResult + readCheckResult', () => {
   test('writes and reads back a passing result', () => {
     const tmp = makeTmp()
@@ -98,6 +107,58 @@ describe('isCheckRunning', () => {
   test('returns false when no lock', () => {
     const tmp = makeTmp()
     expect(isCheckRunning(tmp)).toBe(false)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns true when lock exists with alive PID', () => {
+    const tmp = makeTmp()
+    const dir = join(homedir(), '.pm4ai', 'checks')
+    mkdirSync(dir, { recursive: true })
+    const safeName = toSafeName(tmp)
+    const lp = join(dir, `${safeName}.lock`)
+    writeFileSync(lp, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    expect(isCheckRunning(tmp)).toBe(true)
+    rmSync(lp, { force: true })
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns false and cleans up stale lock', () => {
+    const tmp = makeTmp()
+    const dir = join(homedir(), '.pm4ai', 'checks')
+    mkdirSync(dir, { recursive: true })
+    const safeName = toSafeName(tmp)
+    const lp = join(dir, `${safeName}.lock`)
+    writeFileSync(lp, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
+    expect(isCheckRunning(tmp)).toBe(false)
+    expect(existsSync(lp)).toBe(false)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns false and cleans up corrupt lock', () => {
+    const tmp = makeTmp()
+    const dir = join(homedir(), '.pm4ai', 'checks')
+    mkdirSync(dir, { recursive: true })
+    const safeName = toSafeName(tmp)
+    const lp = join(dir, `${safeName}.lock`)
+    writeFileSync(lp, 'not json')
+    expect(isCheckRunning(tmp)).toBe(false)
+    expect(existsSync(lp)).toBe(false)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('spawnBackgroundCheck', () => {
+  test('does not throw for valid project', () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true, scripts: { check: 'true' } }))
+    expect(() => spawnBackgroundCheck(tmp)).not.toThrow()
+    rmSync(tmp, { recursive: true })
+  })
+  test('skips when check already running', () => {
+    const tmp = makeTmp()
+    const dir = join(homedir(), '.pm4ai', 'checks')
+    mkdirSync(dir, { recursive: true })
+    const safeName = toSafeName(tmp)
+    const lp = join(dir, `${safeName}.lock`)
+    writeFileSync(lp, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    expect(() => spawnBackgroundCheck(tmp)).not.toThrow()
+    rmSync(lp, { force: true })
     rmSync(tmp, { recursive: true })
   })
 })
