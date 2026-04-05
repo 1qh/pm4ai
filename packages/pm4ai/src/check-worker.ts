@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -12,7 +12,7 @@ mkdirSync(dir, { recursive: true })
 writeFileSync(lp, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
 const getCommit = (): string => {
   try {
-    return execSync('git rev-parse HEAD', { cwd: projectPath, stdio: 'pipe' }).toString().trim()
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectPath, stdio: 'pipe' }).toString().trim()
   } catch {
     return ''
   }

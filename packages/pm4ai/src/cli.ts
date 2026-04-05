@@ -3,13 +3,15 @@ import pkg from '../package.json' with { type: 'json' }
 import { guide } from './guide.js'
 import { preflight } from './preflight.js'
 import { setVerbose } from './utils.js'
-const command = process.argv[2]
-const flags = new Set(process.argv.slice(3))
+const args = process.argv.slice(2)
+const flags = new Set(args.filter(a => a.startsWith('-')))
+const positional = args.filter(a => !a.startsWith('-'))
+const command = positional[0]
 if (flags.has('--verbose')) setVerbose(true)
-if (command === '--version' || command === '-v') console.log(pkg.version)
+if (command === '--version' || command === '-v' || flags.has('--version') || flags.has('-v')) console.log(pkg.version)
 else if (!command) console.log(guide)
 else if (command === 'init') {
-  const name = process.argv[3]
+  const name = positional[1]
   if (name) {
     const { init } = await import('./init.js')
     await init(name)

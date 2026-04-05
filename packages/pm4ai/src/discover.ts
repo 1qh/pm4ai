@@ -30,9 +30,10 @@ const discover = async (): Promise<{
   self: Project
 }> => {
   const home = homedir()
-  const result = await $`rg -l '"lintmax"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**'`
-    .quiet()
-    .nothrow()
+  const result =
+    await $`rg -l '"lintmax"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**' -g '!**/.Trash/**' -g '!**/Library/**' -g '!**/Applications/**' -g '!**/.local/**' -g '!**/.npm/**' -g '!**/.bun/**' -g '!**/.docker/**' -g '!**/iCloud*/**' -g '!**/.git/**'`
+      .quiet()
+      .nothrow()
   const stdout = result.stdout.toString().trim()
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)

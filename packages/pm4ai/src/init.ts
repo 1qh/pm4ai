@@ -18,8 +18,7 @@ const TURBO_JSON = JSON.stringify(
 const TSCONFIG_JSON = JSON.stringify(
   {
     compilerOptions: { types: ['bun-types'] },
-    extends: 'lintmax/tsconfig',
-    include: ['*.ts']
+    extends: 'lintmax/tsconfig'
   },
   null,
   2

@@ -26,13 +26,11 @@ const fetchNpmVersion = async (pkg: string): Promise<string | undefined> => {
 }
 const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => {
   const cached = latestNpmVersionCache.get(pkg)
-  if (cached) {
-    const v = await cached
-    return v
-  }
+  if (cached) return cached
   const p = fetchNpmVersion(pkg)
   latestNpmVersionCache.set(pkg, p)
   const v = await p
+  if (!v) latestNpmVersionCache.delete(pkg)
   return v
 }
 let latestBunVersionCache: Promise<string | undefined> | undefined
@@ -47,12 +45,10 @@ const fetchBunVersion = async (): Promise<string | undefined> => {
   return data.tag_name.replace('bun-v', '')
 }
 const getLatestBunVersion = async (): Promise<string | undefined> => {
-  if (latestBunVersionCache) {
-    const v = await latestBunVersionCache
-    return v
-  }
+  if (latestBunVersionCache) return latestBunVersionCache
   latestBunVersionCache = fetchBunVersion()
   const v = await latestBunVersionCache
+  if (!v) latestBunVersionCache = undefined
   return v
 }
 const isAutoSynced = (pkgPath: string) => SKIP_PATTERNS.some(p => pkgPath.includes(p))

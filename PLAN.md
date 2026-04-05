@@ -328,40 +328,37 @@ When idle, falls back to current behavior (🟢/🔴 per project).
 
 All bugs and issues found by independent code review. Must be fixed before building new features.
 
-**Critical:**
+**Fixed (✓):**
 
-1. `fix.ts:109-128` — partial-mutation-then-abort: pulls some repos before checking if others are dirty, then aborts all. Fix: check ALL repos for dirty/ahead/diverged state BEFORE any git pull.
-2. `fix.ts:134` — self and cnsync repos not checked for dirty state before syncing from them. Fix: include self/cnsync in the pre-check loop.
-3. `discover.ts:33` — `rg` scans entire `$HOME` including Trash, iCloud, Dropbox, app caches. Fix: add exclusion patterns for known junk directories (`Library`, `.Trash`, `Applications`, etc.).
-4. `check-cache.ts:37-38` — string-interpolated `execSync` with file paths. Fix: use `execFileSync` with argument array.
-5. `audit.ts:16-26` — failed fetch promises cached permanently. Fix: don’t cache rejected promises, or add TTL.
+- ✓ `fix.ts` — partial-mutation-then-abort: now checks ALL repos (including self/cnsync) before any git pull
+- ✓ `fix.ts` — lockfile race condition: now uses `openSync` with `wx` flag (atomic exclusive create)
+- ✓ `fix.ts` — removed unused `gitPull` function
+- ✓ `fix.ts`, `status.ts` — SwiftBar `open` guarded by `process.platform === ‘darwin’`
+- ✓ `fix.ts`, `status.ts` — use `projectName()` utility instead of duplicated `split(‘/’).pop()`
+- ✓ `check-cache.ts`, `check-worker.ts` — replaced `execSync` with `execFileSync` (no shell injection)
+- ✓ `audit.ts` — failed fetch promises no longer cached permanently
+- ✓ `discover.ts` — `rg` now excludes `.Trash`, `Library`, `Applications`, `.local`, `.npm`, `.bun`, `.docker`, `iCloud*`, `.git`
+- ✓ `init.ts` — removed `include` from generated tsconfig
+- ✓ `cli.ts` — flags parsed separately from positional args (`pm4ai init --verbose` no longer treats `--verbose` as name)
+- ✓ `package.json` — `@types/bun` moved from `dependencies` to `devDependencies`
+- ✓ oRPC router duplicate `status` renamed to `refreshStatus`
+- ✓ “Zero impact” claim corrected to “negligible impact”
 
-**Major:**
+**Remaining (not yet fixed):**
 
-6. `fix.ts:67-88` — lockfile race condition, no atomic lock acquisition. Fix: use `writeFileSync` with `wx` flag (exclusive create).
-7. `fix.ts:167`, `status.ts:67` — `open swiftbar://` runs unconditionally on all platforms. Fix: check `process.platform === 'darwin'` first.
-8. `init.ts:79` — generates tsconfig with `include: ['*.ts']` which immediately fails own checks. Fix: remove `include` from generated tsconfig.
-9. `cli.ts:13` — `pm4ai init --verbose` treats `--verbose` as project name. Fix: parse flags before positional args.
-10. `fix.ts:99`, `status.ts:31`, `check-worker.ts:7` — duplicated `path.split('/').pop()` instead of using `projectName()`. Fix: use the utility.
-11. `audit.ts:239` — `bun pm view` output parsed without validation, silent failure. Fix: validate before parse.
-12. `package.json:42` — `@types/bun` in `dependencies` instead of `devDependencies`. Fix: move it.
-13. `format.ts:57` — ciTime parsing brittle, coupled to `checks.ts:19` string format. Fix: pass structured data instead of parsing strings.
-14. `utils.ts:35-41` — workspace glob only supports `dir/*` pattern, not nested globs or negations. Fix: handle more patterns.
+- `audit.ts:239` — `bun pm view` output parsed without validation, silent failure
+- `format.ts:57` — ciTime parsing brittle, coupled to `checks.ts:19` string format
+- `utils.ts:35-41` — workspace glob only supports `dir/*` pattern, not nested globs or negations
+- Child process → socket race condition for dashboard mutations (document workaround in dashboard code)
 
 **Missing tests (existing code):**
 
-15. No `fix.test.ts` — the most dangerous module has zero tests.
-16. No tests for lockfile mechanism (acquire/release/race/stale cleanup).
-17. No tests for `check-worker.ts`, `log.ts`, `setup.ts`, `preflight.ts`.
-18. No tests for `gitPull` or `maintain` functions.
-19. No error handling tests (git not installed, network down, disk full).
-20. `discover.ts` not testable without dependency injection for search root.
-
-**Plan fixes:**
-
-21. oRPC router has `status` defined twice (query + mutation) — rename mutation to `refreshStatus`.
-22. “Zero impact” claim is inaccurate — change to “negligible impact”.
-23. Document the child process → socket race condition for dashboard mutations.
+- No `fix.test.ts` — the most dangerous module has zero tests
+- No tests for lockfile mechanism (acquire/release/race/stale cleanup)
+- No tests for `check-worker.ts`, `log.ts`, `setup.ts`, `preflight.ts`
+- No tests for `maintain` function
+- No error handling tests (git not installed, network down, disk full)
+- `discover.ts` not testable without dependency injection for search root
 
 ### Phase 1: Event System + Terminal Watch
 

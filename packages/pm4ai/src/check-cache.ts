@@ -2,7 +2,7 @@
 /* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { spawn } from 'bun'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -27,20 +27,16 @@ const readCheckResult = (projectPath: string): CheckResult | undefined => {
 }
 const getHeadCommit = (projectPath: string): string => {
   try {
-    return execSync('git rev-parse HEAD', { cwd: projectPath, stdio: 'pipe' }).toString().trim()
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectPath, stdio: 'pipe' }).toString().trim()
   } catch {}
   return ''
 }
 const getCodeCommitsSince = (projectPath: string, commit: string): number => {
   if (!commit) return -1
   try {
-    const excludes = [CLAUDE_MD, '*.md', ...VERBATIM_FILES].map(f => `':!${f}'`).join(' ')
-    return Number.parseInt(
-      execSync(`git rev-list --count ${commit}..HEAD -- ${excludes}`, { cwd: projectPath, stdio: 'pipe' })
-        .toString()
-        .trim(),
-      10
-    )
+    const excludes = [CLAUDE_MD, '*.md', ...VERBATIM_FILES].map(f => `:!${f}`)
+    const args = ['rev-list', '--count', `${commit}..HEAD`, '--', ...excludes]
+    return Number.parseInt(execFileSync('git', args, { cwd: projectPath, stdio: 'pipe' }).toString().trim(), 10)
   } catch {}
   return -1
 }

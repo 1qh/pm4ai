@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { $ } from 'bun'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
@@ -12,23 +12,6 @@ import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
-const gitPull = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
-  const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
-  const statusOut = statusResult.stdout.toString().trim()
-  if (statusOut) {
-    issues.push({ detail: 'dirty, skipping pull', type: 'git' })
-    return issues
-  }
-  await $`git fetch`.cwd(projectPath).quiet().nothrow()
-  const behindResult = await $`git rev-list --count HEAD..@{u}`.cwd(projectPath).quiet().nothrow()
-  const behind = Number.parseInt(behindResult.stdout.toString().trim(), 10)
-  if (behind > 0) {
-    await $`git pull`.cwd(projectPath).quiet().nothrow()
-    issues.push({ detail: `pulled ${behind} commits`, type: 'git' })
-  }
-  return issues
-}
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const upSh = join(projectPath, 'up.sh')
@@ -65,29 +48,35 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 }
 export const fix = async (all = false) => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
+  mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
   if (existsSync(lockFile)) {
     try {
       const lock = JSON.parse(readFileSync(lockFile, 'utf8')) as { at: string; pid: number }
       const age = Date.now() - new Date(lock.at).getTime()
-      const alive = (() => {
-        try {
-          process.kill(lock.pid, 0)
-          return true
-        } catch {
-          return false
-        }
-      })()
+      let alive = false
+      try {
+        process.kill(lock.pid, 0)
+        alive = true
+      } catch {
+        /* Process not found */
+      }
       if (alive && age < 600_000) {
         console.log('another fix is already running')
         return
       }
     } catch {
-      /* Stale lock */
+      /* Stale/corrupt lock */
     }
     rmSync(lockFile)
   }
-  mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
-  writeFileSync(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+  try {
+    const fd = openSync(lockFile, 'wx')
+    writeFileSync(fd, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+    closeSync(fd)
+  } catch {
+    console.log('another fix is already running')
+    return
+  }
   try {
     const resolveTargets = async () => {
       if (all) return discover()
@@ -96,7 +85,7 @@ export const fix = async (all = false) => {
         const { self, cnsync } = await discoverSources()
         return {
           cnsync,
-          consumers: [{ isCnsync: false, isSelf: false, name: projectPath.split('/').pop() ?? '', path: projectPath }],
+          consumers: [{ isCnsync: false, isSelf: false, name: projectName(projectPath), path: projectPath }],
           self
         }
       }
@@ -105,33 +94,39 @@ export const fix = async (all = false) => {
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
+    const allRepos = [self, cnsync, ...consumers]
     const blocked: string[] = []
-    await Promise.all(
-      consumers.map(async project => {
-        const name = projectName(project.path)
-        const dirty = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
-        if (dirty.stdout.toString().trim() && !project.isCnsync) {
-          blocked.push(`${name}: uncommitted changes`)
-          return
-        }
-        await $`git fetch`.cwd(project.path).quiet().nothrow()
-        const behind = await $`git rev-list --count HEAD..@{u}`.cwd(project.path).quiet().nothrow()
-        const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(project.path).quiet().nothrow()
+    const pullable: { name: string; path: string }[] = []
+    const checkResults = await Promise.all(
+      allRepos.map(async repo => {
+        const name = projectName(repo.path)
+        const dirty = await $`git status --porcelain`.cwd(repo.path).quiet().nothrow()
+        if (dirty.stdout.toString().trim() && !('isCnsync' in repo && repo.isCnsync))
+          return { name, reason: 'uncommitted changes' }
+        await $`git fetch`.cwd(repo.path).quiet().nothrow()
+        const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
+        const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()
         const b = Number.parseInt(behind.stdout.toString().trim(), 10)
         const a = Number.parseInt(ahead.stdout.toString().trim(), 10)
-        if (b > 0 && a === 0) {
-          await $`git pull`.cwd(project.path).quiet().nothrow()
-          console.log(`${name}: pulled ${b} commits`)
-        } else if (b > 0) blocked.push(`${name}: diverged (${b} behind, ${a} ahead)`)
-        else if (a > 0) blocked.push(`${name}: ${a} commits ahead, push first`)
+        if (b > 0 && a > 0) return { name, reason: `diverged (${b} behind, ${a} ahead)` }
+        if (a > 0) return { name, reason: `${a} commits ahead, push first` }
+        return { behind: b, name, path: repo.path }
       })
     )
+    for (const r of checkResults)
+      if ('reason' in r) blocked.push(`${r.name}: ${r.reason}`)
+      else if (r.behind > 0) pullable.push({ name: r.name, path: r.path })
     if (blocked.length > 0) {
       console.log('fix requires clean git state:')
       for (const msg of blocked) console.log(`  ${msg}`)
       return
     }
-    await Promise.all([gitPull(self.path), gitPull(cnsync.path)])
+    await Promise.all(
+      pullable.map(async repo => {
+        await $`git pull`.cwd(repo.path).quiet().nothrow()
+        console.log(`${repo.name}: pulled`)
+      })
+    )
     const tasks = consumers.map(async project => {
       const issues: Issue[] = []
       const [configIssues, claudeIssues, pkgIssues, tsconfigIssues] = await Promise.all([
@@ -164,7 +159,7 @@ export const fix = async (all = false) => {
       })
     )
     for (const s of summaries) console.log(s)
-    await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+    if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   } finally {
     rmSync(lockFile, { force: true })
   }

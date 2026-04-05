@@ -39,7 +39,7 @@
     "postpublish": "bun run cleanup-old-versions",
     "test": "bun test"
   },
-  "dependencies": {
+  "devDependencies": {
     "@types/bun": "latest"
   }
 }

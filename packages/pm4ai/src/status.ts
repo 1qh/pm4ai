@@ -15,7 +15,7 @@ import {
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
-import { isInsideProject } from './utils.js'
+import { isInsideProject, projectName } from './utils.js'
 const status = async (swiftbar = false, all = false) => {
   let allProjects: { name: string; path: string }[]
   let selfPath: string
@@ -28,7 +28,7 @@ const status = async (swiftbar = false, all = false) => {
     if (projectPath) {
       const { self } = await discoverSources()
       selfPath = self.path
-      allProjects = [{ name: projectPath.split('/').pop() ?? '', path: projectPath }]
+      allProjects = [{ name: projectName(projectPath), path: projectPath }]
     } else {
       const { consumers, self } = await discover()
       selfPath = self.path
@@ -63,7 +63,7 @@ const status = async (swiftbar = false, all = false) => {
         console.log()
       }
     }
-    await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+    if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   }
 }
 export { status, timeAgo }
