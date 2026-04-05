@@ -22,3 +22,28 @@ describe('setup templates', () => {
     expect(src).toContain('<integer>0</integer>')
   })
 })
+describe('streaming plugin', () => {
+  const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  test('declares swiftbar.type as streamable', () => {
+    expect(src).toContain('swiftbar.type>streamable')
+  })
+  test('uses bun shebang', () => {
+    expect(src).toContain('#!/usr/bin/env bun')
+  })
+  test('connects to watch.sock', () => {
+    expect(src).toContain('watch.sock')
+  })
+  test('outputs ~~~ separator for streaming', () => {
+    expect(src).toContain('~~~')
+  })
+  test('reads check cache for idle state', () => {
+    expect(src).toContain('.pm4ai')
+    expect(src).toContain('checks')
+  })
+  test('has spinner animation', () => {
+    expect(src).toContain('⠋')
+  })
+  test('falls back when no socket', () => {
+    expect(src).toContain('process.exit(0)')
+  })
+})
