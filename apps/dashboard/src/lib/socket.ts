@@ -1,0 +1,51 @@
+/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
+/* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then) */
+/* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
+import type { WatchEvent } from 'pm4ai'
+type Listener = (event: WatchEvent) => void
+const listeners = new Set<Listener>()
+let buffer = ''
+let connected = false
+let started = false
+const ensureStarted = async () => {
+  if (started) return
+  started = true
+  const { createConnection } = await import('node:net')
+  const { homedir } = await import('node:os')
+  const { join } = await import('node:path')
+  const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
+  const doConnect = () => {
+    const sock = createConnection(socketPath)
+    sock.on('connect', () => {
+      connected = true
+    })
+    sock.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines)
+        if (line)
+          try {
+            const event = JSON.parse(line) as WatchEvent
+            for (const fn of listeners) fn(event)
+          } catch {
+            /* Malformed */
+          }
+    })
+    sock.on('close', () => {
+      connected = false
+      setTimeout(doConnect, 1000)
+    })
+    sock.on('error', () => {
+      /* Reconnect on close */
+    })
+  }
+  doConnect()
+}
+const subscribe = (fn: Listener): (() => void) => {
+  ensureStarted().catch(() => {})
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+const isConnected = () => connected
+export { isConnected, subscribe }

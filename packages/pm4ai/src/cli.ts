@@ -30,5 +30,8 @@ else if (command === 'init') {
   } else if (command === 'watch') {
     const { watch } = await import('./watch.js')
     await watch(flags.has('--json'))
+  } else if (command === 'dashboard') {
+    const { dashboard } = await import('./dashboard.js')
+    await dashboard()
   } else console.log(guide)
 }
