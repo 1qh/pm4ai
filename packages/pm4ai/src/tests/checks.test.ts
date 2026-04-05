@@ -3,7 +3,17 @@ import { execSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkConfigs, checkForbidden, checkGit, checkLint, checkRootPkg } from '../checks.js'
+import { writeCheckResult } from '../check-cache.js'
+import {
+  checkCi,
+  checkConfigs,
+  checkDrift,
+  checkForbidden,
+  checkGit,
+  checkLint,
+  checkRootPkg,
+  checkVercel
+} from '../checks.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {
@@ -134,6 +144,73 @@ describe('checkLint', () => {
     const tmp = makeTmp()
     const issues = checkLint(tmp)
     expect(issues.some(i => i.detail.includes('never run'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns passed with age when check result exists', () => {
+    const tmp = makeTmp()
+    writeCheckResult({ pass: true, projectPath: tmp, violations: 0 })
+    const issues = checkLint(tmp)
+    expect(issues.some(i => i.detail.includes('passed'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns failed with violations when check failed', () => {
+    const tmp = makeTmp()
+    writeCheckResult({ pass: false, projectPath: tmp, summary: 'lint errors', violations: 10 })
+    const issues = checkLint(tmp)
+    expect(issues.some(i => i.detail.includes('failed') && i.detail.includes('10 violations'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkDrift', () => {
+  test('reports missing file', async () => {
+    const src = makeTmp()
+    const dst = makeTmp()
+    writeFileSync(join(src, 'clean.sh'), '#!/bin/sh\nrm -rf dist')
+    const issues = await checkDrift(src, dst)
+    expect(issues.some(i => i.detail.includes('clean.sh') && i.detail.includes('missing'))).toBe(true)
+    rmSync(src, { recursive: true })
+    rmSync(dst, { recursive: true })
+  })
+  test('reports out of sync file', async () => {
+    const src = makeTmp()
+    const dst = makeTmp()
+    writeFileSync(join(src, 'clean.sh'), 'version A')
+    writeFileSync(join(dst, 'clean.sh'), 'version B')
+    const issues = await checkDrift(src, dst)
+    expect(issues.some(i => i.detail.includes('clean.sh') && i.detail.includes('out of sync'))).toBe(true)
+    rmSync(src, { recursive: true })
+    rmSync(dst, { recursive: true })
+  })
+  test('no issues when files match', async () => {
+    const src = makeTmp()
+    const dst = makeTmp()
+    writeFileSync(join(src, 'clean.sh'), 'same content')
+    writeFileSync(join(dst, 'clean.sh'), 'same content')
+    const issues = await checkDrift(src, dst)
+    expect(issues.filter(i => i.detail.includes('clean.sh'))).toHaveLength(0)
+    rmSync(src, { recursive: true })
+    rmSync(dst, { recursive: true })
+  })
+})
+describe('checkCi', () => {
+  test('returns empty for non-git project', async () => {
+    const tmp = makeTmp()
+    const issues = await checkCi(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns result for real pm4ai repo', async () => {
+    const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
+    const issues = await checkCi(pm4aiPath)
+    expect(issues.length).toBeGreaterThanOrEqual(0)
+    if (issues.length > 0) expect(issues[0]?.type === 'ci' || issues[0]?.type === 'info').toBe(true)
+  })
+})
+describe('checkVercel', () => {
+  test('returns empty when no .vercel directory', async () => {
+    const tmp = makeTmp()
+    const issues = await checkVercel(tmp)
+    expect(issues).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
 })
