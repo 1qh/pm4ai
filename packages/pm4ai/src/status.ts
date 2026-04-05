@@ -20,9 +20,9 @@ const status = async (swiftbar = false, all = false) => {
   let allProjects: { name: string; path: string }[]
   let selfPath: string
   if (all) {
-    const { consumers, self } = await discover()
+    const { cnsync, consumers, self } = await discover()
     selfPath = self.path
-    allProjects = [self, ...consumers]
+    allProjects = [self, cnsync, ...consumers]
   } else {
     const projectPath = await isInsideProject()
     if (projectPath) {
@@ -30,9 +30,9 @@ const status = async (swiftbar = false, all = false) => {
       selfPath = self.path
       allProjects = [{ name: projectName(projectPath), path: projectPath }]
     } else {
-      const { consumers, self } = await discover()
+      const { cnsync, consumers, self } = await discover()
       selfPath = self.path
-      allProjects = [self, ...consumers]
+      allProjects = [self, cnsync, ...consumers]
     }
   }
   const allIssues = new Map<string, Issue[]>()
