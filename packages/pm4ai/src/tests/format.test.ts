@@ -1,6 +1,8 @@
+/* oxlint-disable unicorn/no-immediate-mutation */
 import { describe, expect, test } from 'bun:test'
+import { join } from 'node:path'
 import type { Issue } from '../types.js'
-import { formatIssues, hasRealIssues, shellEscape } from '../format.js'
+import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape } from '../format.js'
 describe('formatIssues', () => {
   test('empty issues returns empty string', () => {
     expect(formatIssues('/tmp/test', [])).toBe('')
@@ -63,5 +65,53 @@ describe('shellEscape', () => {
   })
   test('handles empty string', () => {
     expect(shellEscape('')).toBe('')
+  })
+})
+describe('formatSwiftBar', () => {
+  const testPath = join(import.meta.dirname, '..', '..', '..', '..')
+  test('shows green checkmark when all clean', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'passed 2026-01-01T00:00:00Z', type: 'info' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('checkmark.circle.fill')
+    expect(result).toContain('sfcolor=green')
+    expect(result).toContain('1/1')
+  })
+  test('shows red xmark when issues exist', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'missing turbo.json', type: 'missing' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('xmark.circle.fill')
+    expect(result).toContain('sfcolor=red')
+    expect(result).toContain('0/1')
+  })
+  test('includes Copy Issues for projects with real issues', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'drift in config', type: 'drift' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('Copy Issues')
+    expect(result).toContain('pbcopy')
+  })
+  test('escapes shell metacharacters in Copy Issues', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'dep $(whoami) broken', type: 'dep' }])
+    const result = await formatSwiftBar(issues)
+    const copyLine = result.split('\n').find(l => l.includes('pbcopy'))
+    expect(copyLine).toBeDefined()
+    expect(copyLine).toContain(String.raw`\$\(whoami\)`)
+    expect(copyLine).not.toContain('$(whoami)')
+  })
+  test('includes Refresh button', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('Refresh | refresh=true')
+  })
+  test('includes VS Code and Ghostty links', async () => {
+    const issues = new Map<string, Issue[]>()
+    issues.set(testPath, [{ detail: 'passed 2026-01-01T00:00:00Z', type: 'info' }])
+    const result = await formatSwiftBar(issues)
+    expect(result).toContain('VS Code')
+    expect(result).toContain('Ghostty')
   })
 })

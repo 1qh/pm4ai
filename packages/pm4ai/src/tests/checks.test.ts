@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkConfigs, checkForbidden, checkRootPkg } from '../checks.js'
@@ -60,6 +60,49 @@ describe('checkForbidden', () => {
     const issues = await checkForbidden(tmp)
     const details = issues.map(i => i.detail)
     expect(details.some(d => d.includes('yarn.lock'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags nested .gitignore', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, '.gitignore'), 'node_modules')
+    mkdirSync(join(tmp, '.git'))
+    mkdirSync(join(tmp, 'apps'))
+    writeFileSync(join(tmp, 'apps', '.gitignore'), 'dist')
+    const issues = await checkForbidden(tmp)
+    expect(issues.some(i => i.detail.includes('nested .gitignore'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('no issue when only root .gitignore', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, '.gitignore'), 'node_modules')
+    const issues = await checkForbidden(tmp)
+    expect(issues.filter(i => i.detail.includes('nested .gitignore'))).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags postcss.config.mjs', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'apps', 'web'), { recursive: true })
+    writeFileSync(join(tmp, 'apps', 'web', 'postcss.config.mjs'), 'export default {}')
+    const issues = await checkForbidden(tmp)
+    expect(issues.some(i => i.detail.includes('postcss.config.mjs'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkConfigs tsconfig', () => {
+  test('flags tsconfig with include', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'turbo.json'), '{}')
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig', include: ['*.ts'] }))
+    const issues = await checkConfigs(tmp)
+    expect(issues.some(i => i.detail.includes('should not have "include"'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('no include flag when tsconfig has no include', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'turbo.json'), '{}')
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
+    const issues = await checkConfigs(tmp)
+    expect(issues.filter(i => i.detail.includes('include'))).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
 })
