@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readCheckResult, writeCheckResult } from '../check-cache.js'
+import { getCodeCommitsSince, getHeadCommit, isCheckRunning, readCheckResult, writeCheckResult } from '../check-cache.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-cc-'))
 describe('writeCheckResult + readCheckResult', () => {
   test('writes and reads back a passing result', () => {
@@ -47,5 +48,56 @@ describe('writeCheckResult + readCheckResult', () => {
     expect(readCheckResult(tmp2)?.pass).toBe(false)
     rmSync(tmp1, { recursive: true })
     rmSync(tmp2, { recursive: true })
+  })
+})
+describe('getHeadCommit', () => {
+  test('returns commit hash for git repo', () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: tmp, stdio: 'pipe' })
+    const commit = getHeadCommit(tmp)
+    expect(commit.length).toBe(40)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns empty string for non-git directory', () => {
+    const tmp = makeTmp()
+    expect(getHeadCommit(tmp)).toBe('')
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('getCodeCommitsSince', () => {
+  test('returns 0 for current commit', () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: tmp, stdio: 'pipe' })
+    const commit = getHeadCommit(tmp)
+    expect(getCodeCommitsSince(tmp, commit)).toBe(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('returns -1 for empty commit', () => {
+    const tmp = makeTmp()
+    expect(getCodeCommitsSince(tmp, '')).toBe(-1)
+    rmSync(tmp, { recursive: true })
+  })
+  test('counts code commits excluding CLAUDE.md', () => {
+    const tmp = makeTmp()
+    execSync('git init', { cwd: tmp, stdio: 'pipe' })
+    writeFileSync(join(tmp, 'code.ts'), 'const x = 1')
+    execSync('git add . && git -c user.name=test -c user.email=test@test commit -m first', { cwd: tmp, stdio: 'pipe' })
+    const base = getHeadCommit(tmp)
+    writeFileSync(join(tmp, 'CLAUDE.md'), 'generated')
+    execSync('git add . && git -c user.name=test -c user.email=test@test commit -m claude', { cwd: tmp, stdio: 'pipe' })
+    expect(getCodeCommitsSince(tmp, base)).toBe(0)
+    writeFileSync(join(tmp, 'code.ts'), 'const x = 2')
+    execSync('git add . && git -c user.name=test -c user.email=test@test commit -m code', { cwd: tmp, stdio: 'pipe' })
+    expect(getCodeCommitsSince(tmp, base)).toBe(1)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('isCheckRunning', () => {
+  test('returns false when no lock', () => {
+    const tmp = makeTmp()
+    expect(isCheckRunning(tmp)).toBe(false)
+    rmSync(tmp, { recursive: true })
   })
 })
