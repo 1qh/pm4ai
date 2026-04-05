@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')
-const safeName = projectPath.replaceAll('/', '_').replace(/^_/u, '')
+const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')
 const dir = join(homedir(), '.pm4ai', 'checks')
 const cp = join(dir, `${safeName}.json`)
 const lp = join(dir, `${safeName}.lock`)

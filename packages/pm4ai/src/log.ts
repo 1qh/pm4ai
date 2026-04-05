@@ -9,8 +9,8 @@ interface LogEntry {
   project: string
 }
 const logDir = join(homedir(), '.pm4ai', 'logs')
-const leadingUnderscoreRe = /^_/u
-const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '_').replace(leadingUnderscoreRe, '')}.json`)
+const leadingSepRe = /^--/u
+const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '--').replace(leadingSepRe, '')}.json`)
 const readLog = (): LogEntry[] => {
   if (!existsSync(logDir)) return []
   const files = readdirSync(logDir).filter(f => f.endsWith('.json'))

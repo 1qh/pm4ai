@@ -3,7 +3,7 @@
 /* eslint-disable no-empty */
 import { spawn } from 'bun'
 import { execFileSync } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
@@ -15,8 +15,8 @@ interface CheckResult {
   violations: number
 }
 const checksDir = () => join(homedir(), '.pm4ai', 'checks')
-const leadingUnderscoreRe = /^_/u
-const safeFileName = (projectPath: string) => projectPath.replaceAll('/', '_').replace(leadingUnderscoreRe, '')
+const leadingSepRe = /^--/u
+const safeFileName = (projectPath: string) => projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
 const cachePath = (projectPath: string) => join(checksDir(), `${safeFileName(projectPath)}.json`)
 const lockPath = (projectPath: string) => join(checksDir(), `${safeFileName(projectPath)}.lock`)
 const readCheckResult = (projectPath: string): CheckResult | undefined => {
@@ -79,15 +79,6 @@ const spawnBackgroundCheck = (projectPath: string) => {
   if (isCheckRunning(projectPath)) return
   const dir = checksDir()
   mkdirSync(dir, { recursive: true })
-  const lp = lockPath(projectPath)
-  try {
-    const fd = openSync(lp, 'wx')
-    writeFileSync(fd, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    closeSync(fd)
-  } catch {
-    return
-  }
-  rmSync(lp, { force: true })
   const workerPath = join(import.meta.dir, 'check-worker.js')
   const proc = spawn(['bun', workerPath, projectPath], { stderr: 'ignore', stdin: 'ignore', stdout: 'ignore' })
   proc.unref()
