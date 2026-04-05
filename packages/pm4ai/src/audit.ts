@@ -115,7 +115,8 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
     const ownDeps = new Set(allDeps.filter(([, v]) => !v.startsWith('workspace:')).map(([n]) => n))
     const providedByWs = new Set<string>()
     for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
-    const duplicated = [...ownDeps].filter(d => providedByWs.has(d))
+    const isRoot = pkgPath === join(projectPath, 'package.json')
+    const duplicated = [...ownDeps].filter(d => providedByWs.has(d) && !(isRoot && REQUIRED_ROOT_DEVDEPS.includes(d)))
     for (const dep of duplicated)
       issues.push({ detail: `${dep} in ${shortPath} already provided by workspace dep`, type: 'duplicate' })
   }
@@ -146,9 +147,9 @@ const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
   const issues: Issue[] = []
   const scripts = rootPkg.scripts ?? {}
   if (!scripts.build?.includes('turbo')) issues.push({ detail: 'root "build" should use turbo', type: 'drift' })
-  if (scripts.check && !scripts.check.includes('lintmax check'))
+  if (scripts.check && !scripts.check.includes('lintmax') && !scripts.check.includes('cli.js check'))
     issues.push({ detail: 'root "check" should include "lintmax check"', type: 'drift' })
-  if (scripts.fix && !scripts.fix.includes('lintmax fix'))
+  if (scripts.fix && !scripts.fix.includes('lintmax') && !scripts.fix.includes('cli.js fix'))
     issues.push({ detail: 'root "fix" should include "lintmax fix"', type: 'drift' })
   return issues
 }
