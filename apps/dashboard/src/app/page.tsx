@@ -21,7 +21,20 @@ interface ProjectState {
 }
 const Dashboard = () => {
   const queryClient = useQueryClient()
-  const { data: projects, isLoading } = useQuery(orpc.projects.queryOptions({ input: undefined }))
+  const { data: projects, isLoading } = useQuery({
+    queryFn: async () => {
+      const res = await fetch('/api/rpc/projects', {
+        body: '[]',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST'
+      })
+      const data = (await res.json()) as {
+        json: { checkResult: null | { at: string; pass: boolean; violations: number }; name: string; path: string }[]
+      }
+      return data.json
+    },
+    queryKey: ['projects']
+  })
   const [liveState, setLiveState] = useState<Record<string, ProjectState>>({})
   const [eventLog, setEventLog] = useState<WatchEvent[]>([])
   const [startedAt] = useState(() => new Date())

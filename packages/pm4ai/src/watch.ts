@@ -75,10 +75,14 @@ const ProjectRow = ({ name, state, spinnerIdx }: ProjectRowProps) => {
     detail ? createElement(Text, { dimColor: true }, detail) : null
   )
 }
-const WatchApp = ({ projects }: { projects: string[] }) => {
+interface ProjectInfo {
+  name: string
+  path: string
+}
+const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const [states, setStates] = useState<Record<string, ProjectState>>(() => {
     const init: Record<string, ProjectState> = {}
-    for (const p of projects) init[p] = { status: 'idle' }
+    for (const p of projects) init[p.name] = { status: 'idle' }
     return init
   })
   const [connected, setConnected] = useState(false)
@@ -135,7 +139,7 @@ const WatchApp = ({ projects }: { projects: string[] }) => {
     ),
     createElement(Text, null, ''),
     ...projects.map(p =>
-      createElement(ProjectRow, { key: p, name: p, spinnerIdx, state: states[p] ?? { status: 'idle' } })
+      createElement(ProjectRow, { key: p.path, name: p.name, spinnerIdx, state: states[p.name] ?? { status: 'idle' } })
     ),
     createElement(Text, null, ''),
     createElement(
@@ -167,8 +171,8 @@ const watch = async (json = false) => {
   if (json) return watchJson()
   const { consumers, self, cnsync } = await discover()
   const allProjects = [self, cnsync, ...consumers]
-  const names = allProjects.map(p => p.name || projectName(p.path))
-  const app = render(createElement(WatchApp, { projects: names }))
+  const projects = allProjects.map(p => ({ name: p.name || projectName(p.path), path: p.path }))
+  const app = render(createElement(WatchApp, { projects }))
   await app.waitUntilExit()
 }
 export { watch, WatchApp }
