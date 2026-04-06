@@ -36,6 +36,17 @@ lintmax is our own max-strict lint/format orchestrator. We own it — read the s
 - To suppress a shared eslint/oxlint rule: suppress eslint's version — oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` conflicts with perfectionist (ASCII vs natural sort) — disabled in lintmax.
 
+### Never-ignore Rules
+
+These rules exist to catch real bugs. Suppressing them is NEVER acceptable — fix the code instead:
+
+- `@typescript-eslint/no-unsafe-*` (no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, no-unsafe-return, no-unsafe-argument) — use proper types, never suppress type safety
+- `@typescript-eslint/no-explicit-any` — define the actual type
+- `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` — fix the type error
+- `@typescript-eslint/no-non-null-assertion` — handle the null case
+
+If an agent suppresses any of these, the code must be rewritten to satisfy the rule.
+
 ### Safe-to-ignore Rules
 
 **oxlint:** `promise/prefer-await-to-then` (Promise.race, ky chaining)
