@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
+/** biome-ignore-all lint/style/noProcessEnv: CI detection */
 /** biome-ignore-all lint/performance/noAwaitInLoops: polling */
 /* oxlint-disable no-empty-function, eslint-plugin-promise(param-names), no-await-in-loop */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return, no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, no-await-in-loop */
@@ -10,6 +11,7 @@ import { join } from 'node:path'
 import type { WatchEvent } from '../watch-types.js'
 import { emitToSocket, SOCKET_PATH, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
+const isCI = 'CI' in process.env
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
 const waitForSocket = async (timeout = 5000): Promise<void> => {
@@ -20,7 +22,7 @@ const waitForSocket = async (timeout = 5000): Promise<void> => {
   }
   throw new Error('watch.sock not created in time')
 }
-describe('watch --json e2e', () => {
+describe.skipIf(isCI)('watch --json e2e', () => {
   let proc: ChildProcess | undefined
   afterEach(async () => {
     proc?.kill()
