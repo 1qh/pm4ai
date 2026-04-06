@@ -53,6 +53,12 @@ const getLatestBunVersion = async (): Promise<string | undefined> => {
   return v
 }
 const isAutoSynced = (pkgPath: string) => SKIP_PATTERNS.some(p => pkgPath.includes(p))
+const isPublishedPkg = (pkg: PackageJson): boolean => {
+  if (pkg.private || !pkg.name) return false
+  if (!(pkg.exports ?? pkg.main ?? pkg.bin)) return false
+  const allDeps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
+  return !Object.values(allDeps).some(v => v.startsWith('workspace:'))
+}
 const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
   const result = new Map<string, string>()
   for (const field of ['dependencies', 'devDependencies'] as const) {
@@ -66,7 +72,7 @@ const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[]
   const filtered = pkgs.filter(p => !isAutoSynced(p.path) && p.path !== join(projectPath, 'package.json'))
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const isPublished = !pkg.private && (pkg.exports ?? pkg.main ?? pkg.bin)
+    const isPublished = isPublishedPkg(pkg)
     if (isPublished) {
       if (pkg.type !== 'module') issues.push({ detail: `${shortPath} should have "type": "module"`, type: 'drift' })
       if (!pkg.files) issues.push({ detail: `${shortPath} missing "files" field`, type: 'drift' })
@@ -168,7 +174,7 @@ const checkTrustedDeps = (rootPkg: PackageJson): Issue[] => {
 }
 const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  const published = pkgs.filter(p => !p.pkg.private && (p.pkg.exports ?? p.pkg.main ?? p.pkg.bin) && p.pkg.name)
+  const published = pkgs.filter(p => isPublishedPkg(p.pkg))
   for (const { path: pkgPath, pkg } of published) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     if (!pkg.scripts?.postpublish)
@@ -233,7 +239,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   issues.push(...checkPublishedPkgConventions(pkgs, projectPath))
   issues.push(...checkAppPackages(pkgs, projectPath))
   issues.push(...checkSubPkgScripts(pkgs, projectPath))
-  const publishedPkgs = pkgs.filter(p => !p.pkg.private && (p.pkg.exports ?? p.pkg.main ?? p.pkg.bin) && p.pkg.name)
+  const publishedPkgs = pkgs.filter(p => isPublishedPkg(p.pkg))
   await Promise.all(
     publishedPkgs.map(async p => {
       const r = await $`bun pm view ${p.pkg.name} versions --json`.quiet().nothrow()
@@ -261,6 +267,7 @@ export {
   checkScripts,
   checkSubPkgScripts,
   checkTrustedDeps,
+  isPublishedPkg,
   usesForbidden
 }
 export type { PkgEntry }

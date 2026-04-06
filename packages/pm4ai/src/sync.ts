@@ -2,6 +2,7 @@ import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
+import { isPublishedPkg } from './audit.js'
 import {
   CLAUDE_MD,
   CLEANUP_SCRIPT,
@@ -187,7 +188,9 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
     issues.push({ detail: `${rel} added repository`, type: 'synced' })
   }
   const pubScripts = pkg.scripts ?? {}
-  const srcScript = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+  const directSrc = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+  const nestedSrc = join(selfPath, 'packages', 'pm4ai', CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+  const srcScript = existsSync(directSrc) ? directSrc : nestedSrc
   const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
   const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
   if (!existsSync(scriptFile) && existsSync(srcScript)) {
@@ -261,7 +264,7 @@ const fixSubEntry = ({ entry, issues, projectPath, repo, selfPath }: FixSubEntry
     changed = true
     issues.push({ detail: `${rel} set to private`, type: 'synced' })
   }
-  const isPublished = !entry.pkg.private && (entry.pkg.exports ?? entry.pkg.main ?? entry.pkg.bin) && entry.pkg.name
+  const isPublished = isPublishedPkg(entry.pkg)
   if (isPublished)
     changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo, selfPath }) || changed
   return fixGitClean(entry.pkg, rel, issues) || changed
