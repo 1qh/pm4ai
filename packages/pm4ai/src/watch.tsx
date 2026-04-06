@@ -1,10 +1,11 @@
-/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: abort handler */
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, react-hooks/purity */
+/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, react-hooks/purity, @eslint-react/hooks-extra/no-direct-set-state-in-use-effect */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { memo, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 /* oxlint-disable complexity, no-empty-function, eslint-plugin-promise(param-names), eslint-plugin-react-perf(jsx-no-new-array-as-prop), eslint-plugin-react-perf(jsx-no-new-object-as-prop) */
 import type { WatchEvent } from './watch-types.js'
 import pkg from '../package.json' with { type: 'json' }
@@ -44,19 +45,20 @@ interface RunState {
 }
 const DISPLAY_STEPS = ['sync', 'audit', 'maintain', 'check'] as const
 const STEP_COUNT = DISPLAY_STEPS.length
-const STEP_LABELS: Record<string, string> = {
+const STEP_LABELS = {
   audit: '🔍 auditing',
   check: '🧪 checking',
   maintain: '🔧 maintaining',
   sync: '📦 syncing'
-}
+} as const satisfies Record<string, string>
 const STATUS_ORDER = { done: 1, failed: 2, idle: 3, running: 0 } as const
-const BAR_CHARS = ' ▏▎▍▌▋▊▉█'
+const BAR_CHARS = ' ▏▎▍▌▋▊▉█' as const
 const BAR_FULL = BAR_CHARS.at(-1) ?? '█'
-const SPARK_CHARS = '▁▂▃▄▅▆▇█'
+const SPARK_CHARS = '▁▂▃▄▅▆▇█' as const
 const SPARK_ZERO = SPARK_CHARS[0] ?? '▁'
 const RESET_DELAY = 5000
 const MAX_HISTORY = 8
+const VERSION = pkg.version ?? '0.0.0'
 const smoothBar = (fraction: number, width: number): string => {
   const clamped = Math.min(1, Math.max(0, fraction))
   const total = clamped * width
@@ -130,7 +132,9 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
       status: 'running',
       step: event.step
     }
-  const completed = new Set([...prev.completedSteps, event.step])
+  const completed = prev.completedSteps.has(event.step)
+    ? prev.completedSteps
+    : new Set([...prev.completedSteps, event.step])
   return {
     completedSteps: completed,
     detail: event.detail,
@@ -158,13 +162,19 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   }
   if (action.type === 'reset') {
     const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
+    let doneCount = 0
+    let failedCount = 0
+    for (const s of Object.values(state.projects)) {
+      if (s.status === 'done') doneCount += 1
+      if (s.status === 'failed') failedCount += 1
+    }
     return {
       ...state,
       elapsed: 0,
       history: state.elapsed > 0 ? [...state.history, state.elapsed].slice(-MAX_HISTORY) : state.history,
-      lastDone: Object.values(state.projects).filter(s => s.status === 'done').length,
+      lastDone: doneCount,
       lastElapsed: state.elapsed,
-      lastFailed: Object.values(state.projects).filter(s => s.status === 'failed').length,
+      lastFailed: failedCount,
       lastTime: new Date().toLocaleTimeString(),
       phase: 'idle',
       projects: newProjects,
@@ -178,125 +188,160 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   const nextProj = nextProjectState(prev, event)
   const next = { ...state.projects, [event.project]: nextProj }
   const startTime = event.status === 'start' && event.step !== 'done' ? (state.startTime ?? Date.now()) : state.startTime
-  const vals = Object.values(next)
-  const finished = vals.filter(s => s.status === 'done' || s.status === 'failed').length
-  const total = Object.keys(next).length
+  let finished = 0
+  let total = 0
+  let hasRunning = false
+  for (const s of Object.values(next)) {
+    total += 1
+    if (s.status === 'done' || s.status === 'failed') finished += 1
+    if (s.status === 'running') hasRunning = true
+  }
   const wasRunning = state.phase === 'running'
-  const phase = finished === total && total > 0 ? 'done' : vals.some(s => s.status === 'running') ? 'running' : state.phase
+  const phase = finished === total && total > 0 ? 'done' : hasRunning ? 'running' : state.phase
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
   return { ...state, phase, projects: next, sortSnapshot, startTime }
 }
-const ProjectRow = memo(
-  ({
-    focused,
-    name,
-    now,
-    pad,
-    state
-  }: {
-    focused: boolean
-    name: string
-    now: number
-    pad: number
-    state: ProjectState
-  }) => {
-    const padded = name.padEnd(pad)
-    const cursor = focused ? '›' : ' '
-    const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
-    const colorMap = {
-      done: 'green' as const,
-      failed: 'red' as const,
-      idle: state.cachedPass === true ? ('green' as const) : state.cachedPass === false ? ('red' as const) : undefined,
-      running: 'yellow' as const
+interface DerivedStats {
+  completedStepCount: number
+  done: number
+  failed: number
+  running: number
+  slowestElapsed: number
+  slowestName: string
+}
+const deriveStats = (projects: Record<string, ProjectState>): DerivedStats => {
+  let runningCount = 0
+  let doneCount = 0
+  let failedCount = 0
+  let steps = 0
+  let maxE = 0
+  let maxN = ''
+  for (const [n, s] of Object.entries(projects)) {
+    if (s.status === 'running') runningCount += 1
+    if (s.status === 'done') doneCount += 1
+    if (s.status === 'failed') failedCount += 1
+    steps += s.completedSteps.size
+    if ((s.status === 'done' || s.status === 'failed') && (s.elapsed ?? 0) > maxE) {
+      maxE = s.elapsed ?? 0
+      maxN = n
     }
-    const icon = iconMap[state.status]
-    const color = colorMap[state.status]
-    const isIdle = state.status === 'idle'
-    const rawSecs =
-      state.status === 'running' && state.startedAt ? Math.floor((now - state.startedAt) / 1000) : state.elapsed
-    const secs = rawSecs !== undefined && rawSecs > 0 ? rawSecs : undefined
-    const stepInfo =
-      state.status === 'running'
-        ? `${STEP_LABELS[state.step ?? ''] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
-        : (state.detail ?? '')
-    return (
-      <Box gap={1} paddingLeft={1}>
-        <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
-          {cursor}
-        </Text>
-        {state.status === 'running' ? (
-          <Spinner type='dots' />
-        ) : (
-          <Text color={color} dimColor={isIdle ? !color : undefined}>
-            {icon}
-          </Text>
-        )}
-        <Text bold={focused || state.status === 'running'} dimColor={isIdle}>
-          {padded}
-        </Text>
-        {stepInfo ? (
-          <Text color={state.status === 'running' ? 'yellow' : color} dimColor={isIdle}>
-            {stepInfo}
-          </Text>
-        ) : null}
-        {secs === undefined ? null : <Text dimColor>{secs}s</Text>}
-      </Box>
-    )
   }
-)
+  return {
+    completedStepCount: steps,
+    done: doneCount,
+    failed: failedCount,
+    running: runningCount,
+    slowestElapsed: maxE,
+    slowestName: maxN
+  }
+}
+const ProjectRow = ({
+  focused,
+  name,
+  now,
+  pad,
+  state
+}: {
+  focused: boolean
+  name: string
+  now: number
+  pad: number
+  state: ProjectState
+}) => {
+  const padded = name.padEnd(pad)
+  const cursor = focused ? '›' : ' '
+  const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
+  const colorMap = {
+    done: 'green' as const,
+    failed: 'red' as const,
+    idle: state.cachedPass === true ? ('green' as const) : state.cachedPass === false ? ('red' as const) : undefined,
+    running: 'yellow' as const
+  }
+  const icon = iconMap[state.status]
+  const color = colorMap[state.status]
+  const isIdle = state.status === 'idle'
+  const rawSecs =
+    state.status === 'running' && state.startedAt ? Math.floor((now - state.startedAt) / 1000) : state.elapsed
+  const secs = rawSecs !== undefined && rawSecs > 0 ? rawSecs : undefined
+  const stepInfo =
+    state.status === 'running'
+      ? `${STEP_LABELS[state.step as keyof typeof STEP_LABELS] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
+      : (state.detail ?? '')
+  return (
+    <Box gap={1} paddingLeft={1}>
+      <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+        {cursor}
+      </Text>
+      {state.status === 'running' ? (
+        <Spinner type='dots' />
+      ) : (
+        <Text color={color} dimColor={isIdle ? !color : undefined}>
+          {icon}
+        </Text>
+      )}
+      <Text bold={focused || state.status === 'running'} dimColor={isIdle}>
+        {padded}
+      </Text>
+      {stepInfo ? (
+        <Text color={state.status === 'running' ? 'yellow' : color} dimColor={isIdle}>
+          {stepInfo}
+        </Text>
+      ) : null}
+      {secs === undefined ? null : <Text dimColor>{secs}s</Text>}
+    </Box>
+  )
+}
 ProjectRow.displayName = 'ProjectRow'
-const DoneFooter = memo(
-  ({
-    done,
-    elapsed,
-    failed,
-    hasFails,
-    history,
-    lastElapsed,
-    slowestElapsed,
-    slowestName
-  }: {
-    done: number
-    elapsed: number
-    failed: number
-    hasFails: boolean
-    history: number[]
-    lastElapsed: number
-    slowestElapsed: number
-    slowestName: string
-  }) => {
-    const delta = lastElapsed > 0 ? elapsed - lastElapsed : 0
-    const deltaLabel = delta > 0 ? `+${delta}s` : delta < 0 ? `${delta}s` : ''
-    const deltaColor = delta > 0 ? 'red' : delta < 0 ? 'green' : undefined
-    return (
-      <Box flexDirection='column' paddingLeft={1}>
-        {failed > 0 ? (
-          <Box gap={1}>
-            <Text color='red'>
-              ✘ {failed} failed · {done} passed · {formatTime(elapsed)}
-            </Text>
-            <Text dimColor>press enter to dismiss</Text>
-          </Box>
-        ) : (
-          <Box gap={1}>
-            <Text bold color='green'>
-              ✔ all clean · {formatTime(elapsed)}
-            </Text>
-            {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
-            {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
-          </Box>
-        )}
-        {slowestName && slowestElapsed > 0 ? (
-          <Text dimColor>
-            slowest: {slowestName} ({slowestElapsed}s)
+const DoneFooter = ({
+  done,
+  elapsed,
+  failed,
+  hasFails,
+  history,
+  lastElapsed,
+  slowestElapsed,
+  slowestName
+}: {
+  done: number
+  elapsed: number
+  failed: number
+  hasFails: boolean
+  history: number[]
+  lastElapsed: number
+  slowestElapsed: number
+  slowestName: string
+}) => {
+  const delta = lastElapsed > 0 ? elapsed - lastElapsed : 0
+  const deltaLabel = delta > 0 ? `+${delta}s` : delta < 0 ? `${delta}s` : ''
+  const deltaColor = delta > 0 ? 'red' : delta < 0 ? 'green' : undefined
+  return (
+    <Box flexDirection='column' paddingLeft={1}>
+      {failed > 0 ? (
+        <Box gap={1}>
+          <Text color='red'>
+            ✘ {failed} failed · {done} passed · {formatTime(elapsed)}
           </Text>
-        ) : null}
-        {hasFails ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
-      </Box>
-    )
-  }
-)
+          <Text dimColor>press enter to dismiss</Text>
+        </Box>
+      ) : (
+        <Box gap={1}>
+          <Text bold color='green'>
+            ✔ all clean · {formatTime(elapsed)}
+          </Text>
+          {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
+          {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
+        </Box>
+      )}
+      {slowestName && slowestElapsed > 0 ? (
+        <Text dimColor>
+          slowest: {slowestName} ({slowestElapsed}s)
+        </Text>
+      ) : null}
+      {hasFails ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
+    </Box>
+  )
+}
 DoneFooter.displayName = 'DoneFooter'
 const IdleFooter = ({
   lastElapsed,
@@ -323,6 +368,10 @@ const IdleFooter = ({
         ↑↓/jk
       </Text>{' '}
       select ·{' '}
+      <Text bold dimColor>
+        g/G
+      </Text>{' '}
+      top/end ·{' '}
       <Text bold dimColor>
         ↵
       </Text>{' '}
@@ -408,33 +457,13 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     state.sortSnapshot.length > 0
       ? (state.sortSnapshot.map(n => projects.find(p => p.name === n)).filter(Boolean) as ProjectInfo[])
       : projects
-  const focusedIdx = sorted.findIndex(p => p.name === focusedName)
-  const { slowestElapsed, slowestName } = useMemo(() => {
-    let maxE = 0
-    let maxN = ''
-    for (const [n, s] of Object.entries(state.projects))
-      if ((s.status === 'done' || s.status === 'failed') && (s.elapsed ?? 0) > maxE) {
-        maxE = s.elapsed ?? 0
-        maxN = n
-      }
-    return { slowestElapsed: maxE, slowestName: maxN }
-  }, [state.projects])
-  const running = useMemo(() => {
-    let count = 0
-    for (const s of Object.values(state.projects)) if (s.status === 'running') count += 1
-    return count
-  }, [state.projects])
-  const done = useMemo(() => {
-    let count = 0
-    for (const s of Object.values(state.projects)) if (s.status === 'done') count += 1
-    return count
-  }, [state.projects])
-  const failed = useMemo(() => {
-    let count = 0
-    for (const s of Object.values(state.projects)) if (s.status === 'failed') count += 1
-    return count
-  }, [state.projects])
-  const hasFails = state.phase === 'done' && failed > 0
+  const rawIdx = sorted.findIndex(p => p.name === focusedName)
+  const focusedIdx = Math.max(rawIdx, 0)
+  useEffect(() => {
+    if (rawIdx === -1 && sorted[0]) setFocusedName(sorted[0].name)
+  }, [rawIdx, sorted])
+  const stats = useMemo(() => deriveStats(state.projects), [state.projects])
+  const hasFails = state.phase === 'done' && stats.failed > 0
   const showToast = (msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast(msg)
@@ -469,20 +498,20 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       return
     }
     if (hasFails) return
-    if (key.return && running === 0) {
+    if (key.return && stats.running === 0) {
       const p = sorted[focusedIdx]
       if (p && existsSync(p.path)) {
         spawn('bunx', ['pm4ai', 'fix'], { cwd: p.path, detached: true, stdio: 'ignore' }).unref()
         showToast(`fixing ${p.name}...`)
-      } else if (p) showToast(`${p.name}: path not found`)
+      } else if (p) showToast(`${p.name}: ${p.path} not found`)
       return
     }
-    if (input === 'f' && running === 0) {
+    if (input === 'f' && stats.running === 0) {
       spawn('bunx', ['pm4ai', 'fix', '--all'], { detached: true, stdio: 'ignore' }).unref()
       showToast('starting fix --all...')
       return
     }
-    if (input === 's' && running === 0) {
+    if (input === 's' && stats.running === 0) {
       spawn('bunx', ['pm4ai', 'status', '--all'], { detached: true, stdio: 'ignore' }).unref()
       showToast('starting status --all...')
     }
@@ -516,14 +545,12 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     []
   )
   const totalSteps = projects.length * STEP_COUNT
-  let completedSteps = 0
-  for (const s of Object.values(state.projects)) completedSteps += s.completedSteps.size
-  const fraction = totalSteps > 0 ? completedSteps / totalSteps : 0
+  const fraction = totalSteps > 0 ? stats.completedStepCount / totalSteps : 0
   const pct = Math.round(fraction * 100)
   const eta =
-    state.history.length > 0 && running > 0
+    state.history.length > 0 && stats.running > 0
       ? Math.max(0, Math.round(state.history.reduce((a, b) => a + b, 0) / state.history.length - state.elapsed))
-      : state.lastElapsed > 0 && running > 0
+      : state.lastElapsed > 0 && stats.running > 0
         ? Math.max(0, state.lastElapsed - state.elapsed)
         : undefined
   const now = Date.now()
@@ -535,7 +562,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
           ⚡ pm4ai
         </Text>
         <Text dimColor>
-          v{pkg.version} · {projects.length} projects
+          v{VERSION} · {projects.length} projects
         </Text>
         {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : null}
         {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : null}
@@ -558,21 +585,21 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
           <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={eta} fraction={fraction} pct={pct} />
         ) : state.phase === 'done' ? (
           <DoneFooter
-            done={done}
+            done={stats.done}
             elapsed={state.elapsed}
-            failed={failed}
+            failed={stats.failed}
             hasFails={hasFails}
             history={state.history}
             lastElapsed={state.lastElapsed}
-            slowestElapsed={slowestElapsed}
-            slowestName={slowestName}
+            slowestElapsed={stats.slowestElapsed}
+            slowestName={stats.slowestName}
           />
         ) : (
           <IdleFooter
             lastElapsed={state.lastElapsed}
             lastFailed={state.lastFailed}
             lastTime={state.lastTime}
-            running={running}
+            running={stats.running}
             toast={toast}
           />
         )}
@@ -588,9 +615,7 @@ const watchJson = async (): Promise<void> => {
   onEvent(event => {
     if (!ac.signal.aborted) process.stdout.write(`${JSON.stringify(event)}\n`)
   })
-  await new Promise<void>((_, reject) => {
-    ac.signal.addEventListener('abort', () => reject(new Error('aborted')))
-  }).catch(() => {})
+  await once(ac.signal, 'abort').catch(() => {})
 }
 const watch = async (json = false) => {
   await startEmitter()
