@@ -152,11 +152,26 @@ const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
   const raw = await readJson(tsconfigPath)
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return issues
   const tsconfig = raw as Record<string, unknown>
+  let changed = false
   if ('include' in tsconfig) {
-    const rest = Object.fromEntries(Object.entries(tsconfig).filter(([k]) => k !== 'include'))
-    await write(file(tsconfigPath), `${JSON.stringify(rest, null, 2)}\n`)
+    delete tsconfig.include
+    changed = true
     issues.push({ detail: 'removed "include" from root tsconfig.json', type: 'synced' })
   }
+  if (tsconfig.extends !== EXPECTED.tsconfigExtends) {
+    tsconfig.extends = EXPECTED.tsconfigExtends
+    changed = true
+    issues.push({ detail: `set tsconfig extends to "${EXPECTED.tsconfigExtends}"`, type: 'synced' })
+  }
+  const compilerOptions = (tsconfig.compilerOptions ?? {}) as Record<string, unknown>
+  const types = compilerOptions.types as string[] | undefined
+  if (!types?.includes('bun-types')) {
+    compilerOptions.types = ['bun-types']
+    tsconfig.compilerOptions = compilerOptions
+    changed = true
+    issues.push({ detail: 'added "bun-types" to tsconfig compilerOptions.types', type: 'synced' })
+  }
+  if (changed) await write(file(tsconfigPath), `${JSON.stringify(tsconfig, null, 2)}\n`)
   return issues
 }
 interface FixPublishedPkgArgs {

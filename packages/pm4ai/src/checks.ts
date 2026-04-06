@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -85,6 +86,12 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
         detail: 'root tsconfig.json should not have "include" — let lintmax/tsconfig handle it',
         type: 'drift'
       })
+    const compilerOptions = ('compilerOptions' in tsRaw ? tsRaw.compilerOptions : undefined) as
+      | Record<string, unknown>
+      | undefined
+    const types = compilerOptions?.types as string[] | undefined
+    if (!types?.includes('bun-types'))
+      issues.push({ detail: 'root tsconfig.json missing "bun-types" in compilerOptions.types', type: 'missing' })
   }
   const vRaw = await readJson(join(projectPath, 'vercel.json'))
   if (vRaw && typeof vRaw === 'object' && !Array.isArray(vRaw)) {

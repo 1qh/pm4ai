@@ -233,9 +233,12 @@ describe('syncTsconfig', () => {
     expect(tsconfig.extends).toBe('lintmax/tsconfig')
     rmSync(tmp, { recursive: true })
   })
-  test('no-op when tsconfig has no include', async () => {
+  test('no-op when tsconfig is correct', async () => {
     const tmp = makeTmp()
-    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: 'lintmax/tsconfig' }))
+    writeFileSync(
+      join(tmp, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { types: ['bun-types'] }, extends: 'lintmax/tsconfig' })
+    )
     const issues = await syncTsconfig(tmp)
     expect(issues).toHaveLength(0)
     rmSync(tmp, { recursive: true })
