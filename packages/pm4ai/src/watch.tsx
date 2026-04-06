@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, @eslint-react/hooks-extra/no-direct-set-state-in-use-effect */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
@@ -29,6 +29,7 @@ interface ProjectState {
 type RunAction =
   | { event: WatchEvent; type: 'event' }
   | { mkIdle: (p: ProjectInfo) => ProjectState; projects: ProjectInfo[]; type: 'reset' }
+  | { type: 'bell-acked' }
   | { type: 'tick' }
 interface RunState {
   bellPending: boolean
@@ -87,6 +88,7 @@ const progressDots = (completed: Set<string>, current?: string): string => {
   return parts.join('')
 }
 const formatTime = (seconds: number): string => {
+  if (seconds <= 0) return '<1s'
   if (seconds < 60) return `${seconds}s`
   if (seconds < 3600) {
     const m = Math.floor(seconds / 60)
@@ -186,6 +188,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     const projects = tickProjects(state.projects)
     return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000), projects }
   }
+  if (action.type === 'bell-acked') return state.bellPending ? { ...state, bellPending: false } : state
   if (action.type === 'reset') {
     const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
     let doneCount = 0
@@ -227,7 +230,8 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   const phase = finished === total && total > 0 ? 'done' : hasRunning ? 'running' : state.phase
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
-  const bellPending = !wasRunning && phase === 'done' ? true : phase === 'running' ? false : state.bellPending
+  const bellPending =
+    !wasRunning && phase === 'done' && state.startTime ? true : phase === 'running' ? false : state.bellPending
   return { ...state, bellPending, phase, projects: next, sortSnapshot, startTime }
 }
 interface DerivedStats {
@@ -503,6 +507,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const focusedIdx = Math.max(rawIdx, 0)
   const focusedValid = rawIdx !== -1
   useEffect(() => {
+    // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
     if (!focusedValid && sorted[0]) setFocusedName(sorted[0].name)
   }, [focusedValid, sorted])
   const stats = useMemo(
@@ -577,7 +582,10 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     return unsub
   }, [])
   useEffect(() => {
-    if (state.bellPending) stdout?.write('\u0007')
+    if (state.bellPending) {
+      stdout?.write('\u0007')
+      dispatch({ type: 'bell-acked' })
+    }
   }, [state.bellPending, stdout])
   useEffect(() => {
     if (state.phase !== 'done' || hasFails) return
