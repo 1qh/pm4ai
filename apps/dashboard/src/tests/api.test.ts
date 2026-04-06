@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+/** biome-ignore-all lint/performance/noAwaitInLoops: sequential test */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, no-await-in-loop */
 import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
@@ -141,5 +142,46 @@ describe('Page', () => {
   test('root page is HTML', async () => {
     const res = await fetch(baseUrl)
     expect(res.headers.get('content-type')).toContain('text/html')
+  })
+  test('root page loads client bundle', async () => {
+    const res = await fetch(baseUrl)
+    const html = await res.text()
+    expect(html).toContain('script')
+  })
+})
+describe('Auth flow security', () => {
+  test('multiple invalid tokens all return 401', async () => {
+    const { randomUUID } = await import('node:crypto')
+    for (let i = 0; i < 5; i += 1) {
+      const res = await fetch(`${baseUrl}/auth/${randomUUID()}`, { redirect: 'manual' })
+      expect(res.status).toBe(401)
+    }
+  })
+  test('auth endpoint returns no token in response body', async () => {
+    const res = await fetch(`${baseUrl}/auth/some-token`, { redirect: 'manual' })
+    const body = await res.text()
+    expect(body).not.toContain('some-token')
+  })
+})
+describe('API error handling', () => {
+  test('GET on mutation endpoint does not return 200', async () => {
+    const res = await fetch(`${baseUrl}/api/rpc/fixAll`)
+    expect(res.status).not.toBe(200)
+  })
+  test('malformed JSON body returns error', async () => {
+    const res = await fetch(`${baseUrl}/api/rpc/projects`, {
+      body: 'not json',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST'
+    })
+    expect(res.status).toBeGreaterThanOrEqual(400)
+  })
+  test('empty body on projects still works', async () => {
+    const res = await fetch(`${baseUrl}/api/rpc/projects`, {
+      body: '[]',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST'
+    })
+    expect(res.status).toBe(200)
   })
 })

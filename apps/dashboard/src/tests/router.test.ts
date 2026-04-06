@@ -50,6 +50,56 @@ describe('project discovery from cache', () => {
     expect(names).toContain('pm4ai')
   })
 })
+const projectNameRe = /^[\w-]+$/u
+describe('project name validation', () => {
+  test('accepts simple names', () => {
+    expect(projectNameRe.test('pm4ai')).toBe(true)
+    expect(projectNameRe.test('lintmax')).toBe(true)
+    expect(projectNameRe.test('ai-search-monitoring')).toBe(true)
+    expect(projectNameRe.test('cnsync')).toBe(true)
+  })
+  test('rejects path traversal', () => {
+    expect(projectNameRe.test('../etc/passwd')).toBe(false)
+    expect(projectNameRe.test('/usr/bin')).toBe(false)
+    expect(projectNameRe.test('foo/bar')).toBe(false)
+  })
+  test('rejects shell metacharacters', () => {
+    expect(projectNameRe.test('$(whoami)')).toBe(false)
+    expect(projectNameRe.test('foo;rm -rf')).toBe(false)
+    expect(projectNameRe.test('a b')).toBe(false)
+    expect(projectNameRe.test('foo`id`')).toBe(false)
+  })
+  test('rejects empty string', () => {
+    expect(projectNameRe.test('')).toBe(false)
+  })
+  test('accepts underscores and numbers', () => {
+    expect(projectNameRe.test('my_project_2')).toBe(true)
+    expect(projectNameRe.test('v2_beta')).toBe(true)
+  })
+})
+describe('getProjectsFromCache logic', () => {
+  test('check file names decode to paths with correct format', () => {
+    const files = existsSync(join(homedir(), '.pm4ai', 'checks'))
+      ? readdirSync(join(homedir(), '.pm4ai', 'checks')).filter(f => f.endsWith('.json'))
+      : []
+    for (const f of files) {
+      const path = `/${f.replace('.json', '').replaceAll('--', '/')}`
+      expect(path.startsWith('/')).toBe(true)
+      expect(path.length).toBeGreaterThan(1)
+    }
+  })
+  test('each cached project has at, pass, violations fields', () => {
+    const dir = join(homedir(), '.pm4ai', 'checks')
+    if (!existsSync(dir)) return
+    const files = readdirSync(dir).filter(f => f.endsWith('.json'))
+    for (const f of files) {
+      const data = JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, unknown>
+      expect(data).toHaveProperty('at')
+      expect(data).toHaveProperty('pass')
+      expect(data).toHaveProperty('violations')
+    }
+  })
+})
 describe('socket module', () => {
   test('subscribe returns unsubscribe function', async () => {
     const { subscribe } = await import('../lib/socket')

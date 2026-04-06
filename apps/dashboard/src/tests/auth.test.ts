@@ -1,5 +1,7 @@
+/* oxlint-disable eslint-plugin-node(global-require), eslint-plugin-unicorn(prefer-module) */
 /* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import { describe, expect, test } from 'bun:test'
+import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'
 const uuidRe = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/iu
 describe('generateToken', () => {
@@ -92,5 +94,25 @@ describe('concurrent token consumption', () => {
     const token = generateToken()
     const results = [consumeToken(token), consumeToken(token), consumeToken(token)]
     expect(results.filter(Boolean)).toHaveLength(1)
+  })
+})
+describe('session isolation', () => {
+  test('cookie from different session secret fails', () => {
+    expect(validateSession('pm4ai_session=wrong-secret-value')).toBe(false)
+  })
+  test('session cookie is consistent across calls', () => {
+    const a = createSessionCookie()
+    const b = createSessionCookie()
+    expect(a).toBe(b)
+  })
+  test('token not in cookie value', () => {
+    const token = generateToken()
+    const cookie = createSessionCookie()
+    expect(cookie).not.toContain(token)
+  })
+})
+describe('brute force resistance', () => {
+  test('100 random UUIDs all fail', () => {
+    for (let i = 0; i < 100; i += 1) expect(consumeToken(randomUUID())).toBe(false)
   })
 })
