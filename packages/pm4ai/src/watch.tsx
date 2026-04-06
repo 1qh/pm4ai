@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, react-hooks/purity, @eslint-react/hooks-extra/no-direct-set-state-in-use-effect */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, @eslint-react/hooks-extra/no-direct-set-state-in-use-effect */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
@@ -21,7 +21,7 @@ interface ProjectState {
   cachedPass?: boolean
   completedSteps: Set<string>
   detail?: string
-  elapsed?: number
+  elapsed: number
   startedAt?: number
   status: 'done' | 'failed' | 'idle' | 'running'
   step?: string
@@ -31,6 +31,7 @@ type RunAction =
   | { mkIdle: (p: ProjectInfo) => ProjectState; projects: ProjectInfo[]; type: 'reset' }
   | { type: 'tick' }
 interface RunState {
+  bellPending: boolean
   elapsed: number
   history: number[]
   lastDone: number
@@ -107,9 +108,9 @@ const timeAgo = (iso: string): string => {
 }
 const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState => {
   if (event.step === 'done') {
-    const projectElapsed = prev.startedAt ? Math.floor((Date.now() - prev.startedAt) / 1000) : undefined
+    const projectElapsed = prev.startedAt ? Math.floor((Date.now() - prev.startedAt) / 1000) : 0
     return event.status === 'fail'
-      ? { completedSteps: prev.completedSteps, detail: event.detail, elapsed: projectElapsed, status: 'failed' }
+      ? { completedSteps: new Set(DISPLAY_STEPS), detail: event.detail, elapsed: projectElapsed, status: 'failed' }
       : {
           completedSteps: new Set(DISPLAY_STEPS),
           detail: event.detail ?? 'clean',
@@ -120,6 +121,7 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
   if (event.status === 'start')
     return {
       completedSteps: prev.completedSteps,
+      elapsed: 0,
       startedAt: prev.startedAt ?? Date.now(),
       status: 'running',
       step: event.step
@@ -128,6 +130,7 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
     return {
       completedSteps: prev.completedSteps,
       detail: event.detail,
+      elapsed: prev.elapsed,
       startedAt: prev.startedAt,
       status: 'running',
       step: event.step
@@ -138,6 +141,7 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
   return {
     completedSteps: completed,
     detail: event.detail,
+    elapsed: prev.elapsed,
     startedAt: prev.startedAt,
     status: 'running',
     step: event.step
@@ -152,9 +156,9 @@ const safeReadCheck = (path: string) => {
 }
 const mkIdleFn = (p: ProjectInfo): ProjectState => {
   const cached = safeReadCheck(p.path)
-  if (!cached) return { completedSteps: new Set(), status: 'idle' }
+  if (!cached) return { completedSteps: new Set(), elapsed: 0, status: 'idle' }
   const label = `${cached.pass ? 'clean' : `${cached.violations} issues`} ${timeAgo(cached.at)}`
-  return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, status: 'idle' }
+  return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
 const sortByStatus = (names: string[], projects: Record<string, ProjectState>): string[] =>
   [...names].toSorted((a, b) => {
@@ -162,10 +166,25 @@ const sortByStatus = (names: string[], projects: Record<string, ProjectState>): 
     const sb = projects[b]?.status ?? 'idle'
     return (STATUS_ORDER[sa] ?? 9) - (STATUS_ORDER[sb] ?? 9)
   })
+const tickProjects = (projects: Record<string, ProjectState>): Record<string, ProjectState> => {
+  const now = Date.now()
+  let changed = false
+  const next: Record<string, ProjectState> = {}
+  for (const [k, v] of Object.entries(projects)) {
+    const shouldUpdate = v.status === 'running' && v.startedAt
+    const elapsed = shouldUpdate ? Math.floor((now - (v.startedAt ?? 0)) / 1000) : v.elapsed
+    if (shouldUpdate && elapsed !== v.elapsed) {
+      next[k] = { ...v, elapsed }
+      changed = true
+    } else next[k] = v
+  }
+  return changed ? next : projects
+}
 const runReducer = (state: RunState, action: RunAction): RunState => {
   if (action.type === 'tick') {
     if (!state.startTime) return state
-    return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000) }
+    const projects = tickProjects(state.projects)
+    return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000), projects }
   }
   if (action.type === 'reset') {
     const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
@@ -177,6 +196,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     }
     return {
       ...state,
+      bellPending: false,
       elapsed: 0,
       history: state.elapsed > 0 ? [...state.history, state.elapsed].slice(-MAX_HISTORY) : state.history,
       lastDone: doneCount,
@@ -191,7 +211,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     }
   }
   const { event } = action
-  const prev = state.projects[event.project] ?? { completedSteps: new Set<string>(), status: 'idle' as const }
+  const prev = state.projects[event.project] ?? { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }
   const nextProj = nextProjectState(prev, event)
   const next = { ...state.projects, [event.project]: nextProj }
   const startTime = event.status === 'start' ? (state.startTime ?? Date.now()) : state.startTime
@@ -207,7 +227,8 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   const phase = finished === total && total > 0 ? 'done' : hasRunning ? 'running' : state.phase
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
-  return { ...state, phase, projects: next, sortSnapshot, startTime }
+  const bellPending = !wasRunning && phase === 'done' ? true : phase === 'running' ? false : state.bellPending
+  return { ...state, bellPending, phase, projects: next, sortSnapshot, startTime }
 }
 interface DerivedStats {
   completedStepCount: number
@@ -238,10 +259,13 @@ const deriveStats = ({
   for (const [n, s] of Object.entries(projects)) {
     if (s.status === 'running') runningCount += 1
     if (s.status === 'done') doneCount += 1
-    if (s.status === 'failed') failedCount += 1
+    if (s.status === 'failed') {
+      failedCount += 1
+      steps += STEP_COUNT
+    }
     steps += s.completedSteps.size
-    if ((s.status === 'done' || s.status === 'failed') && (s.elapsed ?? 0) > maxE) {
-      maxE = s.elapsed ?? 0
+    if ((s.status === 'done' || s.status === 'failed') && s.elapsed > maxE) {
+      maxE = s.elapsed
       maxN = n
     }
   }
@@ -265,6 +289,7 @@ const deriveStats = ({
 const createInitState = (projects: ProjectInfo[]): RunState => {
   const initial = Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)]))
   return {
+    bellPending: false,
     elapsed: 0,
     history: [],
     lastDone: 0,
@@ -281,14 +306,12 @@ const createInitState = (projects: ProjectInfo[]): RunState => {
 const ProjectRow = ({
   focused,
   name,
-  renderTs,
   pad,
   state
 }: {
   focused: boolean
   name: string
   pad: number
-  renderTs: number
   state: ProjectState
 }) => {
   const padded = name.padEnd(pad)
@@ -303,9 +326,7 @@ const ProjectRow = ({
   const icon = iconMap[state.status]
   const color = colorMap[state.status]
   const isIdle = state.status === 'idle'
-  const rawSecs =
-    state.status === 'running' && state.startedAt ? Math.floor((renderTs - state.startedAt) / 1000) : state.elapsed
-  const secs = rawSecs !== undefined && rawSecs > 0 ? rawSecs : undefined
+  const secs = state.elapsed > 0 ? state.elapsed : undefined
   const stepInfo =
     state.status === 'running'
       ? `${STEP_LABELS[state.step as keyof typeof STEP_LABELS] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
@@ -464,23 +485,26 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   }, [stdout])
   const barWidth = Math.min(Math.max(Math.floor(cols * 0.3), 12), 40)
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
+  const projectMap = useMemo(() => new Map(projects.map(p => [p.name, p])), [projects])
   const [state, dispatch] = useReducer(runReducer, projects, createInitState)
   const [focusedName, setFocusedName] = useState(projects[0]?.name ?? '')
   const [toast, setToast] = useState('')
-  const bellFiredRef = useRef(false)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const sorted = useMemo(
-    () =>
-      state.sortSnapshot.length > 0
-        ? (state.sortSnapshot.map(n => projects.find(p => p.name === n)).filter(Boolean) as ProjectInfo[])
-        : projects,
-    [state.sortSnapshot, projects]
-  )
+  const sorted = useMemo(() => {
+    if (state.sortSnapshot.length === 0) return projects
+    const result: ProjectInfo[] = []
+    for (const n of state.sortSnapshot) {
+      const p = projectMap.get(n)
+      if (p) result.push(p)
+    }
+    return result
+  }, [state.sortSnapshot, projects, projectMap])
   const rawIdx = sorted.findIndex(p => p.name === focusedName)
   const focusedIdx = Math.max(rawIdx, 0)
+  const focusedValid = rawIdx !== -1
   useEffect(() => {
-    if (rawIdx === -1 && sorted[0]) setFocusedName(sorted[0].name)
-  }, [rawIdx, sorted])
+    if (!focusedValid && sorted[0]) setFocusedName(sorted[0].name)
+  }, [focusedValid, sorted])
   const stats = useMemo(
     () =>
       deriveStats({
@@ -549,18 +573,12 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     return () => clearInterval(interval)
   }, [])
   useEffect(() => {
-    const unsub = onEvent(event => {
-      bellFiredRef.current = false
-      dispatch({ event, type: 'event' })
-    })
+    const unsub = onEvent(event => dispatch({ event, type: 'event' }))
     return unsub
   }, [])
   useEffect(() => {
-    if (state.phase === 'done' && !bellFiredRef.current) {
-      bellFiredRef.current = true
-      stdout?.write('\u0007')
-    }
-  }, [state.phase, stdout])
+    if (state.bellPending) stdout?.write('\u0007')
+  }, [state.bellPending, stdout])
   useEffect(() => {
     if (state.phase !== 'done' || hasFails) return
     const timer = setTimeout(() => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), RESET_DELAY)
@@ -575,7 +593,6 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const totalSteps = projects.length * STEP_COUNT
   const fraction = totalSteps > 0 ? stats.completedStepCount / totalSteps : 0
   const pct = Math.round(fraction * 100)
-  const now = Date.now()
   const sepWidth = Math.max(0, cols - 4)
   return (
     <Box flexDirection='column'>
@@ -589,19 +606,15 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : null}
         {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : null}
       </Box>
-      {sorted.map(p => {
-        const ps = state.projects[p.name]
-        return (
-          <ProjectRow
-            focused={p.name === focusedName}
-            key={p.name}
-            name={p.name}
-            pad={pad}
-            renderTs={ps?.status === 'running' ? now : 0}
-            state={ps ?? { completedSteps: new Set<string>(), status: 'idle' as const }}
-          />
-        )
-      })}
+      {sorted.map(p => (
+        <ProjectRow
+          focused={p.name === focusedName}
+          key={p.name}
+          name={p.name}
+          pad={pad}
+          state={state.projects[p.name] ?? { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }}
+        />
+      ))}
       <Box marginTop={1} paddingLeft={1}>
         <Text dimColor>{'─'.repeat(sepWidth)}</Text>
       </Box>
