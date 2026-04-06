@@ -43,6 +43,7 @@ const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string
       return { checkResult: result, name, path }
     })
     .filter(p => existsSync(p.path) && !p.path.startsWith('/tmp/'))
+    .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 }
 const authed = os.middleware(async ({ context, next }) => {
   const { headers } = context as { headers: Headers }

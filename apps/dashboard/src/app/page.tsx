@@ -62,7 +62,12 @@ const Dashboard = () => {
         method: 'POST'
       })
       const data = (await res.json()) as { json: ApiProject[] }
-      return data.json
+      const seen = new Set<string>()
+      return data.json.filter(p => {
+        if (seen.has(p.name)) return false
+        seen.add(p.name)
+        return true
+      })
     },
     queryKey: ['projects']
   })
