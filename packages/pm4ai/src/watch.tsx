@@ -28,12 +28,14 @@ interface ProjectState {
 }
 type RunAction =
   | { event: WatchEvent; type: 'event' }
+  | { focused: string; type: 'focus' }
   | { mkIdle: (p: ProjectInfo) => ProjectState; projects: ProjectInfo[]; type: 'reset' }
   | { type: 'bell-acked' }
   | { type: 'tick' }
 interface RunState {
   bellPending: boolean
   elapsed: number
+  focused: string
   history: number[]
   lastDone: number
   lastElapsed: number
@@ -67,8 +69,8 @@ const smoothBar = (fraction: number, width: number): string => {
   const full = Math.floor(total)
   const partial = total - full
   const partialIdx = Math.round(partial * (BAR_CHARS.length - 1))
-  const partialChar = full < width ? (BAR_CHARS[partialIdx] ?? '') : ''
-  const filled = full + (partialChar.trim() ? 1 : 0)
+  const partialChar = partialIdx > 0 && full < width ? (BAR_CHARS[partialIdx] ?? '') : ''
+  const filled = full + (partialChar ? 1 : 0)
   const empty = Math.max(0, width - filled)
   return `${BAR_FULL.repeat(full)}${partialChar}${'░'.repeat(empty)}`
 }
@@ -189,6 +191,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000), projects }
   }
   if (action.type === 'bell-acked') return state.bellPending ? { ...state, bellPending: false } : state
+  if (action.type === 'focus') return state.focused === action.focused ? state : { ...state, focused: action.focused }
   if (action.type === 'reset') {
     const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
     let doneCount = 0
@@ -197,10 +200,12 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
       if (s.status === 'done') doneCount += 1
       if (s.status === 'failed') failedCount += 1
     }
+    const snapshot = sortByStatus(Object.keys(newProjects), newProjects)
     return {
       ...state,
       bellPending: false,
       elapsed: 0,
+      focused: snapshot[0] ?? state.focused,
       history: state.elapsed > 0 ? [...state.history, state.elapsed].slice(-MAX_HISTORY) : state.history,
       lastDone: doneCount,
       lastElapsed: state.elapsed,
@@ -209,7 +214,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
       phase: 'idle',
       projects: newProjects,
       runCount: state.runCount + 1,
-      sortSnapshot: sortByStatus(Object.keys(newProjects), newProjects),
+      sortSnapshot: snapshot,
       startTime: undefined
     }
   }
@@ -230,9 +235,10 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   const phase = finished === total && total > 0 ? 'done' : hasRunning ? 'running' : state.phase
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
-  const bellPending =
-    !wasRunning && phase === 'done' && state.startTime ? true : phase === 'running' ? false : state.bellPending
-  return { ...state, bellPending, phase, projects: next, sortSnapshot, startTime }
+  const bellPending = wasRunning && phase === 'done' ? true : phase === 'running' ? false : state.bellPending
+  const focused =
+    shouldResort && !sortSnapshot.includes(state.focused) ? (sortSnapshot[0] ?? state.focused) : state.focused
+  return { ...state, bellPending, focused, phase, projects: next, sortSnapshot, startTime }
 }
 interface DerivedStats {
   completedStepCount: number
@@ -292,9 +298,11 @@ const deriveStats = ({
 }
 const createInitState = (projects: ProjectInfo[]): RunState => {
   const initial = Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)]))
+  const snapshot = sortByStatus(Object.keys(initial), initial)
   return {
     bellPending: false,
     elapsed: 0,
+    focused: snapshot[0] ?? '',
     history: [],
     lastDone: 0,
     lastElapsed: 0,
@@ -303,7 +311,7 @@ const createInitState = (projects: ProjectInfo[]): RunState => {
     phase: 'idle',
     projects: initial,
     runCount: 0,
-    sortSnapshot: sortByStatus(Object.keys(initial), initial),
+    sortSnapshot: snapshot,
     startTime: undefined
   }
 }
@@ -476,6 +484,22 @@ const RunningFooter = ({
   </Box>
 )
 RunningFooter.displayName = 'RunningFooter'
+const safeSpawn = (args: string[], cwd?: string): boolean => {
+  try {
+    const proc = spawn('bunx', args, { cwd, detached: true, stdio: 'ignore' })
+    proc.on('error', () => {})
+    proc.unref()
+    return true
+  } catch {
+    return false
+  }
+}
+interface KeyAction {
+  guard?: () => boolean
+  handler: () => void
+  key?: 'return'
+  match?: (input: string) => boolean
+}
 const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const { exit } = useApp()
   const { stdout } = useStdout()
@@ -491,7 +515,6 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
   const projectMap = useMemo(() => new Map(projects.map(p => [p.name, p])), [projects])
   const [state, dispatch] = useReducer(runReducer, projects, createInitState)
-  const [focusedName, setFocusedName] = useState(projects[0]?.name ?? '')
   const [toast, setToast] = useState('')
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const sorted = useMemo(() => {
@@ -503,13 +526,10 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     }
     return result
   }, [state.sortSnapshot, projects, projectMap])
-  const rawIdx = sorted.findIndex(p => p.name === focusedName)
-  const focusedIdx = Math.max(rawIdx, 0)
-  const focusedValid = rawIdx !== -1
-  useEffect(() => {
-    // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
-    if (!focusedValid && sorted[0]) setFocusedName(sorted[0].name)
-  }, [focusedValid, sorted])
+  const focusedIdx = useMemo(() => {
+    const idx = sorted.findIndex(p => p.name === state.focused)
+    return Math.max(idx, 0)
+  }, [sorted, state.focused])
   const stats = useMemo(
     () =>
       deriveStats({
@@ -526,51 +546,91 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     setToast(msg)
     toastTimerRef.current = setTimeout(() => setToast(''), 2000)
   }, [])
+  const focus = useCallback((name: string) => dispatch({ focused: name, type: 'focus' }), [])
+  const keymap: KeyAction[] = useMemo(
+    () => [
+      {
+        handler: () => {
+          const p = sorted[Math.max(0, focusedIdx - 1)]
+          if (p) focus(p.name)
+        },
+        match: (i: string) => i === 'k'
+      },
+      {
+        handler: () => {
+          const p = sorted[Math.min(sorted.length - 1, focusedIdx + 1)]
+          if (p) focus(p.name)
+        },
+        match: (i: string) => i === 'j'
+      },
+      {
+        handler: () => {
+          if (sorted[0]) focus(sorted[0].name)
+        },
+        match: (i: string) => i === 'g'
+      },
+      {
+        handler: () => {
+          const last = sorted.at(-1)
+          if (last) focus(last.name)
+        },
+        match: (i: string) => i === 'G'
+      },
+      { handler: () => exit(), match: (i: string) => i === 'q' },
+      { guard: () => hasFails, handler: () => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), key: 'return' },
+      {
+        guard: () => !hasFails && stats.running === 0,
+        handler: () => {
+          const p = sorted[focusedIdx]
+          if (p && existsSync(p.path))
+            if (safeSpawn(['pm4ai', 'fix'], p.path)) showToast(`fixing ${p.name}...`)
+            else showToast(`${p.name}: spawn failed`)
+          else if (p) showToast(`${p.name}: ${p.path} not found`)
+        },
+        key: 'return'
+      },
+      {
+        guard: () => !hasFails && stats.running === 0,
+        handler: () => {
+          if (safeSpawn(['pm4ai', 'fix', '--all'])) showToast('starting fix --all...')
+          else showToast('spawn failed')
+        },
+        match: (i: string) => i === 'f'
+      },
+      {
+        guard: () => !hasFails && stats.running === 0,
+        handler: () => {
+          if (safeSpawn(['pm4ai', 'status', '--all'])) showToast('starting status --all...')
+          else showToast('spawn failed')
+        },
+        match: (i: string) => i === 's'
+      }
+    ],
+    [sorted, focusedIdx, hasFails, stats.running, projects, exit, focus, showToast]
+  )
   useInput((input, key) => {
-    if (key.upArrow || input === 'k') {
-      const idx = Math.max(0, focusedIdx - 1)
-      if (sorted[idx]) setFocusedName(sorted[idx].name)
+    if (key.upArrow) {
+      keymap[0]?.handler()
       return
     }
-    if (key.downArrow || input === 'j') {
-      const idx = Math.min(sorted.length - 1, focusedIdx + 1)
-      if (sorted[idx]) setFocusedName(sorted[idx].name)
+    if (key.downArrow) {
+      keymap[1]?.handler()
       return
     }
-    if (input === 'g') {
-      if (sorted[0]) setFocusedName(sorted[0].name)
-      return
-    }
-    if (input === 'G') {
-      const last = sorted.at(-1)
-      if (last) setFocusedName(last.name)
-      return
-    }
-    if (input === 'q' || (key.ctrl && input === 'c')) {
+    if (key.ctrl && input === 'c') {
       exit()
       return
     }
-    if (hasFails && key.return) {
-      dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' })
-      return
-    }
-    if (hasFails) return
-    if (key.return && stats.running === 0) {
-      const p = sorted[focusedIdx]
-      if (p && existsSync(p.path)) {
-        spawn('bunx', ['pm4ai', 'fix'], { cwd: p.path, detached: true, stdio: 'ignore' }).unref()
-        showToast(`fixing ${p.name}...`)
-      } else if (p) showToast(`${p.name}: ${p.path} not found`)
-      return
-    }
-    if (input === 'f' && stats.running === 0) {
-      spawn('bunx', ['pm4ai', 'fix', '--all'], { detached: true, stdio: 'ignore' }).unref()
-      showToast('starting fix --all...')
-      return
-    }
-    if (input === 's' && stats.running === 0) {
-      spawn('bunx', ['pm4ai', 'status', '--all'], { detached: true, stdio: 'ignore' }).unref()
-      showToast('starting status --all...')
+    if (hasFails && !key.return) return
+    for (const action of keymap) {
+      if (action.key === 'return' && key.return && (!action.guard || action.guard())) {
+        action.handler()
+        return
+      }
+      if (action.match?.(input) && (!action.guard || action.guard())) {
+        action.handler()
+        return
+      }
     }
   })
   useEffect(() => {
@@ -616,7 +676,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       </Box>
       {sorted.map(p => (
         <ProjectRow
-          focused={p.name === focusedName}
+          focused={p.name === state.focused}
           key={p.name}
           name={p.name}
           pad={pad}
@@ -670,5 +730,16 @@ const watch = async (json = false) => {
   const projects = allProjects.map(p => ({ name: p.name || projectName(p.path), path: p.path }))
   const app = render(<WatchApp projects={projects} />)
   await app.waitUntilExit()
+}
+export {
+  createInitState,
+  deriveStats,
+  formatTime,
+  mkIdleFn,
+  nextProjectState,
+  runReducer,
+  smoothBar,
+  sparkline,
+  tickProjects
 }
 export { watch, WatchApp }
