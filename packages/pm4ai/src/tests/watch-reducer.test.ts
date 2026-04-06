@@ -372,4 +372,68 @@ describe('smoothBar edge cases', () => {
     const bar = smoothBar(-0.3, 10)
     expect(bar).toBe('░░░░░░░░░░')
   })
+  test('width 0 returns empty string', () => {
+    expect(smoothBar(0.5, 0)).toBe('')
+  })
+})
+describe('edge cases', () => {
+  test('formatTime negative returns <1s', () => {
+    expect(formatTime(-5)).toBe('<1s')
+  })
+  test('deriveStats with empty projects', () => {
+    const stats = deriveStats({ elapsed: 0, history: [], lastElapsed: 0, projects: {} })
+    expect(stats.running).toBe(0)
+    expect(stats.done).toBe(0)
+    expect(stats.failed).toBe(0)
+    expect(stats.completedStepCount).toBe(0)
+    expect(stats.slowestElapsed).toBe(0)
+    expect(stats.slowestName).toBe('')
+    expect(stats.eta).toBeUndefined()
+  })
+  test('nextProjectState fail on non-done step preserves running', () => {
+    const running = {
+      completedSteps: new Set(['sync']),
+      elapsed: 3,
+      startedAt: Date.now() - 3000,
+      status: 'running' as const,
+      step: 'audit'
+    }
+    const event = createEvent({ detail: 'lint error', project: 'x', status: 'fail', step: 'audit' })
+    const next = nextProjectState(running, event)
+    expect(next.status).toBe('running')
+    expect(next.detail).toBe('lint error')
+    expect(next.startedAt).toBe(running.startedAt)
+    expect(next.completedSteps).toBe(running.completedSteps)
+  })
+  test('multi-project interleaved run lifecycle', () => {
+    const projects = mkProjects('a', 'b', 'c')
+    let state = createInitState(projects)
+    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
+    state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
+    expect(state.phase).toBe('running')
+    expect(state.projects.a?.status).toBe('running')
+    expect(state.projects.b?.status).toBe('running')
+    expect(state.projects.c?.status).toBe('idle')
+    state = runReducer(state, { event: createEvent({ project: 'c', status: 'start', step: 'sync' }), type: 'event' })
+    state = runReducer(state, {
+      event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
+      type: 'event'
+    })
+    expect(state.phase).toBe('running')
+    expect(state.projects.a?.status).toBe('done')
+    state = runReducer(state, {
+      event: createEvent({ detail: '2 issues', project: 'b', status: 'fail', step: 'done' }),
+      type: 'event'
+    })
+    expect(state.phase).toBe('running')
+    state = runReducer(state, {
+      event: createEvent({ detail: 'clean', project: 'c', status: 'ok', step: 'done' }),
+      type: 'event'
+    })
+    expect(state.phase).toBe('done')
+    expect(state.bellPending).toBe(true)
+    expect(state.projects.a?.status).toBe('done')
+    expect(state.projects.b?.status).toBe('failed')
+    expect(state.projects.c?.status).toBe('done')
+  })
 })
