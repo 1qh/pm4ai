@@ -104,6 +104,19 @@ describe('runReducer', () => {
     state = runReducer(state, { focused: 'b', type: 'focus' })
     expect(state.focused).toBe('b')
   })
+  test('focus action returns same ref when already focused', () => {
+    const projects = mkProjects('a', 'b')
+    const state = createInitState(projects)
+    const next = runReducer(state, { focused: state.focused, type: 'focus' })
+    expect(next).toBe(state)
+  })
+  test('bell-acked returns same ref when not pending', () => {
+    const projects = mkProjects('a')
+    const state = createInitState(projects)
+    expect(state.bellPending).toBe(false)
+    const next = runReducer(state, { type: 'bell-acked' })
+    expect(next).toBe(state)
+  })
   test('sortSnapshot updates on phase transitions', () => {
     const projects = mkProjects('a', 'b', 'c')
     let state = createInitState(projects)

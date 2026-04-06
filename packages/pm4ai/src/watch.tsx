@@ -60,6 +60,7 @@ const BAR_CHARS = ' ▏▎▍▌▋▊▉█' as const
 const BAR_FULL = BAR_CHARS.at(-1) ?? '█'
 const SPARK_CHARS = '▁▂▃▄▅▆▇█' as const
 const SPARK_ZERO = SPARK_CHARS[0] ?? '▁'
+const IDLE_FALLBACK: ProjectState = { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' }
 const RESET_DELAY = 5000
 const MAX_HISTORY = 8
 const VERSION = pkg.version ?? '0.0.0'
@@ -219,7 +220,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     }
   }
   const { event } = action
-  const prev = state.projects[event.project] ?? { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }
+  const prev = state.projects[event.project] ?? IDLE_FALLBACK
   const nextProj = nextProjectState(prev, event)
   const next = { ...state.projects, [event.project]: nextProj }
   const startTime = event.status === 'start' ? (state.startTime ?? Date.now()) : state.startTime
@@ -495,6 +496,7 @@ const safeSpawn = (args: string[], cwd?: string): boolean => {
   }
 }
 interface KeyAction {
+  arrow?: 'down' | 'up'
   guard?: () => boolean
   handler: () => void
   key?: 'return'
@@ -550,6 +552,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const keymap: KeyAction[] = useMemo(
     () => [
       {
+        arrow: 'up',
         handler: () => {
           const p = sorted[Math.max(0, focusedIdx - 1)]
           if (p) focus(p.name)
@@ -557,6 +560,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         match: (i: string) => i === 'k'
       },
       {
+        arrow: 'down',
         handler: () => {
           const p = sorted[Math.min(sorted.length - 1, focusedIdx + 1)]
           if (p) focus(p.name)
@@ -609,25 +613,15 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     [sorted, focusedIdx, hasFails, stats.running, projects, exit, focus, showToast]
   )
   useInput((input, key) => {
-    if (key.upArrow) {
-      keymap[0]?.handler()
-      return
-    }
-    if (key.downArrow) {
-      keymap[1]?.handler()
-      return
-    }
     if (key.ctrl && input === 'c') {
       exit()
       return
     }
-    if (hasFails && !key.return) return
     for (const action of keymap) {
-      if (action.key === 'return' && key.return && (!action.guard || action.guard())) {
-        action.handler()
-        return
-      }
-      if (action.match?.(input) && (!action.guard || action.guard())) {
+      const arrowMatch = (action.arrow === 'up' && key.upArrow) || (action.arrow === 'down' && key.downArrow)
+      const keyMatch = action.key === 'return' && key.return
+      const inputMatch = action.match?.(input)
+      if ((arrowMatch || keyMatch || inputMatch) && (!action.guard || action.guard())) {
         action.handler()
         return
       }
@@ -680,7 +674,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
           key={p.name}
           name={p.name}
           pad={pad}
-          state={state.projects[p.name] ?? { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }}
+          state={state.projects[p.name] ?? IDLE_FALLBACK}
         />
       ))}
       <Box marginTop={1} paddingLeft={1}>
