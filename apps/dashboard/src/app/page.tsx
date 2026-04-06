@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch */
 'use client'
 /* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then), eslint-plugin-react(no-array-index-key) */
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, react/hook-use-state */
 import type { WatchEvent } from 'pm4ai'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -24,6 +24,7 @@ const Dashboard = () => {
   const { data: projects, isLoading } = useQuery(orpc.projects.queryOptions({ input: undefined }))
   const [liveState, setLiveState] = useState<Record<string, ProjectState>>({})
   const [eventLog, setEventLog] = useState<WatchEvent[]>([])
+  const [startedAt] = useState(() => new Date())
   const fixMutation = useMutation({ mutationFn: async () => client.fixAll({ all: true }) })
   const statusMutation = useMutation({ mutationFn: async () => client.refreshStatus({ all: true }) })
   useEffect(() => {
@@ -56,7 +57,10 @@ const Dashboard = () => {
   return (
     <div className='min-h-screen p-8 max-w-5xl mx-auto'>
       <header className='flex items-center justify-between mb-8'>
-        <h1 className='text-2xl font-bold'>pm4ai</h1>
+        <div>
+          <h1 className='text-2xl font-bold'>pm4ai</h1>
+          <div className='text-xs text-neutral-600'>up since {startedAt.toLocaleTimeString()}</div>
+        </div>
         <div className='flex gap-3'>
           <button
             className='px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded text-sm disabled:opacity-50'
@@ -89,16 +93,30 @@ const Dashboard = () => {
                   />
                   <span className='font-medium'>{p.name}</span>
                 </div>
-                <div className='text-sm text-neutral-500'>
-                  {isActive ? <span className='text-yellow-500'>{live?.step}</span> : null}
-                  {!isActive && live?.step === 'done' ? <span className='text-green-500'>{live.detail}</span> : null}
-                  {!(isActive || live?.step) && p.checkResult ? (
-                    <span>
-                      {p.checkResult.pass ? 'passed' : `${p.checkResult.violations} violations`}{' '}
-                      {timeAgo(p.checkResult.at)}
-                    </span>
-                  ) : null}
-                  {p.checkResult || live ? null : <span>never checked</span>}
+                <div className='flex items-center gap-4'>
+                  <div className='text-sm text-neutral-500'>
+                    {isActive ? <span className='text-yellow-500'>{live?.step}</span> : null}
+                    {!isActive && live?.step === 'done' ? <span className='text-green-500'>{live.detail}</span> : null}
+                    {!(isActive || live?.step) && p.checkResult ? (
+                      <span>
+                        {p.checkResult.pass ? 'passed' : `${p.checkResult.violations} violations`}{' '}
+                        {timeAgo(p.checkResult.at)}
+                      </span>
+                    ) : null}
+                    {p.checkResult || live ? null : <span>never checked</span>}
+                  </div>
+                  <div className='flex gap-2 text-xs'>
+                    <a
+                      className='text-neutral-600 hover:text-neutral-400'
+                      href={`https://github.com/1qh/${p.name}`}
+                      rel='noopener noreferrer'
+                      target='_blank'>
+                      GitHub
+                    </a>
+                    <a className='text-neutral-600 hover:text-neutral-400' href={`vscode://file${p.path}`}>
+                      VS Code
+                    </a>
+                  </div>
                 </div>
               </div>
               <div className='mt-1 text-xs text-neutral-600 truncate'>{p.path}</div>

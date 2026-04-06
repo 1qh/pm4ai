@@ -92,10 +92,34 @@ const refreshStatus = os
     proc.unref()
     return { pid: proc.pid ?? 0 }
   })
+const projectNameRe = /^[\w-]+$/u
+const fixProject = os
+  .use(authed)
+  .input(z.object({ project: z.string() }))
+  .handler(async ({ input }) => {
+    if (!projectNameRe.test(input.project)) throw new Error('Invalid project name')
+    const known = getProjectsFromCache().map(p => p.name)
+    if (!known.includes(input.project)) throw new Error('Unknown project')
+    const { spawn } = await import('node:child_process')
+    const proc = spawn('bunx', ['pm4ai', 'fix'], {
+      cwd: getProjectsFromCache().find(p => p.name === input.project)?.path,
+      detached: true,
+      stdio: 'ignore'
+    })
+    proc.unref()
+    return { pid: proc.pid ?? 0 }
+  })
+const projectStatus = os.input(z.object({ project: z.string() })).handler(async ({ input }) => {
+  const found = getProjectsFromCache().find(p => p.name === input.project)
+  if (!found) return null
+  return found
+})
 const socketStatus = os.handler(async () => ({ connected: isConnected() }))
 const router = os.router({
   events,
   fixAll,
+  fixProject,
+  projectStatus,
   projects,
   refreshStatus,
   socketStatus

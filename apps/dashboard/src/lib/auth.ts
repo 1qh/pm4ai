@@ -1,7 +1,25 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 const SESSION_SECRET = randomUUID()
 const pendingTokens = new Map<string, true>()
 let currentToken: string | undefined
+const loadTokenFromFile = () => {
+  try {
+    const tokenFile = join(process.cwd(), '.auth-token')
+    if (existsSync(tokenFile)) {
+      const token = readFileSync(tokenFile, 'utf8').trim()
+      if (token) {
+        pendingTokens.set(token, true)
+        currentToken = token
+        unlinkSync(tokenFile)
+      }
+    }
+  } catch {
+    /* Token file may not exist */
+  }
+}
+loadTokenFromFile()
 const generateToken = (): string => {
   if (currentToken) pendingTokens.delete(currentToken)
   currentToken = randomUUID()
