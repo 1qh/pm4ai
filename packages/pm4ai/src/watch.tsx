@@ -123,14 +123,16 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
           status: 'done'
         }
   }
-  if (event.status === 'start')
+  if (event.status === 'start') {
+    const freshStart = prev.status === 'done' || prev.status === 'failed' || prev.status === 'idle'
     return {
-      completedSteps: prev.completedSteps,
+      completedSteps: freshStart ? new Set<string>() : prev.completedSteps,
       elapsed: 0,
-      startedAt: prev.startedAt ?? Date.now(),
+      startedAt: freshStart ? Date.now() : (prev.startedAt ?? Date.now()),
       status: 'running',
       step: event.step
     }
+  }
   if (event.status === 'fail')
     return {
       completedSteps: prev.completedSteps,
@@ -176,8 +178,9 @@ const tickProjects = (projects: Record<string, ProjectState>): Record<string, Pr
   let changed = false
   const next: Record<string, ProjectState> = {}
   for (const [k, v] of Object.entries(projects)) {
-    const shouldUpdate = v.status === 'running' && v.startedAt
-    const elapsed = shouldUpdate ? Math.floor((now - (v.startedAt ?? 0)) / 1000) : v.elapsed
+    const startedAt = v.status === 'running' ? v.startedAt : undefined
+    const elapsed = startedAt === undefined ? v.elapsed : Math.floor((now - startedAt) / 1000)
+    const shouldUpdate = startedAt !== undefined
     if (shouldUpdate && elapsed !== v.elapsed) {
       next[k] = { ...v, elapsed }
       changed = true

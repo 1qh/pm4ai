@@ -436,4 +436,40 @@ describe('edge cases', () => {
     expect(state.projects.b?.status).toBe('failed')
     expect(state.projects.c?.status).toBe('done')
   })
+  test('start event on previously-done project clears completedSteps', () => {
+    const done = {
+      completedSteps: new Set(['audit', 'check', 'maintain', 'sync']),
+      detail: 'clean',
+      elapsed: 10,
+      status: 'done' as const
+    }
+    const event = createEvent({ project: 'x', status: 'start', step: 'sync' })
+    const next = nextProjectState(done, event)
+    expect(next.status).toBe('running')
+    expect(next.completedSteps.size).toBe(0)
+    expect(next.elapsed).toBe(0)
+  })
+  test('start event on idle project clears completedSteps', () => {
+    const idle = {
+      cachedPass: true,
+      completedSteps: new Set<string>(),
+      detail: 'clean 5m ago',
+      elapsed: 0,
+      status: 'idle' as const
+    }
+    const event = createEvent({ project: 'x', status: 'start', step: 'sync' })
+    const next = nextProjectState(idle, event)
+    expect(next.status).toBe('running')
+    expect(next.completedSteps.size).toBe(0)
+  })
+  test('deriveStats identifies slowest among multiple finished', () => {
+    const projects = {
+      a: { completedSteps: new Set(['audit', 'check', 'maintain', 'sync']), elapsed: 5, status: 'done' as const },
+      b: { completedSteps: new Set(['audit', 'check', 'maintain', 'sync']), elapsed: 15, status: 'done' as const },
+      c: { completedSteps: new Set(['audit', 'check', 'maintain', 'sync']), elapsed: 8, status: 'failed' as const }
+    }
+    const stats = deriveStats({ elapsed: 15, history: [], lastElapsed: 0, projects })
+    expect(stats.slowestName).toBe('b')
+    expect(stats.slowestElapsed).toBe(15)
+  })
 })
