@@ -5,7 +5,7 @@ import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 /* oxlint-disable complexity, no-empty-function, eslint-plugin-promise(param-names), eslint-plugin-react-perf(jsx-no-new-array-as-prop), eslint-plugin-react-perf(jsx-no-new-object-as-prop) */
 import type { WatchEvent } from './watch-types.js'
 import pkg from '../package.json' with { type: 'json' }
@@ -143,8 +143,15 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
     step: event.step
   }
 }
+const safeReadCheck = (path: string) => {
+  try {
+    return readCheckResult(path)
+  } catch {
+    return null
+  }
+}
 const mkIdleFn = (p: ProjectInfo): ProjectState => {
-  const cached = readCheckResult(p.path)
+  const cached = safeReadCheck(p.path)
   if (!cached) return { completedSteps: new Set(), status: 'idle' }
   const label = `${cached.pass ? 'clean' : `${cached.violations} issues`} ${timeAgo(cached.at)}`
   return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, status: 'idle' }
@@ -187,7 +194,7 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
   const prev = state.projects[event.project] ?? { completedSteps: new Set<string>(), status: 'idle' as const }
   const nextProj = nextProjectState(prev, event)
   const next = { ...state.projects, [event.project]: nextProj }
-  const startTime = event.status === 'start' && event.step !== 'done' ? (state.startTime ?? Date.now()) : state.startTime
+  const startTime = event.status === 'start' ? (state.startTime ?? Date.now()) : state.startTime
   let finished = 0
   let total = 0
   let hasRunning = false
@@ -205,12 +212,23 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
 interface DerivedStats {
   completedStepCount: number
   done: number
+  eta?: number
   failed: number
   running: number
   slowestElapsed: number
   slowestName: string
 }
-const deriveStats = (projects: Record<string, ProjectState>): DerivedStats => {
+const deriveStats = ({
+  elapsed,
+  history,
+  lastElapsed,
+  projects
+}: {
+  elapsed: number
+  history: number[]
+  lastElapsed: number
+  projects: Record<string, ProjectState>
+}): DerivedStats => {
   let runningCount = 0
   let doneCount = 0
   let failedCount = 0
@@ -227,26 +245,50 @@ const deriveStats = (projects: Record<string, ProjectState>): DerivedStats => {
       maxN = n
     }
   }
+  let eta: number | undefined
+  if (runningCount > 0)
+    if (history.length > 0) {
+      let sum = 0
+      for (const h of history) sum += h
+      eta = Math.max(0, Math.round(sum / history.length - elapsed))
+    } else if (lastElapsed > 0) eta = Math.max(0, lastElapsed - elapsed)
   return {
     completedStepCount: steps,
     done: doneCount,
+    eta,
     failed: failedCount,
     running: runningCount,
     slowestElapsed: maxE,
     slowestName: maxN
   }
 }
+const createInitState = (projects: ProjectInfo[]): RunState => {
+  const initial = Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)]))
+  return {
+    elapsed: 0,
+    history: [],
+    lastDone: 0,
+    lastElapsed: 0,
+    lastFailed: 0,
+    lastTime: '',
+    phase: 'idle',
+    projects: initial,
+    runCount: 0,
+    sortSnapshot: sortByStatus(Object.keys(initial), initial),
+    startTime: undefined
+  }
+}
 const ProjectRow = ({
   focused,
   name,
-  now,
+  renderTs,
   pad,
   state
 }: {
   focused: boolean
   name: string
-  now: number
   pad: number
+  renderTs: number
   state: ProjectState
 }) => {
   const padded = name.padEnd(pad)
@@ -262,7 +304,7 @@ const ProjectRow = ({
   const color = colorMap[state.status]
   const isIdle = state.status === 'idle'
   const rawSecs =
-    state.status === 'running' && state.startedAt ? Math.floor((now - state.startedAt) / 1000) : state.elapsed
+    state.status === 'running' && state.startedAt ? Math.floor((renderTs - state.startedAt) / 1000) : state.elapsed
   const secs = rawSecs !== undefined && rawSecs > 0 ? rawSecs : undefined
   const stepInfo =
     state.status === 'running'
@@ -422,43 +464,39 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   }, [stdout])
   const barWidth = Math.min(Math.max(Math.floor(cols * 0.3), 12), 40)
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
-  const initState = (): RunState => {
-    const initial = Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)]))
-    return {
-      elapsed: 0,
-      history: [],
-      lastDone: 0,
-      lastElapsed: 0,
-      lastFailed: 0,
-      lastTime: '',
-      phase: 'idle',
-      projects: initial,
-      runCount: 0,
-      sortSnapshot: sortByStatus(Object.keys(initial), initial),
-      startTime: undefined
-    }
-  }
-  const [state, dispatch] = useReducer(runReducer, undefined, initState)
+  const [state, dispatch] = useReducer(runReducer, projects, createInitState)
   const [focusedName, setFocusedName] = useState(projects[0]?.name ?? '')
   const [toast, setToast] = useState('')
   const bellFiredRef = useRef(false)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const sorted =
-    state.sortSnapshot.length > 0
-      ? (state.sortSnapshot.map(n => projects.find(p => p.name === n)).filter(Boolean) as ProjectInfo[])
-      : projects
+  const sorted = useMemo(
+    () =>
+      state.sortSnapshot.length > 0
+        ? (state.sortSnapshot.map(n => projects.find(p => p.name === n)).filter(Boolean) as ProjectInfo[])
+        : projects,
+    [state.sortSnapshot, projects]
+  )
   const rawIdx = sorted.findIndex(p => p.name === focusedName)
   const focusedIdx = Math.max(rawIdx, 0)
   useEffect(() => {
     if (rawIdx === -1 && sorted[0]) setFocusedName(sorted[0].name)
   }, [rawIdx, sorted])
-  const stats = useMemo(() => deriveStats(state.projects), [state.projects])
+  const stats = useMemo(
+    () =>
+      deriveStats({
+        elapsed: state.elapsed,
+        history: state.history,
+        lastElapsed: state.lastElapsed,
+        projects: state.projects
+      }),
+    [state.projects, state.history, state.lastElapsed, state.elapsed]
+  )
   const hasFails = state.phase === 'done' && stats.failed > 0
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast(msg)
     toastTimerRef.current = setTimeout(() => setToast(''), 2000)
-  }
+  }, [])
   useInput((input, key) => {
     if (key.upArrow || input === 'k') {
       const idx = Math.max(0, focusedIdx - 1)
@@ -537,12 +575,6 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const totalSteps = projects.length * STEP_COUNT
   const fraction = totalSteps > 0 ? stats.completedStepCount / totalSteps : 0
   const pct = Math.round(fraction * 100)
-  const eta =
-    state.history.length > 0 && stats.running > 0
-      ? Math.max(0, Math.round(state.history.reduce((a, b) => a + b, 0) / state.history.length - state.elapsed))
-      : state.lastElapsed > 0 && stats.running > 0
-        ? Math.max(0, state.lastElapsed - state.elapsed)
-        : undefined
   const now = Date.now()
   const sepWidth = Math.max(0, cols - 4)
   return (
@@ -564,18 +596,18 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
             focused={p.name === focusedName}
             key={p.name}
             name={p.name}
-            now={ps?.status === 'running' ? now : 0}
             pad={pad}
+            renderTs={ps?.status === 'running' ? now : 0}
             state={ps ?? { completedSteps: new Set<string>(), status: 'idle' as const }}
           />
         )
       })}
       <Box marginTop={1} paddingLeft={1}>
-        <Text dimColor>{'─'.repeat(Math.max(0, sepWidth))}</Text>
+        <Text dimColor>{'─'.repeat(sepWidth)}</Text>
       </Box>
       <Box flexDirection='column' marginTop={1}>
         {state.phase === 'running' ? (
-          <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={eta} fraction={fraction} pct={pct} />
+          <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={stats.eta} fraction={fraction} pct={pct} />
         ) : state.phase === 'done' ? (
           <DoneFooter
             done={stats.done}
