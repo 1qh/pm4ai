@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 /* eslint-disable no-console */
 import pkg from '../package.json' with { type: 'json' }
 import { guide } from './guide.js'
