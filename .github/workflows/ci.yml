@@ -12,5 +12,5 @@ jobs:
       - run: sudo apt-get install -y ripgrep
       - run: sh up.sh
       - run: bun run test
-      - run: cd packages/pm4ai && bun dist/cli.js
-      - run: cd packages/pm4ai && bun dist/cli.js status
+      - run: cd packages/pm4ai && bun dist/cli.mjs
+      - run: cd packages/pm4ai && bun dist/cli.mjs status
