@@ -25,6 +25,10 @@
     "./guide": {
       "types": "./dist/guide.d.ts",
       "import": "./dist/guide.js"
+    },
+    "./watch-state": {
+      "types": "./dist/watch-state.d.ts",
+      "import": "./dist/watch-state.js"
     }
   },
   "bin": {

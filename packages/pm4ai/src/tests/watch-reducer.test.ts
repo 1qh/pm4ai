@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createEvent } from '../watch-types.js'
+import type { ProjectState } from '../watch-state.js'
 import {
   createInitState,
   deriveStats,
@@ -12,19 +12,21 @@ import {
   sparkline,
   tickProjects,
   timeAgo
-} from '../watch.js'
+} from '../watch-state.js'
+import { createEvent } from '../watch-types.js'
 const mkProject = (name: string) => ({ name, path: `/test/${name}` })
 const mkProjects = (...names: string[]) => names.map(mkProject)
+const mkIdle = (): ProjectState => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' })
 describe('runReducer', () => {
   test('tick returns same state when no startTime', () => {
     const projects = mkProjects('a')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     const next = runReducer(state, { type: 'tick' })
     expect(next).toBe(state)
   })
   test('event transitions project to running', () => {
     const projects = mkProjects('a', 'b')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     const event = createEvent({ project: 'a', status: 'start', step: 'sync' })
     const next = runReducer(state, { event, type: 'event' })
     expect(next.projects.a?.status).toBe('running')
@@ -34,7 +36,7 @@ describe('runReducer', () => {
   })
   test('done event transitions project to done', () => {
     const projects = mkProjects('a')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
     state = runReducer(state, {
       event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
@@ -46,7 +48,7 @@ describe('runReducer', () => {
   })
   test('fail event transitions project to failed', () => {
     const projects = mkProjects('a')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'check' }), type: 'event' })
     state = runReducer(state, {
       event: createEvent({ detail: '3 issues', project: 'a', status: 'fail', step: 'done' }),
@@ -57,7 +59,7 @@ describe('runReducer', () => {
   })
   test('bellPending set on completion after running phase', () => {
     const projects = mkProjects('a')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
     expect(state.phase).toBe('running')
     expect(state.startTime).toBeDefined()
@@ -71,12 +73,12 @@ describe('runReducer', () => {
   })
   test('bellPending not set when phase goes directly to done without running', () => {
     const projects = mkProjects('a')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     expect(state.bellPending).toBe(false)
   })
   test('bell-acked clears bellPending', () => {
     const projects = mkProjects('a')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'ok', step: 'sync' }), type: 'event' })
     state = runReducer(state, {
@@ -89,7 +91,7 @@ describe('runReducer', () => {
   })
   test('reset increments runCount and records history', () => {
     const projects = mkProjects('a')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = { ...state, elapsed: 42, phase: 'done', startTime: Date.now() - 42_000 }
     state = runReducer(state, {
       mkIdle: () => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' }),
@@ -103,26 +105,26 @@ describe('runReducer', () => {
   })
   test('focus action updates focused name', () => {
     const projects = mkProjects('a', 'b')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { focused: 'b', type: 'focus' })
     expect(state.focused).toBe('b')
   })
   test('focus action returns same ref when already focused', () => {
     const projects = mkProjects('a', 'b')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     const next = runReducer(state, { focused: state.focused, type: 'focus' })
     expect(next).toBe(state)
   })
   test('bell-acked returns same ref when not pending', () => {
     const projects = mkProjects('a')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     expect(state.bellPending).toBe(false)
     const next = runReducer(state, { type: 'bell-acked' })
     expect(next).toBe(state)
   })
   test('sortSnapshot updates on phase transitions', () => {
     const projects = mkProjects('a', 'b', 'c')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     const initial = [...state.sortSnapshot]
     state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
     expect(state.sortSnapshot).not.toEqual(initial)
@@ -273,26 +275,26 @@ describe('utility functions', () => {
 describe('createInitState', () => {
   test('creates idle state for all projects', () => {
     const projects = mkProjects('a', 'b', 'c')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     expect(Object.keys(state.projects)).toHaveLength(3)
     for (const s of Object.values(state.projects)) expect(s.status).toBe('idle')
   })
   test('sets focused to first sorted project', () => {
     const projects = mkProjects('z', 'a', 'm')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     expect(state.focused).toBeTruthy()
     expect(state.sortSnapshot).toContain(state.focused)
     expect(state.focused).toBe(state.sortSnapshot[0])
   })
   test('populates sortSnapshot with all project names', () => {
     const projects = mkProjects('x', 'y')
-    const state = createInitState(projects)
+    const state = createInitState(projects, mkIdle)
     expect(state.sortSnapshot).toHaveLength(2)
     expect(state.sortSnapshot).toContain('x')
     expect(state.sortSnapshot).toContain('y')
   })
   test('initializes with zero elapsed and empty history', () => {
-    const state = createInitState(mkProjects('a'))
+    const state = createInitState(mkProjects('a'), mkIdle)
     expect(state.elapsed).toBe(0)
     expect(state.history).toHaveLength(0)
     expect(state.runCount).toBe(0)
@@ -407,7 +409,7 @@ describe('edge cases', () => {
   })
   test('multi-project interleaved run lifecycle', () => {
     const projects = mkProjects('a', 'b', 'c')
-    let state = createInitState(projects)
+    let state = createInitState(projects, mkIdle)
     state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
     state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
     expect(state.phase).toBe('running')
