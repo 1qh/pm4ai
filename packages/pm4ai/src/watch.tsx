@@ -297,7 +297,6 @@ const DoneFooter = ({
   done,
   elapsed,
   failed,
-  hasFails,
   history,
   lastElapsed,
   slowestElapsed,
@@ -306,7 +305,6 @@ const DoneFooter = ({
   done: number
   elapsed: number
   failed: number
-  hasFails: boolean
   history: number[]
   lastElapsed: number
   slowestElapsed: number
@@ -338,7 +336,7 @@ const DoneFooter = ({
           slowest: {slowestName} ({slowestElapsed}s)
         </Text>
       ) : null}
-      {hasFails ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
+      {failed > 0 ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
     </Box>
   )
 }
@@ -347,13 +345,11 @@ const IdleFooter = ({
   lastElapsed,
   lastFailed,
   lastTime,
-  running,
   toast
 }: {
   lastElapsed: number
   lastFailed: number
   lastTime: string
-  running: number
   toast: string
 }) => (
   <Box flexDirection='column' paddingLeft={1}>
@@ -376,20 +372,14 @@ const IdleFooter = ({
         ↵
       </Text>{' '}
       fix one ·{' '}
-      {running > 0 ? (
-        <Text dimColor>running...</Text>
-      ) : (
-        <>
-          <Text bold dimColor>
-            f
-          </Text>{' '}
-          fix all ·{' '}
-          <Text bold dimColor>
-            s
-          </Text>{' '}
-          status ·{' '}
-        </>
-      )}
+      <Text bold dimColor>
+        f
+      </Text>{' '}
+      fix all ·{' '}
+      <Text bold dimColor>
+        s
+      </Text>{' '}
+      status ·{' '}
       <Text bold dimColor>
         q
       </Text>{' '}
@@ -554,7 +544,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         ? Math.max(0, state.lastElapsed - state.elapsed)
         : undefined
   const now = Date.now()
-  const sepWidth = Math.min(cols - 4, pad + 40)
+  const sepWidth = Math.max(0, cols - 4)
   return (
     <Box flexDirection='column'>
       <Box gap={1} marginBottom={1} paddingLeft={1}>
@@ -567,16 +557,19 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : null}
         {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : null}
       </Box>
-      {sorted.map(p => (
-        <ProjectRow
-          focused={p.name === focusedName}
-          key={p.name}
-          name={p.name}
-          now={now}
-          pad={pad}
-          state={state.projects[p.name] ?? { completedSteps: new Set<string>(), status: 'idle' as const }}
-        />
-      ))}
+      {sorted.map(p => {
+        const ps = state.projects[p.name]
+        return (
+          <ProjectRow
+            focused={p.name === focusedName}
+            key={p.name}
+            name={p.name}
+            now={ps?.status === 'running' ? now : 0}
+            pad={pad}
+            state={ps ?? { completedSteps: new Set<string>(), status: 'idle' as const }}
+          />
+        )
+      })}
       <Box marginTop={1} paddingLeft={1}>
         <Text dimColor>{'─'.repeat(Math.max(0, sepWidth))}</Text>
       </Box>
@@ -588,7 +581,6 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
             done={stats.done}
             elapsed={state.elapsed}
             failed={stats.failed}
-            hasFails={hasFails}
             history={state.history}
             lastElapsed={state.lastElapsed}
             slowestElapsed={stats.slowestElapsed}
@@ -599,7 +591,6 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
             lastElapsed={state.lastElapsed}
             lastFailed={state.lastFailed}
             lastTime={state.lastTime}
-            running={stats.running}
             toast={toast}
           />
         )}
