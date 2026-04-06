@@ -1,10 +1,11 @@
-/** biome-ignore-all lint/style/noNonNullAssertion: bar char access */
-/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unnecessary-condition, react-hooks/purity, complexity, react/display-name, @eslint-react/no-missing-component-display-name */
+/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: abort handler */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function, complexity, react-hooks/purity */
+/* oxlint-disable no-empty-function, eslint-plugin-promise(param-names) */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
-import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-/* oxlint-disable complexity, eslint-plugin-react(display-name), eslint-plugin-react-perf(jsx-no-new-array-as-prop), eslint-plugin-react-perf(jsx-no-new-object-as-prop), typescript-eslint(no-non-null-assertion) */
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+/* oxlint-disable complexity, eslint-plugin-react-perf(jsx-no-new-array-as-prop), eslint-plugin-react-perf(jsx-no-new-object-as-prop) */
 import type { WatchEvent } from './watch-types.js'
 import pkg from '../package.json' with { type: 'json' }
 import { readCheckResult } from './check-cache.js'
@@ -17,7 +18,7 @@ interface ProjectInfo {
 }
 interface ProjectState {
   cachedPass?: boolean
-  completedSteps: string[]
+  completedSteps: Set<string>
   detail?: string
   elapsed?: number
   startedAt?: number
@@ -38,6 +39,7 @@ interface RunState {
   phase: 'done' | 'idle' | 'running'
   projects: Record<string, ProjectState>
   runCount: number
+  sortSnapshot: string[]
   startTime?: number
 }
 const STEPS = ['sync', 'audit', 'maintain', 'check']
@@ -50,7 +52,9 @@ const STEP_LABELS: Record<string, string> = {
 }
 const STATUS_ORDER: Record<string, number> = { done: 1, failed: 2, idle: 3, running: 0 }
 const BAR_CHARS = ' ▏▎▍▌▋▊▉█'
+const BAR_FULL = BAR_CHARS.at(-1) ?? '█'
 const SPARK_CHARS = '▁▂▃▄▅▆▇█'
+const SPARK_ZERO = SPARK_CHARS[0] ?? '▁'
 const RESET_DELAY = 5000
 const MAX_HISTORY = 8
 const smoothBar = (fraction: number, width: number): string => {
@@ -60,27 +64,32 @@ const smoothBar = (fraction: number, width: number): string => {
   const partialIdx = Math.round(partial * (BAR_CHARS.length - 1))
   const partialChar = BAR_CHARS[partialIdx] ?? ''
   const empty = width - full - (partialChar.trim() ? 1 : 0)
-  return `${BAR_CHARS.at(-1)!.repeat(full)}${partialChar}${' '.repeat(Math.max(0, empty))}`
+  return `${BAR_FULL.repeat(full)}${partialChar}${'░'.repeat(Math.max(0, empty))}`
 }
 const sparkline = (values: number[]): string => {
   if (values.length === 0) return ''
   const max = Math.max(...values)
-  if (max === 0) return SPARK_CHARS[0]!.repeat(values.length)
-  return values.map(v => SPARK_CHARS[Math.round((v / max) * (SPARK_CHARS.length - 1))] ?? SPARK_CHARS[0]).join('')
+  if (max === 0) return SPARK_ZERO.repeat(values.length)
+  return values.map(v => SPARK_CHARS[Math.round((v / max) * (SPARK_CHARS.length - 1))] ?? SPARK_ZERO).join('')
 }
-const progressDots = (completed: string[], current?: string): string => {
+const progressDots = (completed: Set<string>, current?: string): string => {
   const parts: string[] = []
   for (const s of STEPS)
-    if (completed.includes(s)) parts.push('●')
+    if (completed.has(s)) parts.push('●')
     else if (s === current) parts.push('◌')
     else parts.push('·')
   return parts.join('')
 }
 const formatTime = (seconds: number): string => {
   if (seconds < 60) return `${seconds}s`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}m${s > 0 ? `${s}s` : ''}`
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${m}m${s > 0 ? `${s}s` : ''}`
+  }
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return `${h}h${m > 0 ? `${m}m` : ''}`
 }
 const timeAgo = (iso: string): string => {
   const ms = Date.now() - new Date(iso).getTime()
@@ -96,7 +105,7 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
     const projectElapsed = prev.startedAt ? Math.floor((Date.now() - prev.startedAt) / 1000) : undefined
     return event.status === 'fail'
       ? { completedSteps: prev.completedSteps, detail: event.detail, elapsed: projectElapsed, status: 'failed' }
-      : { completedSteps: STEPS, detail: event.detail ?? 'clean', elapsed: projectElapsed, status: 'done' }
+      : { completedSteps: new Set(STEPS), detail: event.detail ?? 'clean', elapsed: projectElapsed, status: 'done' }
   }
   if (event.status === 'start')
     return {
@@ -105,7 +114,7 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
       status: 'running',
       step: event.step
     }
-  const completed = event.status === 'ok' ? [...prev.completedSteps, event.step] : prev.completedSteps
+  const completed = event.status === 'ok' ? new Set([...prev.completedSteps, event.step]) : prev.completedSteps
   return {
     completedSteps: completed,
     detail: event.detail,
@@ -116,16 +125,23 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
 }
 const mkIdleFn = (p: ProjectInfo): ProjectState => {
   const cached = readCheckResult(p.path)
-  if (!cached) return { completedSteps: [], status: 'idle' }
+  if (!cached) return { completedSteps: new Set(), status: 'idle' }
   const label = `${cached.pass ? 'clean' : `${cached.violations} issues`} ${timeAgo(cached.at)}`
-  return { cachedPass: cached.pass, completedSteps: [], detail: label, status: 'idle' }
+  return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, status: 'idle' }
 }
+const sortProjects = (names: string[], projects: Record<string, ProjectState>): string[] =>
+  [...names].toSorted((a, b) => {
+    const sa = projects[a]?.status ?? 'idle'
+    const sb = projects[b]?.status ?? 'idle'
+    return (STATUS_ORDER[sa] ?? 9) - (STATUS_ORDER[sb] ?? 9)
+  })
 const runReducer = (state: RunState, action: RunAction): RunState => {
   if (action.type === 'tick') {
     if (!state.startTime) return state
     return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000) }
   }
-  if (action.type === 'reset')
+  if (action.type === 'reset') {
+    const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
     return {
       ...state,
       elapsed: 0,
@@ -135,132 +151,218 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
       lastFailed: Object.values(state.projects).filter(s => s.status === 'failed').length,
       lastTime: new Date().toLocaleTimeString(),
       phase: 'idle',
-      projects: Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)])),
+      projects: newProjects,
       runCount: state.runCount + 1,
+      sortSnapshot: sortProjects(Object.keys(newProjects), newProjects),
       startTime: undefined
     }
+  }
   const { event } = action
-  const prev = state.projects[event.project] ?? { completedSteps: [], status: 'idle' }
-  const next = { ...state.projects, [event.project]: nextProjectState(prev, event) }
+  const prev = state.projects[event.project] ?? { completedSteps: new Set(), status: 'idle' }
+  const nextProj = nextProjectState(prev, event)
+  const next = { ...state.projects, [event.project]: nextProj }
   const startTime = event.status === 'start' && event.step !== 'done' ? (state.startTime ?? Date.now()) : state.startTime
   const vals = Object.values(next)
   const finished = vals.filter(s => s.status === 'done' || s.status === 'failed').length
   const total = Object.keys(next).length
+  const wasRunning = state.phase === 'running'
   const phase = finished === total && total > 0 ? 'done' : vals.some(s => s.status === 'running') ? 'running' : state.phase
-  return { ...state, phase, projects: next, startTime }
+  const sortSnapshot =
+    !wasRunning && phase === 'running'
+      ? sortProjects(Object.keys(next), next)
+      : phase === 'done'
+        ? sortProjects(Object.keys(next), next)
+        : state.sortSnapshot
+  return { ...state, phase, projects: next, sortSnapshot, startTime }
 }
-const ProjectRow = memo(
-  ({
-    focused,
-    name,
-    now,
-    pad,
-    state
-  }: {
-    focused: boolean
-    name: string
-    now: number
-    pad: number
-    state: ProjectState
-  }) => {
-    const padded = name.padEnd(pad)
-    const cursor = focused ? '›' : ' '
-    const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
-    const colorMap = {
-      done: 'green' as const,
-      failed: 'red' as const,
-      idle: state.cachedPass === true ? 'green' : state.cachedPass === false ? 'red' : undefined,
-      running: 'yellow' as const
-    }
-    const icon = iconMap[state.status]
-    const color = colorMap[state.status]
-    const isIdle = state.status === 'idle'
-    const secs = state.status === 'running' && state.startedAt ? Math.floor((now - state.startedAt) / 1000) : state.elapsed
-    const stepInfo =
-      state.status === 'running'
-        ? `${STEP_LABELS[state.step ?? ''] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
-        : (state.detail ?? '')
-    return (
-      <Box gap={1} paddingLeft={1}>
-        <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
-          {cursor}
-        </Text>
-        {state.status === 'running' ? (
-          <Spinner type='dots' />
-        ) : (
-          <Text color={color} dimColor={isIdle ? !color : undefined}>
-            {icon}
-          </Text>
-        )}
-        <Text bold={focused || state.status === 'running'} dimColor={isIdle}>
-          {padded}
-        </Text>
-        {stepInfo ? (
-          <Text color={state.status === 'running' ? 'yellow' : color} dimColor={isIdle}>
-            {stepInfo}
-          </Text>
-        ) : null}
-        {secs && secs > 0 ? <Text dimColor>{secs}s</Text> : null}
-      </Box>
-    )
+const ProjectRowInner = ({
+  focused,
+  name,
+  now,
+  pad,
+  state
+}: {
+  focused: boolean
+  name: string
+  now: number
+  pad: number
+  state: ProjectState
+}) => {
+  const padded = name.padEnd(pad)
+  const cursor = focused ? '›' : ' '
+  const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
+  const colorMap = {
+    done: 'green' as const,
+    failed: 'red' as const,
+    idle: state.cachedPass === true ? ('green' as const) : state.cachedPass === false ? ('red' as const) : undefined,
+    running: 'yellow' as const
   }
-)
-const DoneFooter = memo(
-  ({
-    done,
-    elapsed,
-    failed,
-    history,
-    lastElapsed,
-    slowestElapsed,
-    slowestName
-  }: {
-    done: number
-    elapsed: number
-    failed: number
-    history: number[]
-    lastElapsed: number
-    slowestElapsed: number
-    slowestName: string
-  }) => {
-    const delta = lastElapsed > 0 ? elapsed - lastElapsed : 0
-    const deltaLabel = delta > 0 ? `+${delta}s` : delta < 0 ? `${delta}s` : ''
-    const deltaColor = delta > 0 ? 'red' : delta < 0 ? 'green' : undefined
-    return (
-      <Box flexDirection='column' paddingLeft={1}>
-        {failed > 0 ? (
-          <Box gap={1}>
-            <Text color='red'>
-              ✘ {failed} failed · {done} passed · {formatTime(elapsed)}
-            </Text>
-            <Text dimColor>press any key to dismiss</Text>
-          </Box>
-        ) : (
-          <Box gap={1}>
-            <Text bold color='green'>
-              ✔ all clean · {formatTime(elapsed)}
-            </Text>
-            {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
-            {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
-          </Box>
-        )}
-        {slowestName && slowestElapsed > 0 ? (
-          <Text dimColor>
-            slowest: {slowestName} ({slowestElapsed}s)
+  const icon = iconMap[state.status]
+  const color = colorMap[state.status]
+  const isIdle = state.status === 'idle'
+  const secs = state.status === 'running' && state.startedAt ? Math.floor((now - state.startedAt) / 1000) : state.elapsed
+  const stepInfo =
+    state.status === 'running'
+      ? `${STEP_LABELS[state.step ?? ''] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
+      : (state.detail ?? '')
+  return (
+    <Box gap={1} paddingLeft={1}>
+      <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+        {cursor}
+      </Text>
+      {state.status === 'running' ? (
+        <Spinner type='dots' />
+      ) : (
+        <Text color={color} dimColor={isIdle ? !color : undefined}>
+          {icon}
+        </Text>
+      )}
+      <Text bold={focused || state.status === 'running'} dimColor={isIdle}>
+        {padded}
+      </Text>
+      {stepInfo ? (
+        <Text color={state.status === 'running' ? 'yellow' : color} dimColor={isIdle}>
+          {stepInfo}
+        </Text>
+      ) : null}
+      {secs && secs > 0 ? <Text dimColor>{secs}s</Text> : null}
+    </Box>
+  )
+}
+ProjectRowInner.displayName = 'ProjectRow'
+const ProjectRow = ProjectRowInner
+const DoneFooterInner = ({
+  done,
+  elapsed,
+  failed,
+  hasFails,
+  history,
+  lastElapsed,
+  slowestElapsed,
+  slowestName
+}: {
+  done: number
+  elapsed: number
+  failed: number
+  hasFails: boolean
+  history: number[]
+  lastElapsed: number
+  slowestElapsed: number
+  slowestName: string
+}) => {
+  const delta = lastElapsed > 0 ? elapsed - lastElapsed : 0
+  const deltaLabel = delta > 0 ? `+${delta}s` : delta < 0 ? `${delta}s` : ''
+  const deltaColor = delta > 0 ? 'red' : delta < 0 ? 'green' : undefined
+  return (
+    <Box flexDirection='column' paddingLeft={1}>
+      {failed > 0 ? (
+        <Box gap={1}>
+          <Text color='red'>
+            ✘ {failed} failed · {done} passed · {formatTime(elapsed)}
           </Text>
-        ) : null}
-      </Box>
-    )
-  }
+          <Text dimColor>press enter to dismiss</Text>
+        </Box>
+      ) : (
+        <Box gap={1}>
+          <Text bold color='green'>
+            ✔ all clean · {formatTime(elapsed)}
+          </Text>
+          {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
+          {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
+        </Box>
+      )}
+      {slowestName && slowestElapsed > 0 ? (
+        <Text dimColor>
+          slowest: {slowestName} ({slowestElapsed}s)
+        </Text>
+      ) : null}
+      {hasFails ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
+    </Box>
+  )
+}
+DoneFooterInner.displayName = 'DoneFooter'
+const DoneFooter = DoneFooterInner
+const IdleFooter = ({
+  lastElapsed,
+  lastFailed,
+  lastTime,
+  running,
+  toast
+}: {
+  lastElapsed: number
+  lastFailed: number
+  lastTime: string
+  running: number
+  toast: string
+}) => (
+  <Box flexDirection='column' paddingLeft={1}>
+    {toast ? <Text color='cyan'>{toast}</Text> : null}
+    {lastTime ? (
+      <Text dimColor>
+        last run: {lastFailed > 0 ? `${lastFailed} failed` : 'all clean'} · {formatTime(lastElapsed)} · {lastTime}
+      </Text>
+    ) : null}
+    <Text dimColor>
+      <Text bold dimColor>
+        ↑↓/jk
+      </Text>{' '}
+      select ·{' '}
+      <Text bold dimColor>
+        ↵
+      </Text>{' '}
+      fix one ·{' '}
+      {running > 0 ? (
+        <Text dimColor>running...</Text>
+      ) : (
+        <>
+          <Text bold dimColor>
+            f
+          </Text>{' '}
+          fix all ·{' '}
+          <Text bold dimColor>
+            s
+          </Text>{' '}
+          status ·{' '}
+        </>
+      )}
+      <Text bold dimColor>
+        q
+      </Text>{' '}
+      quit
+    </Text>
+  </Box>
 )
+IdleFooter.displayName = 'IdleFooter'
+const RunningFooter = ({
+  barWidth,
+  elapsed,
+  etaFromLast,
+  fraction,
+  pct
+}: {
+  barWidth: number
+  elapsed: number
+  etaFromLast?: number
+  fraction: number
+  pct: number
+}) => (
+  <Box gap={1} paddingLeft={1}>
+    <Text color='cyan'>{smoothBar(fraction, barWidth)}</Text>
+    <Text color='yellow'>{pct}%</Text>
+    {elapsed > 0 ? <Text dimColor>{formatTime(elapsed)}</Text> : null}
+    {etaFromLast ? <Text dimColor>~{formatTime(etaFromLast)} left</Text> : null}
+  </Box>
+)
+RunningFooter.displayName = 'RunningFooter'
 const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const { exit } = useApp()
   const { stdout } = useStdout()
   const cols = stdout?.columns ?? 80
   const barWidth = Math.min(Math.max(Math.floor(cols * 0.3), 12), 40)
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
-  const initState = useCallback(
-    (): RunState => ({
+  const initState = (): RunState => {
+    const initial = Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)]))
+    return {
       elapsed: 0,
       history: [],
       lastDone: 0,
@@ -268,26 +370,21 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       lastFailed: 0,
       lastTime: '',
       phase: 'idle',
-      projects: Object.fromEntries(projects.map(p => [p.name, mkIdleFn(p)])),
+      projects: initial,
       runCount: 0,
+      sortSnapshot: sortProjects(Object.keys(initial), initial),
       startTime: undefined
-    }),
-    [projects]
-  )
+    }
+  }
   const [state, dispatch] = useReducer(runReducer, undefined, initState)
   const [focusedName, setFocusedName] = useState(projects[0]?.name ?? '')
   const [toast, setToast] = useState('')
   const bellFiredRef = useRef(false)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const sorted = useMemo(
-    () =>
-      [...projects].toSorted((a, b) => {
-        const sa = state.projects[a.name]?.status ?? 'idle'
-        const sb = state.projects[b.name]?.status ?? 'idle'
-        return (STATUS_ORDER[sa] ?? 9) - (STATUS_ORDER[sb] ?? 9)
-      }),
-    [projects, state.projects]
-  )
+  const sorted =
+    state.sortSnapshot.length > 0
+      ? (state.sortSnapshot.map(n => projects.find(p => p.name === n)).filter(Boolean) as ProjectInfo[])
+      : projects
   const focusedIdx = sorted.findIndex(p => p.name === focusedName)
   const { slowestElapsed, slowestName } = useMemo(() => {
     let maxE = 0
@@ -299,10 +396,10 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       }
     return { slowestElapsed: maxE, slowestName: maxN }
   }, [state.projects])
-  const vals = Object.values(state.projects)
-  const running = vals.filter(s => s.status === 'running').length
-  const done = vals.filter(s => s.status === 'done').length
-  const failed = vals.filter(s => s.status === 'failed').length
+  const vals = useMemo(() => Object.values(state.projects), [state.projects])
+  const running = useMemo(() => vals.filter(s => s.status === 'running').length, [vals])
+  const done = useMemo(() => vals.filter(s => s.status === 'done').length, [vals])
+  const failed = useMemo(() => vals.filter(s => s.status === 'failed').length, [vals])
   const hasFails = state.phase === 'done' && failed > 0
   const showToast = (msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -312,32 +409,49 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   useInput((input, key) => {
     if (key.upArrow || input === 'k') {
       const idx = Math.max(0, focusedIdx - 1)
-      setFocusedName(sorted[idx]?.name ?? focusedName)
+      if (sorted[idx]) setFocusedName(sorted[idx].name)
+      return
     }
     if (key.downArrow || input === 'j') {
       const idx = Math.min(sorted.length - 1, focusedIdx + 1)
-      setFocusedName(sorted[idx]?.name ?? focusedName)
+      if (sorted[idx]) setFocusedName(sorted[idx].name)
+      return
     }
-    if (input === 'g') setFocusedName(sorted[0]?.name ?? focusedName)
-    if (input === 'G') setFocusedName(sorted.at(-1)?.name ?? focusedName)
-    if (hasFails) {
+    if (input === 'g') {
+      if (sorted[0]) setFocusedName(sorted[0].name)
+      return
+    }
+    if (input === 'G') {
+      const last = sorted.at(-1)
+      if (last) setFocusedName(last.name)
+      return
+    }
+    if (input === 'q' || (key.ctrl && input === 'c')) {
+      exit()
+      return
+    }
+    if (hasFails && key.return) {
       dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' })
       return
     }
-    if (key.return && running === 0 && sorted[focusedIdx]) {
+    if (hasFails) return
+    if (key.return && running === 0) {
       const p = sorted[focusedIdx]
-      spawn('bunx', ['pm4ai', 'fix'], { cwd: p.path, detached: true, stdio: 'ignore' }).unref()
-      showToast(`fixing ${p.name}...`)
+      if (p) {
+        spawn('bunx', ['pm4ai', 'fix'], { cwd: p.path, detached: true, stdio: 'ignore' }).unref()
+        showToast(`fixing ${p.name}...`)
+      }
+      return
     }
     if (input === 'f' && running === 0) {
       spawn('bunx', ['pm4ai', 'fix', '--all'], { detached: true, stdio: 'ignore' }).unref()
       showToast('starting fix --all...')
+      return
     }
     if (input === 's' && running === 0) {
       spawn('bunx', ['pm4ai', 'status', '--all'], { detached: true, stdio: 'ignore' }).unref()
       showToast('starting status --all...')
     }
-    if (input === 'q' || (key.ctrl && input === 'c')) exit()
   })
   useEffect(() => {
     const interval = setInterval(() => dispatch({ type: 'tick' }), 1000)
@@ -353,9 +467,9 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   useEffect(() => {
     if (state.phase === 'done' && !bellFiredRef.current) {
       bellFiredRef.current = true
-      stdout?.write('\u0007')
+      if (failed > 0) stdout?.write('\u0007')
     }
-  }, [state.phase, stdout])
+  }, [state.phase, stdout, failed])
   useEffect(() => {
     if (state.phase !== 'done' || hasFails) return
     const timer = setTimeout(() => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), RESET_DELAY)
@@ -368,12 +482,16 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     []
   )
   const totalSteps = projects.length * STEP_COUNT
-  const completedSteps = vals.reduce((sum, s) => sum + s.completedSteps.length, 0)
+  const completedSteps = vals.reduce((sum, s) => sum + s.completedSteps.size, 0)
   const fraction = totalSteps > 0 ? completedSteps / totalSteps : 0
   const pct = Math.round(fraction * 100)
+  const etaAvg =
+    state.history.length > 0 && running > 0
+      ? Math.max(0, Math.round((state.history.reduce((a, b) => a + b, 0) / state.history.length) * (1 - fraction)))
+      : undefined
   const etaFromLast = state.lastElapsed > 0 && running > 0 ? Math.max(0, state.lastElapsed - state.elapsed) : undefined
-  const sepWidth = Math.min(cols - 2, 60)
-  const now = state.phase === 'running' ? Date.now() : 0
+  const eta = etaAvg ?? etaFromLast
+  const now = state.phase === 'running' ? Date.now() : Date.now()
   return (
     <Box flexDirection='column'>
       <Box gap={1} marginBottom={1} paddingLeft={1}>
@@ -383,91 +501,67 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         <Text dimColor>
           v{pkg.version} · {projects.length} projects
         </Text>
-        {state.runCount > 0 ? <Text dimColor>· run #{state.runCount + 1}</Text> : null}
+        {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : null}
         {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : null}
       </Box>
       {sorted.map(p => (
         <ProjectRow
           focused={p.name === focusedName}
-          key={p.path}
+          key={p.name}
           name={p.name}
           now={now}
           pad={pad}
-          state={state.projects[p.name] ?? { completedSteps: [], status: 'idle' }}
+          state={state.projects[p.name] ?? { completedSteps: new Set(), status: 'idle' }}
         />
       ))}
       <Box marginTop={1} paddingLeft={1}>
-        <Text dimColor>{'─'.repeat(sepWidth)}</Text>
+        <Text dimColor>{'─'.repeat(Math.min(cols - 4, pad + 40))}</Text>
       </Box>
       <Box flexDirection='column' marginTop={1}>
         {state.phase === 'running' ? (
-          <Box gap={1} paddingLeft={1}>
-            <Text color='cyan'>{smoothBar(fraction, barWidth)}</Text>
-            <Text color='yellow'>{pct}%</Text>
-            {state.elapsed > 0 ? <Text dimColor>{formatTime(state.elapsed)}</Text> : null}
-            {etaFromLast ? <Text dimColor>~{formatTime(etaFromLast)} left</Text> : null}
-          </Box>
+          <RunningFooter barWidth={barWidth} elapsed={state.elapsed} etaFromLast={eta} fraction={fraction} pct={pct} />
         ) : state.phase === 'done' ? (
           <DoneFooter
             done={done}
             elapsed={state.elapsed}
             failed={failed}
+            hasFails={hasFails}
             history={state.history}
             lastElapsed={state.lastElapsed}
             slowestElapsed={slowestElapsed}
             slowestName={slowestName}
           />
         ) : (
-          <Box flexDirection='column' paddingLeft={1}>
-            {toast ? <Text color='cyan'>{toast}</Text> : null}
-            {state.lastTime ? (
-              <Text dimColor>
-                last run: {state.lastFailed > 0 ? `${state.lastFailed} failed` : 'all clean'} ·{' '}
-                {formatTime(state.lastElapsed)} · {state.lastTime}
-              </Text>
-            ) : null}
-            <Text dimColor>
-              <Text bold dimColor>
-                ↑↓/jk
-              </Text>{' '}
-              select ·{' '}
-              <Text bold dimColor>
-                ↵
-              </Text>{' '}
-              fix one ·{' '}
-              <Text bold dimColor>
-                f
-              </Text>{' '}
-              fix all ·{' '}
-              <Text bold dimColor>
-                s
-              </Text>{' '}
-              status ·{' '}
-              <Text bold dimColor>
-                q
-              </Text>{' '}
-              quit
-            </Text>
-          </Box>
+          <IdleFooter
+            lastElapsed={state.lastElapsed}
+            lastFailed={state.lastFailed}
+            lastTime={state.lastTime}
+            running={running}
+            toast={toast}
+          />
         )}
       </Box>
     </Box>
   )
 }
+WatchApp.displayName = 'WatchApp'
 const watchJson = async (): Promise<void> => {
+  const ac = new AbortController()
+  process.on('SIGINT', () => ac.abort())
+  process.on('SIGTERM', () => ac.abort())
   onEvent(event => {
-    process.stdout.write(`${JSON.stringify(event)}\n`)
+    if (!ac.signal.aborted) process.stdout.write(`${JSON.stringify(event)}\n`)
   })
-  await new Promise<void>(() => {
-    /* Runs forever */
-  })
+  await new Promise<void>((_, reject) => {
+    ac.signal.addEventListener('abort', () => reject(new Error('aborted')))
+  }).catch(() => {})
 }
 const watch = async (json = false) => {
   await startEmitter()
   installCleanup()
   if (json) return watchJson()
   const { consumers, self, cnsync } = await discover()
-  const allProjects = [self, cnsync, ...consumers]
+  const allProjects = cnsync ? [self, cnsync, ...consumers] : [self, ...consumers]
   const projects = allProjects.map(p => ({ name: p.name || projectName(p.path), path: p.path }))
   const app = render(<WatchApp projects={projects} />)
   await app.waitUntilExit()
