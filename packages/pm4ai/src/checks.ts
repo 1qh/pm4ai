@@ -76,6 +76,8 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   for (const entry of MUST_EXIST_FILES)
     if (!((entry.includes('.github/') && !isGitHub) || existsSync(join(projectPath, entry))))
       issues.push({ detail: entry, type: 'missing' })
+  const pkg = await readPkg(join(projectPath, 'package.json'))
+  if (pkg && !pkg.scripts?.action) issues.push({ detail: '"action" script missing in root package.json', type: 'missing' })
   const tsRaw = await readJson(join(projectPath, 'tsconfig.json'))
   if (tsRaw && typeof tsRaw === 'object' && !Array.isArray(tsRaw)) {
     const ext = 'extends' in tsRaw ? String(tsRaw.extends) : ''

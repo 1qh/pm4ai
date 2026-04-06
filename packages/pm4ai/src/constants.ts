@@ -34,7 +34,7 @@ const CLEANUP_SCRIPT = {
   task: 'cleanup-old-versions'
 }
 const TURBO_FLAG = '--output-logs=errors-only'
-const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 export {
   CLAUDE_MD,
   CLEANUP_SCRIPT,
