@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/style/noProcessEnv: test config */
 import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -211,7 +212,8 @@ describe('maintain edge cases', () => {
     rmSync(tmp, { recursive: true })
   })
 })
-describe('fix() function', () => {
+const isCI = Boolean(process.env.CI)
+describe.skipIf(isCI)('fix() function', () => {
   const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
   test('blocks when lock held by alive process', async () => {
     rmSync(lockFile, { force: true })

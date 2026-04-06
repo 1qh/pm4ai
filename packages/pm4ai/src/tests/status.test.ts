@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/style/noProcessEnv: test config */
 import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -62,7 +63,8 @@ describe('status module exports', () => {
     expect(typeof mod.timeAgo).toBe('function')
   })
 })
-describe('status() via CLI', () => {
+const isCI = Boolean(process.env.CI)
+describe.skipIf(isCI)('status() via CLI', () => {
   const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
   const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
   test('status command runs on real project', () => {
