@@ -13,7 +13,7 @@ import { emitToSocket, SOCKET_PATH, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
 const isCI = 'CI' in process.env
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
-const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
 const waitForSocket = async (timeout = 5000): Promise<void> => {
   const start = Date.now()
   while (Date.now() - start < timeout) {

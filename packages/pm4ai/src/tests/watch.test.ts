@@ -105,7 +105,7 @@ describe('watch --json via CLI', () => {
   test('cli watch command exists in dist', async () => {
     const { existsSync } = await import('node:fs')
     const { join } = await import('node:path')
-    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
     expect(existsSync(cliPath)).toBe(true)
   })
 })

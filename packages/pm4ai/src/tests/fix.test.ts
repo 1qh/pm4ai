@@ -268,7 +268,7 @@ describe.skipIf(isCI)('fix() function', () => {
 })
 describe('fix() via CLI', () => {
   test('fix --help or unknown falls through to guide', () => {
-    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
     const out = execSync(`bun ${cliPath} fixxx`, { encoding: 'utf8', timeout: 10_000 }).trim()
     expect(out).toContain('commands:')
   })

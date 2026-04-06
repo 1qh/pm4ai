@@ -217,6 +217,12 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
       issues.push({ detail: `${rel} created ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'synced' })
     else issues.push({ detail: `${rel} failed to copy ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'error' })
   }
+  if (pubScripts.build && pubScripts.build !== 'tsdown') {
+    pubScripts.build = 'tsdown'
+    pkg.scripts = pubScripts
+    changed = true
+    issues.push({ detail: `${rel} set build to "tsdown"`, type: 'synced' })
+  }
   if (!pubScripts.postpublish) {
     pubScripts[CLEANUP_SCRIPT.task] = `bun ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`
     pubScripts.postpublish = CLEANUP_SCRIPT.postpublish

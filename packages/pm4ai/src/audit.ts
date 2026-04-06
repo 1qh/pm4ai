@@ -181,6 +181,10 @@ const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Is
     const scriptFile = join(dirname(pkgPath), 'script', 'cleanup-old-versions.ts')
     if (pkg.scripts?.postpublish && !existsSync(scriptFile))
       issues.push({ detail: `${shortPath} has postpublish but missing script/cleanup-old-versions.ts`, type: 'missing' })
+    if (pkg.scripts?.build && pkg.scripts.build !== 'tsdown')
+      issues.push({ detail: `${shortPath} build should be "tsdown"`, type: 'drift' })
+    if (!existsSync(join(dirname(pkgPath), 'tsdown.config.ts')))
+      issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
   }
   return issues
 }

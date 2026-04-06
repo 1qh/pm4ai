@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
-const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.js')
+const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.mjs')
 const versionRe = /^\d+\.\d+\.\d+$/u
 const run = (args: string) => execSync(`bun ${cli} ${args}`, { encoding: 'utf8', timeout: 10_000 }).trim()
 describe('guide', () => {

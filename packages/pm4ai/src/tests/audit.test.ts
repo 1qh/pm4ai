@@ -170,6 +170,7 @@ describe('checkRootWorkspacesAndDevDeps', () => {
         lintmax: 'latest',
         sherif: 'latest',
         'simple-git-hooks': 'latest',
+        tsdown: 'latest',
         turbo: 'latest',
         typescript: 'latest'
       }
@@ -187,6 +188,7 @@ describe('checkRootWorkspacesAndDevDeps', () => {
         lintmax: 'latest',
         sherif: 'latest',
         'simple-git-hooks': 'latest',
+        tsdown: 'latest',
         turbo: 'latest',
         typescript: 'latest'
       },

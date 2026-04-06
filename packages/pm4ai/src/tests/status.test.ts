@@ -65,7 +65,7 @@ describe('status module exports', () => {
 })
 const isCI = Boolean(process.env.CI)
 describe.skipIf(isCI)('status() via CLI', () => {
-  const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.js')
+  const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
   const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
   test('status command runs on real project', () => {
     const result = execSync(`bun ${cliPath} status`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 30_000 })
