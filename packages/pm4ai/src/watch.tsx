@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/style/noNonNullAssertion: bar char access */
-/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unnecessary-condition, react-hooks/purity */
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unnecessary-condition, react-hooks/purity, complexity */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
@@ -40,8 +40,10 @@ const STEP_LABELS: Record<string, string> = {
 }
 const STATUS_ORDER: Record<string, number> = { done: 1, failed: 2, idle: 3, running: 0 }
 const BAR_CHARS = ' ▏▎▍▌▋▊▉█'
+const SPARK_CHARS = '▁▂▃▄▅▆▇█'
 const BAR_WIDTH = 24
 const RESET_DELAY = 5000
+const MAX_HISTORY = 8
 const smoothBar = (fraction: number): string => {
   const total = fraction * BAR_WIDTH
   const full = Math.floor(total)
@@ -50,6 +52,12 @@ const smoothBar = (fraction: number): string => {
   const partialChar = BAR_CHARS[partialIdx] ?? ''
   const empty = BAR_WIDTH - full - (partialChar.trim() ? 1 : 0)
   return `${BAR_CHARS.at(-1)!.repeat(full)}${partialChar}${' '.repeat(Math.max(0, empty))}`
+}
+const sparkline = (values: number[]): string => {
+  if (values.length === 0) return ''
+  const max = Math.max(...values)
+  if (max === 0) return SPARK_CHARS[0]!.repeat(values.length)
+  return values.map(v => SPARK_CHARS[Math.round((v / max) * (SPARK_CHARS.length - 1))] ?? SPARK_CHARS[0]).join('')
 }
 const progressDots = (completed: string[], current?: string): string => {
   const parts: string[] = []
@@ -103,15 +111,33 @@ const mkIdle = (p: ProjectInfo): ProjectState => {
   const label = `${cached.pass ? 'clean' : `${cached.violations} issues`} ${timeAgo(cached.at)}`
   return { cachedPass: cached.pass, completedSteps: [], detail: label, status: 'idle' }
 }
-const ProjectRow = ({ name, now, pad, state }: { name: string; now: number; pad: number; state: ProjectState }) => {
+const ProjectRow = ({
+  focused,
+  name,
+  now,
+  pad,
+  state
+}: {
+  focused: boolean
+  name: string
+  now: number
+  pad: number
+  state: ProjectState
+}) => {
   const padded = name.padEnd(pad)
+  const cursor = focused ? '›' : ' '
   if (state.status === 'idle') {
     const label = state.detail ?? ''
     const color = state.cachedPass === true ? 'green' : state.cachedPass === false ? 'red' : undefined
     return (
       <Box gap={1} paddingLeft={1}>
+        <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+          {cursor}
+        </Text>
         {color ? <Text color={color}>●</Text> : <Text dimColor>·</Text>}
-        <Text dimColor>{padded}</Text>
+        <Text bold={focused} dimColor={!focused}>
+          {padded}
+        </Text>
         {label ? <Text dimColor>{label}</Text> : null}
       </Box>
     )
@@ -122,6 +148,9 @@ const ProjectRow = ({ name, now, pad, state }: { name: string; now: number; pad:
     const secs = state.startedAt ? Math.floor((now - state.startedAt) / 1000) : 0
     return (
       <Box gap={1} paddingLeft={1}>
+        <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+          {cursor}
+        </Text>
         <Spinner type='dots' />
         <Text bold>{padded}</Text>
         <Text color='yellow'>{label}</Text>
@@ -134,8 +163,11 @@ const ProjectRow = ({ name, now, pad, state }: { name: string; now: number; pad:
     const secs = state.elapsed ? `${state.elapsed}s` : ''
     return (
       <Box gap={1} paddingLeft={1}>
+        <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+          {cursor}
+        </Text>
         <Text color='red'>✘</Text>
-        <Text>{padded}</Text>
+        <Text bold={focused}>{padded}</Text>
         <Text color='red'>{state.detail ?? 'failed'}</Text>
         {secs ? <Text dimColor>{secs}</Text> : null}
       </Box>
@@ -144,8 +176,11 @@ const ProjectRow = ({ name, now, pad, state }: { name: string; now: number; pad:
   const secs = state.elapsed ? `${state.elapsed}s` : ''
   return (
     <Box gap={1} paddingLeft={1}>
+      <Text color={focused ? 'cyan' : undefined} dimColor={!focused}>
+        {cursor}
+      </Text>
       <Text color='green'>✔</Text>
-      <Text>{padded}</Text>
+      <Text bold={focused}>{padded}</Text>
       <Text color='green'>{state.detail ?? 'done'}</Text>
       {secs ? <Text dimColor>{secs}</Text> : null}
     </Box>
@@ -155,6 +190,7 @@ const DoneFooter = ({
   done,
   elapsed,
   failed,
+  history,
   lastRun,
   slowestElapsed,
   slowestName
@@ -162,6 +198,7 @@ const DoneFooter = ({
   done: number
   elapsed: number
   failed: number
+  history: number[]
   lastRun?: LastRun
   slowestElapsed?: number
   slowestName?: string
@@ -181,6 +218,7 @@ const DoneFooter = ({
             ✔ all clean · {formatTime(elapsed)}
           </Text>
           {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
+          {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
         </Box>
       )}
       {slowestName && slowestElapsed ? (
@@ -191,10 +229,10 @@ const DoneFooter = ({
     </Box>
   )
 }
-const Separator = () => <Text dimColor>{'─'.repeat(48)}</Text>
 const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const { exit } = useApp()
   const { stdout } = useStdout()
+  const cols = stdout?.columns ?? 80
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
   const [states, setStates] = useState<Record<string, ProjectState>>(() => {
     const init: Record<string, ProjectState> = {}
@@ -207,6 +245,8 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const [lastRun, setLastRun] = useState<LastRun | undefined>()
   const [runCount, setRunCount] = useState(0)
   const [toast, setToast] = useState('')
+  const [cursor, setCursor] = useState(0)
+  const [history, setHistory] = useState<number[]>([])
   const bellFiredRef = useRef(false)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const vals = useMemo(() => Object.values(states), [states])
@@ -235,18 +275,26 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       }
     return { slowestElapsed: maxElapsed, slowestName: maxName }
   }, [states])
+  const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast(msg)
+    toastTimerRef.current = setTimeout(() => setToast(''), 2000)
+  }
   useInput((input, key) => {
+    if (key.upArrow) setCursor(c => Math.max(0, c - 1))
+    if (key.downArrow) setCursor(c => Math.min(sorted.length - 1, c + 1))
+    if (key.return && running === 0 && sorted[cursor]) {
+      const p = sorted[cursor]
+      spawn('bunx', ['pm4ai', 'fix'], { cwd: p.path, detached: true, stdio: 'ignore' }).unref()
+      showToast(`fixing ${p.name}...`)
+    }
     if (input === 'f' && running === 0) {
       spawn('bunx', ['pm4ai', 'fix', '--all'], { detached: true, stdio: 'ignore' }).unref()
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-      setToast('starting fix --all...')
-      toastTimerRef.current = setTimeout(() => setToast(''), 2000)
+      showToast('starting fix --all...')
     }
     if (input === 's' && running === 0) {
       spawn('bunx', ['pm4ai', 'status', '--all'], { detached: true, stdio: 'ignore' }).unref()
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-      setToast('starting status --all...')
-      toastTimerRef.current = setTimeout(() => setToast(''), 2000)
+      showToast('starting status --all...')
     }
     if (input === 'q' || (key.ctrl && input === 'c')) exit()
   })
@@ -280,6 +328,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     if (!allDone) return
     const timer = setTimeout(() => {
       setLastRun({ done, elapsed, failed, time: new Date().toLocaleTimeString() })
+      setHistory(prev => [...prev, elapsed].slice(-MAX_HISTORY))
       setRunCount(c => c + 1)
       setStates(() => {
         const init: Record<string, ProjectState> = {}
@@ -302,6 +351,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const fraction = totalSteps > 0 ? completedSteps / totalSteps : 0
   const pct = Math.round(fraction * 100)
   const etaFromLast = lastRun && running > 0 ? Math.max(0, lastRun.elapsed - elapsed) : undefined
+  const sepWidth = Math.min(cols - 2, 60)
   return (
     <Box flexDirection='column'>
       <Box gap={1} marginBottom={1} paddingLeft={1}>
@@ -312,9 +362,11 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
           v{pkg.version} · {total} projects
         </Text>
         {runCount > 0 ? <Text dimColor>· run #{runCount + 1}</Text> : null}
+        {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
       </Box>
-      {sorted.map(p => (
+      {sorted.map((p, i) => (
         <ProjectRow
+          focused={i === cursor}
           key={p.path}
           name={p.name}
           now={now}
@@ -323,7 +375,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         />
       ))}
       <Box marginTop={1} paddingLeft={1}>
-        <Separator />
+        <Text dimColor>{'─'.repeat(sepWidth)}</Text>
       </Box>
       <Box flexDirection='column' marginTop={1}>
         {running > 0 ? (
@@ -338,6 +390,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
             done={done}
             elapsed={elapsed}
             failed={failed}
+            history={history}
             lastRun={lastRun}
             slowestElapsed={slowestElapsed}
             slowestName={slowestName}
@@ -351,37 +404,28 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
                 {lastRun.time}
               </Text>
             ) : null}
-            {running > 0 ? (
-              <Text dimColor>
-                <Text bold dimColor>
-                  f
-                </Text>{' '}
-                fix all ·{' '}
-                <Text bold dimColor>
-                  s
-                </Text>{' '}
-                status all ·{' '}
-                <Text bold dimColor>
-                  q
-                </Text>{' '}
-                quit <Text dimColor>(running...)</Text>
-              </Text>
-            ) : (
-              <Text dimColor>
-                <Text bold dimColor>
-                  f
-                </Text>{' '}
-                fix all ·{' '}
-                <Text bold dimColor>
-                  s
-                </Text>{' '}
-                status all ·{' '}
-                <Text bold dimColor>
-                  q
-                </Text>{' '}
-                quit
-              </Text>
-            )}
+            <Text dimColor>
+              <Text bold dimColor>
+                ↑↓
+              </Text>{' '}
+              select ·{' '}
+              <Text bold dimColor>
+                ↵
+              </Text>{' '}
+              fix one ·{' '}
+              <Text bold dimColor>
+                f
+              </Text>{' '}
+              fix all ·{' '}
+              <Text bold dimColor>
+                s
+              </Text>{' '}
+              status ·{' '}
+              <Text bold dimColor>
+                q
+              </Text>{' '}
+              quit
+            </Text>
           </Box>
         )}
       </Box>
