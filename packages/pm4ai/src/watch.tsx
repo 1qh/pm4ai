@@ -731,9 +731,12 @@ export {
   formatTime,
   mkIdleFn,
   nextProjectState,
+  progressDots,
   runReducer,
   smoothBar,
+  sortByStatus,
   sparkline,
-  tickProjects
+  tickProjects,
+  timeAgo
 }
 export { watch, WatchApp }

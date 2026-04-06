@@ -5,10 +5,13 @@ import {
   deriveStats,
   formatTime,
   nextProjectState,
+  progressDots,
   runReducer,
   smoothBar,
+  sortByStatus,
   sparkline,
-  tickProjects
+  tickProjects,
+  timeAgo
 } from '../watch.js'
 const mkProject = (name: string) => ({ name, path: `/test/${name}` })
 const mkProjects = (...names: string[]) => names.map(mkProject)
@@ -296,5 +299,77 @@ describe('createInitState', () => {
     expect(state.phase).toBe('idle')
     expect(state.bellPending).toBe(false)
     expect(state.startTime).toBeUndefined()
+  })
+})
+describe('progressDots', () => {
+  test('all empty', () => {
+    expect(progressDots(new Set(), undefined)).toBe('····')
+  })
+  test('current step highlighted', () => {
+    expect(progressDots(new Set(), 'sync')).toBe('◌···')
+  })
+  test('completed steps filled', () => {
+    expect(progressDots(new Set(['audit', 'sync']), 'maintain')).toBe('●●◌·')
+  })
+  test('all completed', () => {
+    expect(progressDots(new Set(['audit', 'check', 'maintain', 'sync']), undefined)).toBe('●●●●')
+  })
+})
+describe('timeAgo', () => {
+  test('just now', () => {
+    expect(timeAgo(new Date().toISOString())).toBe('just now')
+  })
+  test('minutes ago', () => {
+    const fiveMin = new Date(Date.now() - 5 * 60_000).toISOString()
+    expect(timeAgo(fiveMin)).toBe('5m ago')
+  })
+  test('hours ago', () => {
+    const twoHours = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    expect(timeAgo(twoHours)).toBe('2h ago')
+  })
+  test('days ago', () => {
+    const threeDays = new Date(Date.now() - 3 * 86_400_000).toISOString()
+    expect(timeAgo(threeDays)).toBe('3d ago')
+  })
+})
+describe('sortByStatus', () => {
+  test('running projects come first', () => {
+    const projects = {
+      a: { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const },
+      b: { completedSteps: new Set<string>(), elapsed: 0, status: 'running' as const },
+      c: { completedSteps: new Set<string>(), elapsed: 0, status: 'done' as const }
+    }
+    const sorted = sortByStatus(['a', 'b', 'c'], projects)
+    expect(sorted[0]).toBe('b')
+    expect(sorted[1]).toBe('c')
+    expect(sorted[2]).toBe('a')
+  })
+  test('failed after done', () => {
+    const projects = {
+      a: { completedSteps: new Set<string>(), elapsed: 0, status: 'failed' as const },
+      b: { completedSteps: new Set<string>(), elapsed: 0, status: 'done' as const }
+    }
+    const sorted = sortByStatus(['a', 'b'], projects)
+    expect(sorted[0]).toBe('b')
+    expect(sorted[1]).toBe('a')
+  })
+  test('preserves order within same status', () => {
+    const projects = {
+      a: { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const },
+      b: { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const },
+      c: { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }
+    }
+    const sorted = sortByStatus(['a', 'b', 'c'], projects)
+    expect(sorted).toEqual(['a', 'b', 'c'])
+  })
+})
+describe('smoothBar edge cases', () => {
+  test('clamps above 1', () => {
+    const bar = smoothBar(1.5, 10)
+    expect(bar).toBe('██████████')
+  })
+  test('clamps below 0', () => {
+    const bar = smoothBar(-0.3, 10)
+    expect(bar).toBe('░░░░░░░░░░')
   })
 })
