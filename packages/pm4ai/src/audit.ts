@@ -53,12 +53,8 @@ const getLatestBunVersion = async (): Promise<string | undefined> => {
   return v
 }
 const isAutoSynced = (pkgPath: string) => SKIP_PATTERNS.some(p => pkgPath.includes(p))
-const isPublishedPkg = (pkg: PackageJson): boolean => {
-  if (pkg.private || !pkg.name) return false
-  if (!(pkg.exports ?? pkg.main ?? pkg.bin)) return false
-  const allDeps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
-  return !Object.values(allDeps).some(v => v.startsWith('workspace:'))
-}
+const isPublishedPkg = (pkg: PackageJson): boolean =>
+  !pkg.private && Boolean(pkg.name) && Boolean(pkg.exports ?? pkg.main ?? pkg.bin)
 const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
   const result = new Map<string, string>()
   for (const field of ['dependencies', 'devDependencies'] as const) {
