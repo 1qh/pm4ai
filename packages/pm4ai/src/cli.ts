@@ -33,5 +33,8 @@ else if (command === 'init') {
   } else if (command === 'dashboard') {
     const { dashboard } = await import('./dashboard.js')
     await dashboard()
+  } else if (command === 'ignores') {
+    const { ignores } = await import('./ignores.js')
+    await ignores(flags.has('--all'), flags.has('--verbose'))
   } else console.log(guide)
 }

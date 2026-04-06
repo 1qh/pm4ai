@@ -8,6 +8,7 @@ commands:
   pm4ai fix        sync + maintain current project (requires clean git)
   pm4ai init <n>   scaffold a new pm4ai-ready project
   pm4ai watch      live terminal dashboard (connects to running fix/status)
+  pm4ai ignores    rank lint suppressions by frequency across projects
   pm4ai dashboard  local web dashboard at http://localhost:4200
   pm4ai setup      install swiftbar menubar plugin + launchd daily auto-run
 flags:
