@@ -1,40 +1,14 @@
-/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/* oxlint-disable no-empty-function */
-/* eslint-disable @typescript-eslint/strict-void-return */
-import type { Socket } from 'node:net'
+/* eslint-disable @eslint-react/hooks-extra/no-direct-set-state-in-use-effect */
 import { Box, render, Text } from 'ink'
-import { createConnection } from 'node:net'
 import { createElement, useEffect, useState } from 'react'
-import type { WatchEvent } from './watch-types.js'
 import pkg from '../package.json' with { type: 'json' }
 import { discover } from './discover.js'
 import { projectName } from './utils.js'
-import { installCleanup, SOCKET_PATH, startEmitter } from './watch-emitter.js'
+import { installCleanup, onEvent, startEmitter } from './watch-emitter.js'
 interface ProjectState {
   detail?: string
   status: 'done' | 'idle' | 'pending'
   step?: string
-}
-const connectSocket = (onEvent: (e: WatchEvent) => void, onClose: () => void): Socket => {
-  let buffer = ''
-  const sock = createConnection(SOCKET_PATH)
-  sock.on('data', chunk => {
-    buffer += chunk.toString()
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines)
-      if (line)
-        try {
-          onEvent(JSON.parse(line) as WatchEvent)
-        } catch {
-          /* Malformed JSON */
-        }
-  })
-  sock.on('close', onClose)
-  sock.on('error', () => {
-    /* Reconnect handled by onClose */
-  })
-  return sock
 }
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 const stepLabel = (step: string, status: string): string => {
@@ -97,33 +71,19 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
     return () => clearInterval(interval)
   }, [startTime])
   useEffect(() => {
-    let sock: Socket | undefined
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
-    const connect = () => {
-      sock = connectSocket(
-        event => {
-          setConnected(true)
-          setStates(prev => {
-            const next = { ...prev }
-            if (event.status === 'start' && event.step !== 'done') {
-              setStartTime(prev2 => prev2 ?? Date.now())
-              next[event.project] = { status: 'done', step: event.step }
-            } else if (event.step === 'done') next[event.project] = { detail: event.detail, status: 'done', step: 'done' }
-            else next[event.project] = { detail: event.detail, status: 'done', step: event.step }
-            return next
-          })
-        },
-        () => {
-          setConnected(false)
-          reconnectTimer = setTimeout(connect, 1000)
-        }
-      )
-    }
-    connect()
-    return () => {
-      sock?.destroy()
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-    }
+    setConnected(true)
+    const unsub = onEvent(event => {
+      setStates(prev => {
+        const next = { ...prev }
+        if (event.status === 'start' && event.step !== 'done') {
+          setStartTime(prev2 => prev2 ?? Date.now())
+          next[event.project] = { status: 'done', step: event.step }
+        } else if (event.step === 'done') next[event.project] = { detail: event.detail, status: 'done', step: 'done' }
+        else next[event.project] = { detail: event.detail, status: 'done', step: event.step }
+        return next
+      })
+    })
+    return unsub
   }, [])
   const running = Object.values(states).filter(s => s.step && s.step !== 'done' && !s.detail).length
   const done = Object.values(states).filter(s => s.step === 'done').length
@@ -154,15 +114,9 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   )
 }
 const watchJson = async (): Promise<void> => {
-  const connect = () => {
-    connectSocket(
-      event => {
-        process.stdout.write(`${JSON.stringify(event)}\n`)
-      },
-      () => setTimeout(connect, 1000)
-    )
-  }
-  connect()
+  onEvent(event => {
+    process.stdout.write(`${JSON.stringify(event)}\n`)
+  })
   await new Promise<void>(() => {
     /* Runs forever */
   })

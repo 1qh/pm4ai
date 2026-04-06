@@ -9,7 +9,9 @@ import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
 const SOCKET_DIR = join(homedir(), '.pm4ai')
 const SOCKET_PATH = join(SOCKET_DIR, 'watch.sock')
+type Listener = (event: WatchEvent) => void
 const clients = new Set<Socket>()
+const listeners = new Set<Listener>()
 let server: Server | undefined
 const removeSocket = () => {
   try {
@@ -42,7 +44,16 @@ const startEmitter = async (): Promise<void> => {
         buffer += chunk.toString()
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
-        for (const line of lines) if (line) broadcast(line, socket)
+        for (const line of lines)
+          if (line) {
+            broadcast(line, socket)
+            try {
+              const event = JSON.parse(line) as WatchEvent
+              for (const fn of listeners) fn(event)
+            } catch {
+              /* Malformed JSON */
+            }
+          }
       })
     })
     s.on('error', reject)
@@ -103,4 +114,8 @@ const installCleanup = () => {
     process.exit(143)
   })
 }
-export { clients, emit, emitToSocket, installCleanup, SOCKET_PATH, startEmitter, stopEmitter }
+const onEvent = (fn: Listener): (() => void) => {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+export { clients, emit, emitToSocket, installCleanup, onEvent, SOCKET_PATH, startEmitter, stopEmitter }
