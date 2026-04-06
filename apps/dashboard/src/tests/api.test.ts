@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential test */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, no-await-in-loop */
+/* eslint-disable no-await-in-loop */
 import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
@@ -11,15 +11,13 @@ const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('server did not start')), 15_000)
     server.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      if (text.includes('Ready')) {
+      if (chunk.toString().includes('Ready')) {
         clearTimeout(timeout)
         resolve()
       }
     })
     server.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      if (text.includes('Ready')) {
+      if (chunk.toString().includes('Ready')) {
         clearTimeout(timeout)
         resolve()
       }
@@ -36,35 +34,52 @@ beforeAll(async () => {
 afterAll(() => {
   server.kill()
 })
-const rpc = async (procedure: string, body: unknown = [], input?: unknown) => {
+interface ProjectEntry {
+  checkResult: null | { at: string; pass: boolean; violations: number }
+  name: string
+  path: string
+}
+interface RpcResponse {
+  connected?: boolean
+  json?: ProjectEntry[]
+  message?: string
+  name?: string
+  path?: string
+}
+const rpc = async (
+  procedure: string,
+  body: unknown = [],
+  input?: unknown
+): Promise<{ json: RpcResponse; status: number }> => {
   const payload = input === undefined ? body : { json: input }
   const res = await fetch(`${baseUrl}/api/rpc/${procedure}`, {
     body: JSON.stringify(payload),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST'
   })
-  return { json: await res.json(), status: res.status }
+  const json = (await res.json()) as RpcResponse
+  return { json, status: res.status }
 }
 describe('API endpoints', () => {
   test('projects returns array', async () => {
     const { json, status } = await rpc('projects')
     expect(status).toBe(200)
     expect(json).toHaveProperty('json')
-    expect(Array.isArray((json as Record<string, unknown>).json)).toBe(true)
+    expect(Array.isArray(json.json)).toBe(true)
   })
   test('projects include pm4ai', async () => {
     const { json } = await rpc('projects')
-    const projects = (json as Record<string, { name: string }[]>).json
+    const projects = json.json ?? []
     expect(projects.some(p => p.name === 'pm4ai')).toBe(true)
   })
   test('projects have checkResult field', async () => {
     const { json } = await rpc('projects')
-    const projects = (json as Record<string, { checkResult: unknown }[]>).json
+    const projects = json.json ?? []
     for (const p of projects) expect(p).toHaveProperty('checkResult')
   })
   test('projects have name and path', async () => {
     const { json } = await rpc('projects')
-    const projects = (json as Record<string, { name: string; path: string }[]>).json
+    const projects = json.json ?? []
     for (const p of projects) {
       expect(p.name).toBeTruthy()
       expect(p.path).toBeTruthy()
@@ -73,18 +88,18 @@ describe('API endpoints', () => {
   })
   test('projects exclude /tmp paths', async () => {
     const { json } = await rpc('projects')
-    const projects = (json as Record<string, { path: string }[]>).json
+    const projects = json.json ?? []
     expect(projects.every(p => !p.path.startsWith('/tmp/'))).toBe(true)
   })
   test('socketStatus returns connected boolean', async () => {
     const { json, status } = await rpc('socketStatus')
     expect(status).toBe(200)
-    expect((json as Record<string, Record<string, boolean>>).json.connected).toBe(false)
+    expect(json.connected).toBe(false)
   })
   test('fixAll without auth returns error', async () => {
     const { json, status } = await rpc('fixAll', undefined, { all: true })
     expect(status).toBe(500)
-    expect((json as Record<string, Record<string, string>>).json.message).toBe('Internal server error')
+    expect(json.message).toBe('Internal server error')
   })
   test('refreshStatus without auth returns error', async () => {
     const { status } = await rpc('refreshStatus', undefined, { all: true })
@@ -97,14 +112,13 @@ describe('API endpoints', () => {
   test('projectStatus returns project data', async () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'pm4ai' })
     expect(status).toBe(200)
-    const data = (json as Record<string, Record<string, unknown>>).json
-    expect(data.name).toBe('pm4ai')
-    expect(data.path).toBeTruthy()
+    expect(json.name).toBe('pm4ai')
+    expect(json.path).toBeTruthy()
   })
   test('projectStatus for unknown returns null', async () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'nonexistent-project' })
     expect(status).toBe(200)
-    expect((json as Record<string, unknown>).json).toBeNull()
+    expect(json.json).toBeUndefined()
   })
   test('unknown procedure returns 404', async () => {
     const res = await fetch(`${baseUrl}/api/rpc/nonexistent`, {

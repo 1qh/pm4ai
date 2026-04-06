@@ -1,5 +1,4 @@
 /* oxlint-disable eslint-plugin-node(global-require), eslint-plugin-unicorn(prefer-module) */
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'

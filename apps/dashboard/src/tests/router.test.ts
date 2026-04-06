@@ -1,10 +1,11 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /* oxlint-disable no-empty-function, eslint-plugin-node(global-require), eslint-plugin-unicorn(prefer-module) */
-/* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-empty-function */
 import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { isConnected, subscribe } from '../lib/socket'
 const leadingSepRe = /^--/u
 describe('check result reading', () => {
   const checksDir = join(homedir(), '.pm4ai', 'checks')
@@ -27,7 +28,9 @@ describe('check result reading', () => {
     const files = existsSync(checksDir) ? readdirSync(checksDir).filter(f => f.endsWith('.json')) : []
     for (const f of files) {
       const content = readFileSync(join(checksDir, f), 'utf8')
-      expect(() => JSON.parse(content)).not.toThrow()
+      expect(() => {
+        JSON.parse(content) as unknown
+      }).not.toThrow()
     }
   })
 })
@@ -101,18 +104,15 @@ describe('getProjectsFromCache logic', () => {
   })
 })
 describe('socket module', () => {
-  test('subscribe returns unsubscribe function', async () => {
-    const { subscribe } = await import('../lib/socket')
+  test('subscribe returns unsubscribe function', () => {
     const unsub = subscribe(() => {})
     expect(typeof unsub).toBe('function')
     unsub()
   })
-  test('isConnected returns boolean', async () => {
-    const { isConnected } = await import('../lib/socket')
+  test('isConnected returns boolean', () => {
     expect(typeof isConnected()).toBe('boolean')
   })
-  test('isConnected is false when no emitter running', async () => {
-    const { isConnected } = await import('../lib/socket')
+  test('isConnected is false when no emitter running', () => {
     expect(isConnected()).toBe(false)
   })
 })

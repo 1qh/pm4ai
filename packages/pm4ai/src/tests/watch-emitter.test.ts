@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential by design */
 /* oxlint-disable no-empty-function, eslint-plugin-promise(param-names) */
-/* eslint-disable @typescript-eslint/strict-void-return, no-await-in-loop, @typescript-eslint/no-unsafe-return, no-promise-executor-return */
+/* eslint-disable @typescript-eslint/strict-void-return, no-await-in-loop, no-promise-executor-return */
 import type { Socket } from 'node:net'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'
@@ -102,7 +102,10 @@ describe('event delivery', () => {
     const combined = raw.join('')
     const lines = combined.split('\n').filter(Boolean)
     expect(lines).toHaveLength(2)
-    for (const line of lines) expect(() => JSON.parse(line)).not.toThrow()
+    for (const line of lines)
+      expect(() => {
+        JSON.parse(line) as unknown
+      }).not.toThrow()
     sock.destroy()
   })
   test('events arrive in emission order', async () => {
