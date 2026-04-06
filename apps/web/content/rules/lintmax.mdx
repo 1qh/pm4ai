@@ -25,6 +25,8 @@ lintmax is our own max-strict lint/format orchestrator. We own it — read the s
 5. NEVER 5+ per-line ignores for the same rule — use file-level
 
 - File-level directives go at absolute file top, above any imports/code (including `'use client'`/`'use node'`).
+- Per-line directives go on the line ABOVE the code, NEVER inline on the same line (triggers `no-inline-comments`).
+- When 2+ linters flag the same line, use file-level for one and per-line for the other — don't stack multiple per-line directives above one line.
 - Remove duplicate directives; keep one canonical directive block.
 - Use one top `eslint-disable` line per file; combine multiple rules with commas.
 
