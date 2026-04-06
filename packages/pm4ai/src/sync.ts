@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
+/** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -267,6 +269,12 @@ const fixSubEntry = ({ entry, issues, projectPath, repo, selfPath }: FixSubEntry
   const isPublished = isPublishedPkg(entry.pkg)
   if (isPublished)
     changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo, selfPath }) || changed
+  if (entry.pkg.scripts?.clean) {
+    delete entry.pkg.scripts.clean
+    if (Object.keys(entry.pkg.scripts).length === 0) delete entry.pkg.scripts
+    changed = true
+    issues.push({ detail: `${rel} removed redundant "clean" script`, type: 'synced' })
+  }
   return fixGitClean(entry.pkg, rel, issues) || changed
 }
 interface HoistSubEntryArgs {
@@ -298,6 +306,48 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   for (const entry of subEntries) {
     const changed = fixSubEntry({ entry, issues, projectPath, repo, selfPath })
     if (changed) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
+  }
+  const pkgDepsByName = new Map<string, Set<string>>()
+  for (const entry of entries) {
+    const { name } = entry.pkg
+    if (name) {
+      const prodDeps = entry.pkg.dependencies
+      const deps = new Set(
+        Object.entries(prodDeps ?? {})
+          .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
+          .map(([n]) => n)
+      )
+      pkgDepsByName.set(name, deps)
+    } else {
+      /* Skip unnamed */
+    }
+  }
+  for (const entry of subEntries) {
+    const rel = entry.path.replace(`${projectPath}/`, '')
+    if (isSkipped(rel)) {
+      /* Skip readonly etc */
+    } else {
+      const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
+      const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
+      const providedByWs = new Set<string>()
+      for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
+      let dedupChanged = false
+      for (const field of ['dependencies', 'devDependencies'] as const) {
+        const deps = entry.pkg[field]
+        if (deps) {
+          for (const [name, version] of Object.entries(deps))
+            if (!version.startsWith('workspace:') && providedByWs.has(name)) {
+              delete deps[name]
+              dedupChanged = true
+              issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
+            }
+          if (Object.keys(deps).length === 0) delete entry.pkg[field]
+        } else {
+          /* No deps */
+        }
+      }
+      if (dedupChanged) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
+    }
   }
   await Promise.all(writes)
   const rootPkg = await readPkg(rootPkgPath)

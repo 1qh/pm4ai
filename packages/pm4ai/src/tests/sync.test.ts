@@ -150,7 +150,7 @@ describe('syncSubPackages', () => {
     expect(pkg.private).toBe(true)
     rmSync(tmp, { recursive: true })
   })
-  test('replaces git clean with rm -rf', async () => {
+  test('removes redundant clean script from sub-package', async () => {
     const tmp = makeProject(
       { private: true, workspaces: ['apps/*'] },
       {
@@ -158,13 +158,9 @@ describe('syncSubPackages', () => {
       }
     )
     const issues = await syncSubPackages(selfPath, tmp)
-    expect(issues.some(i => i.detail.includes('git clean'))).toBe(true)
-    const pkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<
-      string,
-      Record<string, string>
-    >
-    expect(pkg.scripts?.clean).toContain('rm -rf')
-    expect(pkg.scripts?.clean).not.toContain('git clean')
+    expect(issues.some(i => i.detail.includes('removed redundant "clean"'))).toBe(true)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'apps/web/package.json'), 'utf8')) as Record<string, unknown>
+    expect(pkg.scripts).toBeUndefined()
     rmSync(tmp, { recursive: true })
   })
   test('adds postpublish to published packages', async () => {
