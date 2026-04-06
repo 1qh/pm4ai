@@ -229,12 +229,12 @@ describe('checkPublishedPkgConventions', () => {
     const issues = checkPublishedPkgConventions(pkgs, PROJECT)
     expect(issues.some(i => i.detail.includes('postpublish'))).toBe(true)
   })
-  test('published pkg with postpublish is clean', () => {
+  test('published pkg with postpublish has no postpublish drift', () => {
     const pkgs = [
       entry('packages/lib/package.json', { bin: './cli.js', name: 'lib', scripts: { postpublish: 'bun run cleanup' } })
     ]
     const issues = checkPublishedPkgConventions(pkgs, PROJECT)
-    expect(issues).toHaveLength(0)
+    expect(issues.filter(i => i.detail.includes('missing "postpublish"'))).toHaveLength(0)
   })
   test('private pkg without postpublish is not flagged', () => {
     const pkgs = [entry('packages/lib/package.json', { name: 'lib', private: true })]

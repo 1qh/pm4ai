@@ -105,6 +105,11 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const pkg = await readPkg(pkgPath)
   if (!pkg) return issues
   let changed = false
+  if (!pkg.private) {
+    pkg.private = true
+    changed = true
+    issues.push({ detail: 'set root package.json to private', type: 'synced' })
+  }
   const scripts = pkg.scripts ?? {}
   pkg.scripts = scripts
   changed = syncRootScripts(scripts, issues) || changed
@@ -182,15 +187,17 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
     issues.push({ detail: `${rel} added repository`, type: 'synced' })
   }
   const pubScripts = pkg.scripts ?? {}
-  if (!pubScripts.postpublish) {
-    const srcScript = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
-    const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
-    const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
-    if (!existsSync(scriptFile) && existsSync(srcScript)) {
-      mkdirSync(scriptDir, { recursive: true })
-      cpSync(srcScript, scriptFile)
+  const srcScript = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+  const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
+  const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
+  if (!existsSync(scriptFile) && existsSync(srcScript)) {
+    mkdirSync(scriptDir, { recursive: true })
+    cpSync(srcScript, scriptFile)
+    if (existsSync(scriptFile))
       issues.push({ detail: `${rel} created ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'synced' })
-    }
+    else issues.push({ detail: `${rel} failed to copy ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'error' })
+  }
+  if (!pubScripts.postpublish) {
     pubScripts[CLEANUP_SCRIPT.task] = `bun ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`
     pubScripts.postpublish = CLEANUP_SCRIPT.postpublish
     pkg.scripts = pubScripts

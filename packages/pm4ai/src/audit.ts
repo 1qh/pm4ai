@@ -1,5 +1,6 @@
 import { $ } from 'bun'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import {
   FORBIDDEN_PM_PREFIXES,
@@ -172,6 +173,9 @@ const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Is
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     if (!pkg.scripts?.postpublish)
       issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
+    const scriptFile = join(dirname(pkgPath), 'script', 'cleanup-old-versions.ts')
+    if (pkg.scripts?.postpublish && !existsSync(scriptFile))
+      issues.push({ detail: `${shortPath} has postpublish but missing script/cleanup-old-versions.ts`, type: 'missing' })
   }
   return issues
 }
