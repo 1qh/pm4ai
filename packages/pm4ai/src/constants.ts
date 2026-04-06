@@ -16,10 +16,32 @@ const READONLY_UI = 'readonly/ui'
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const REQUIRED_ROOT_DEVDEPS = ['@types/bun', 'lintmax', 'sherif', 'simple-git-hooks', 'turbo', 'typescript']
 const REQUIRED_TRUSTED_DEPS = ['lintmax']
+const DEFAULT_DEP_VERSION = 'latest'
+const DEFAULT_FILES = ['dist']
+const DEFAULT_LICENSE = 'MIT'
+const DEFAULT_SCRIPTS = {
+  build: 'turbo build --output-logs=errors-only',
+  check: 'lintmax check',
+  clean: 'sh clean.sh',
+  fix: 'lintmax fix',
+  postinstall: 'sherif',
+  prepare: 'bunx simple-git-hooks'
+}
+const CLEANUP_SCRIPT = {
+  dir: 'script',
+  name: 'cleanup-old-versions.ts',
+  postpublish: 'bun run cleanup-old-versions',
+  task: 'cleanup-old-versions'
+}
 const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 export {
   CLAUDE_MD,
+  CLEANUP_SCRIPT,
+  DEFAULT_DEP_VERSION,
+  DEFAULT_FILES,
+  DEFAULT_LICENSE,
+  DEFAULT_SCRIPTS,
   EXPECTED,
   FORBIDDEN_LOCKFILES,
   FORBIDDEN_PM_PREFIXES,

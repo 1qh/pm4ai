@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
-import { EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
+import { DEFAULT_SCRIPTS, EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -60,13 +60,13 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
   if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
   else if (pkg['simple-git-hooks']['pre-commit'] !== EXPECTED.preCommit)
-    issues.push({ detail: 'pre-commit should be "sh up.sh && git add -u"', type: 'drift' })
-  if (pkg.scripts?.prepare !== EXPECTED.prepare)
-    issues.push({ detail: 'prepare should be "bunx simple-git-hooks"', type: 'drift' })
+    issues.push({ detail: `pre-commit should be "${EXPECTED.preCommit}"`, type: 'drift' })
+  if (pkg.scripts?.prepare !== DEFAULT_SCRIPTS.prepare)
+    issues.push({ detail: `prepare should be "${DEFAULT_SCRIPTS.prepare}"`, type: 'drift' })
   if (!pkg.scripts?.postinstall?.includes('sherif'))
-    issues.push({ detail: 'postinstall should include sherif', type: 'drift' })
-  if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith('sh clean.sh'))
-    issues.push({ detail: 'clean should start with "sh clean.sh"', type: 'drift' })
+    issues.push({ detail: `postinstall should include "${DEFAULT_SCRIPTS.postinstall}"`, type: 'drift' })
+  if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith(DEFAULT_SCRIPTS.clean))
+    issues.push({ detail: `clean should start with "${DEFAULT_SCRIPTS.clean}"`, type: 'drift' })
   return issues
 }
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {

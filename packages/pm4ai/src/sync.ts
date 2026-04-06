@@ -4,11 +4,16 @@ import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import {
   CLAUDE_MD,
+  CLEANUP_SCRIPT,
+  DEFAULT_DEP_VERSION,
+  DEFAULT_FILES,
+  DEFAULT_LICENSE,
+  DEFAULT_SCRIPTS,
+  EXPECTED,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   REQUIRED_TRUSTED_DEPS,
   SKIP_PATTERNS,
-  TURBO_FLAG,
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
@@ -21,7 +26,6 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
-const CLEANUP_SCRIPT_PATH = 'script/cleanup-old-versions.ts'
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
@@ -60,54 +64,36 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
 }
 const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
-  if (!scripts.clean) {
-    scripts.clean = 'sh clean.sh'
-    changed = true
-    issues.push({ detail: 'added clean script', type: 'synced' })
-  }
-  if (!scripts.prepare) {
-    scripts.prepare = 'bunx simple-git-hooks'
-    changed = true
-    issues.push({ detail: 'added prepare script', type: 'synced' })
-  }
-  if (!scripts.postinstall?.includes('sherif')) {
-    scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : 'sherif'
-    changed = true
-    issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
-  }
-  if (!scripts.build) {
-    scripts.build = `turbo build ${TURBO_FLAG}`
-    changed = true
-    issues.push({ detail: 'added build script', type: 'synced' })
-  }
-  if (!scripts.check) {
-    scripts.check = 'lintmax check'
-    changed = true
-    issues.push({ detail: 'added check script', type: 'synced' })
-  }
-  if (!scripts.fix) {
-    scripts.fix = 'lintmax fix'
-    changed = true
-    issues.push({ detail: 'added fix script', type: 'synced' })
-  }
+  for (const [name, value] of Object.entries(DEFAULT_SCRIPTS))
+    if (name === 'postinstall') {
+      if (!scripts.postinstall?.includes('sherif')) {
+        scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
+        changed = true
+        issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
+      }
+    } else if (!scripts[name]) {
+      scripts[name] = value
+      changed = true
+      issues.push({ detail: `added ${name} script`, type: 'synced' })
+    }
   return changed
 }
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   if (!devDeps.sherif) {
-    devDeps.sherif = 'latest'
+    devDeps.sherif = DEFAULT_DEP_VERSION
     changed = true
     issues.push({ detail: 'added sherif to devDependencies', type: 'synced' })
   }
   if (!devDeps['simple-git-hooks']) {
-    devDeps['simple-git-hooks'] = 'latest'
+    devDeps['simple-git-hooks'] = DEFAULT_DEP_VERSION
     changed = true
     issues.push({ detail: 'added simple-git-hooks to devDependencies', type: 'synced' })
   }
   const allDeps = { ...pkg.dependencies, ...devDeps }
   for (const dep of REQUIRED_ROOT_DEVDEPS)
     if (!allDeps[dep]) {
-      devDeps[dep] = 'latest'
+      devDeps[dep] = DEFAULT_DEP_VERSION
       changed = true
       issues.push({ detail: `added ${dep} to devDependencies`, type: 'synced' })
     }
@@ -123,7 +109,7 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   pkg.scripts = scripts
   changed = syncRootScripts(scripts, issues) || changed
   if (!pkg['simple-git-hooks']) {
-    pkg['simple-git-hooks'] = { 'pre-commit': 'sh up.sh && git add -u' }
+    pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
     changed = true
     issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
   }
@@ -181,14 +167,14 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
     issues.push({ detail: `${rel} set "type": "module"`, type: 'synced' })
   }
   if (!pkg.files) {
-    pkg.files = ['dist']
+    pkg.files = DEFAULT_FILES
     changed = true
-    issues.push({ detail: `${rel} set "files": ["dist"]`, type: 'synced' })
+    issues.push({ detail: `${rel} set "files": ${JSON.stringify(DEFAULT_FILES)}`, type: 'synced' })
   }
   if (!pkg.license) {
-    pkg.license = 'MIT'
+    pkg.license = DEFAULT_LICENSE
     changed = true
-    issues.push({ detail: `${rel} set "license": "MIT"`, type: 'synced' })
+    issues.push({ detail: `${rel} set "license": "${DEFAULT_LICENSE}"`, type: 'synced' })
   }
   if (!pkg.repository && repo) {
     pkg.repository = { directory: dirname(rel), type: 'git', url: `https://github.com/${repo}` }
@@ -197,16 +183,16 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
   }
   const pubScripts = pkg.scripts ?? {}
   if (!pubScripts.postpublish) {
-    const srcScript = join(selfPath, CLEANUP_SCRIPT_PATH)
-    const scriptDir = join(dirname(pkgPath), 'script')
-    const scriptFile = join(scriptDir, 'cleanup-old-versions.ts')
+    const srcScript = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+    const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
+    const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
     if (!existsSync(scriptFile) && existsSync(srcScript)) {
       mkdirSync(scriptDir, { recursive: true })
       cpSync(srcScript, scriptFile)
-      issues.push({ detail: `${rel} created script/cleanup-old-versions.ts`, type: 'synced' })
+      issues.push({ detail: `${rel} created ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'synced' })
     }
-    pubScripts['cleanup-old-versions'] = 'bun script/cleanup-old-versions.ts'
-    pubScripts.postpublish = 'bun run cleanup-old-versions'
+    pubScripts[CLEANUP_SCRIPT.task] = `bun ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`
+    pubScripts.postpublish = CLEANUP_SCRIPT.postpublish
     pkg.scripts = pubScripts
     changed = true
     issues.push({ detail: `${rel} added postpublish cleanup`, type: 'synced' })

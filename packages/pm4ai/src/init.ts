@@ -2,6 +2,7 @@
 import { $, write } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { DEFAULT_DEP_VERSION, DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from './constants.js'
 import { getBunVersion } from './utils.js'
 const TURBO_JSON = JSON.stringify(
   {
@@ -44,29 +45,17 @@ const init = async (name: string) => {
   }
   mkdirSync(dir, { recursive: true })
   const bunVersion = await getBunVersion()
+  const devDependencies = Object.fromEntries(
+    ['@types/bun', '@types/node', ...REQUIRED_ROOT_DEVDEPS].map(d => [d, DEFAULT_DEP_VERSION])
+  )
   const pkg = JSON.stringify(
     {
-      devDependencies: {
-        '@types/bun': 'latest',
-        '@types/node': 'latest',
-        lintmax: 'latest',
-        sherif: 'latest',
-        'simple-git-hooks': 'latest',
-        turbo: 'latest',
-        typescript: 'latest'
-      },
+      devDependencies,
       name,
       packageManager: `bun@${bunVersion}`,
       private: true,
-      scripts: {
-        build: 'turbo build --output-logs=errors-only',
-        check: 'lintmax check',
-        clean: 'sh clean.sh',
-        fix: 'lintmax fix',
-        postinstall: 'sherif',
-        prepare: 'bunx simple-git-hooks'
-      },
-      'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' },
+      scripts: DEFAULT_SCRIPTS,
+      'simple-git-hooks': { 'pre-commit': EXPECTED.preCommit },
       workspaces: ['packages/*', 'apps/*', 'readonly/*']
     },
     null,
