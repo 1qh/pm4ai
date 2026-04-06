@@ -1,8 +1,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/** biome-ignore-all lint/correctness/noUndeclaredVariables: Bun global */
 /* oxlint-disable no-empty */
 /* eslint-disable no-empty */
-import { $, file } from 'bun'
+import { $, file, Glob } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
@@ -38,7 +37,7 @@ const collectWorkspacePackages = async (projectPath: string): Promise<{ path: st
   const positive = workspaces.filter(w => !w.startsWith('!'))
   const matched = new Set<string>()
   for (const ws of positive) {
-    const glob = new Bun.Glob(ws)
+    const glob = new Glob(ws)
     for (const match of glob.scanSync({ cwd: projectPath, onlyFiles: false })) if (!negated.has(match)) matched.add(match)
   }
   const wsPkgPaths = [...matched].map(m => join(projectPath, m, 'package.json')).filter(p => existsSync(p))
