@@ -138,7 +138,8 @@ export const fix = async (all = false) => {
         console.log(`${repo.name}: pulled`)
       })
     )
-    const tasks = consumers.map(async project => {
+    const allTargets = [cnsync, ...consumers]
+    const tasks = allTargets.map(async project => {
       const name = projectName(project.path)
       const issues: Issue[] = []
       emit(createEvent({ project: name, status: 'start', step: 'sync' }))
@@ -203,7 +204,7 @@ export const fix = async (all = false) => {
     await Promise.all(tasks)
     console.log('--- changes ---')
     const summaries = await Promise.all(
-      consumers.map(async project => {
+      allTargets.map(async project => {
         const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
         const changed = diff.stdout.toString().trim()
         const count = changed ? changed.split('\n').length : 0
