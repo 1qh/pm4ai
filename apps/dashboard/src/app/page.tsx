@@ -1,12 +1,16 @@
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effect runs once */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch */
+/** biome-ignore-all lint/nursery/noContinue: SSE parsing */
+/** biome-ignore-all lint/nursery/useNamedCaptureGroup: regex */
+/** biome-ignore-all lint/performance/noAwaitInLoops: SSE stream read */
+/** biome-ignore-all lint/performance/useTopLevelRegex: used in effect */
 'use client'
-/* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then), eslint-plugin-react(no-array-index-key) */
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, react/hook-use-state */
+/* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then), eslint-plugin-react(no-array-index-key), max-depth, no-await-in-loop, no-unmodified-loop-condition */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, react/hook-use-state, max-depth, no-await-in-loop, no-unmodified-loop-condition, no-continue, prefer-named-capture-group */
 import type { WatchEvent } from 'pm4ai'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { client, orpc } from '@/lib/client'
+import { client } from '@/lib/client'
 const timeAgo = (iso: string): string => {
   const ms = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(ms / 60_000)
@@ -44,18 +48,41 @@ const Dashboard = () => {
     let cancelled = false
     const run = async () => {
       try {
-        const stream = await orpc.events.call(undefined)
-        for await (const event of stream as unknown as AsyncIterable<WatchEvent>) {
-          if (cancelled) break
-          setLiveState(prev => ({
-            ...prev,
-            [event.project]: {
-              detail: event.detail,
-              step: event.step === 'done' ? 'done' : `${event.step}:${event.status}`
+        const res = await fetch('/api/rpc/events', {
+          body: '[]',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        })
+        if (!res.body) return
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+        let buffer = ''
+        while (!cancelled) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += value
+          const chunks = buffer.split('\n\n')
+          buffer = chunks.pop() ?? ''
+          for (const chunk of chunks) {
+            const eventMatch = /^event: (.+)$/mu.exec(chunk)
+            const dataMatch = /^data: (.*)$/mu.exec(chunk)
+            if (eventMatch?.[1] === 'done') return
+            if (eventMatch?.[1] !== 'message' || !dataMatch?.[1]) continue
+            try {
+              const event = (JSON.parse(dataMatch[1]) as { json: WatchEvent }).json
+              if (!event?.project) continue
+              setLiveState(prev => ({
+                ...prev,
+                [event.project]: {
+                  detail: event.detail,
+                  step: event.step === 'done' ? 'done' : `${event.step}:${event.status}`
+                }
+              }))
+              setEventLog(prev => [event, ...prev].slice(0, 100))
+              if (event.step === 'done') queryClient.invalidateQueries({ queryKey: ['projects'] }).catch(() => {})
+            } catch {
+              /* Malformed SSE data */
             }
-          }))
-          setEventLog(prev => [event, ...prev].slice(0, 100))
-          if (event.step === 'done') queryClient.invalidateQueries({ queryKey: orpc.projects.key() }).catch(() => {})
+          }
         }
       } catch {
         if (!cancelled) setTimeout(run, 2000)

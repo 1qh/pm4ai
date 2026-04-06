@@ -16,7 +16,7 @@ import {
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
 import { isInsideProject, projectName } from './utils.js'
-import { emit, installCleanup, startEmitter, stopEmitter } from './watch-emitter.js'
+import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 const status = async (swiftbar = false, all = false) => {
   let allProjects: { name: string; path: string }[]
@@ -37,12 +37,10 @@ const status = async (swiftbar = false, all = false) => {
       allProjects = [self, cnsync, ...consumers]
     }
   }
-  await startEmitter()
-  installCleanup()
   const allIssues = new Map<string, Issue[]>()
   const checks = allProjects.map(async project => {
     const name = projectName(project.path)
-    emit(createEvent({ project: name, status: 'start', step: 'check' }))
+    emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
     const issues: Issue[] = []
     const results = await Promise.all([
       checkGit(project.path),
@@ -58,7 +56,7 @@ const status = async (swiftbar = false, all = false) => {
     for (const r of results) issues.push(...r)
     allIssues.set(project.path, issues)
     const hasFails = issues.length > 0
-    emit(
+    emitToSocket(
       createEvent({
         detail: hasFails ? `${issues.length} issues` : undefined,
         project: name,
@@ -66,7 +64,7 @@ const status = async (swiftbar = false, all = false) => {
         step: 'check'
       })
     )
-    emit(
+    emitToSocket(
       createEvent({
         detail: hasFails ? `${issues.length} issues` : 'clean',
         project: name,
@@ -76,7 +74,6 @@ const status = async (swiftbar = false, all = false) => {
     )
   })
   await Promise.all(checks)
-  await stopEmitter()
   for (const project of allProjects) spawnBackgroundCheck(project.path)
   if (swiftbar) console.log(await formatSwiftBar(allIssues))
   else {

@@ -11,7 +11,7 @@ import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
-import { emit, installCleanup, startEmitter, stopEmitter } from './watch-emitter.js'
+import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
@@ -88,8 +88,6 @@ export const fix = async (all = false) => {
     }
   }
   try {
-    await startEmitter()
-    installCleanup()
     const resolveTargets = async () => {
       if (all) return discover()
       const projectPath = await isInsideProject()
@@ -142,7 +140,7 @@ export const fix = async (all = false) => {
     const tasks = allTargets.map(async project => {
       const name = projectName(project.path)
       const issues: Issue[] = []
-      emit(createEvent({ project: name, status: 'start', step: 'sync' }))
+      emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
       const [configIssues, claudeIssues, pkgIssues, tsconfigIssues] = await Promise.all([
         syncConfigs(self.path, project.path),
         syncClaudeMd(self.path, project.path),
@@ -153,7 +151,7 @@ export const fix = async (all = false) => {
       issues.push(...configIssues, ...claudeIssues, ...pkgIssues, ...tsconfigIssues, ...subPkgIssues)
       if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
       const syncCount = issues.filter(i => i.type === 'synced').length
-      emit(
+      emitToSocket(
         createEvent({
           detail: syncCount > 0 ? `${syncCount} synced` : undefined,
           project: name,
@@ -161,10 +159,10 @@ export const fix = async (all = false) => {
           step: 'sync'
         })
       )
-      emit(createEvent({ project: name, status: 'start', step: 'audit' }))
+      emitToSocket(createEvent({ project: name, status: 'start', step: 'audit' }))
       const auditIssues = await audit(project.path)
       issues.push(...auditIssues)
-      emit(
+      emitToSocket(
         createEvent({
           detail: auditIssues.length > 0 ? `${auditIssues.length} issues` : undefined,
           project: name,
@@ -172,11 +170,11 @@ export const fix = async (all = false) => {
           step: 'audit'
         })
       )
-      emit(createEvent({ project: name, status: 'start', step: 'maintain' }))
+      emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
       const maintainIssues = await maintain(project.path)
       issues.push(...maintainIssues)
       const maintainDetail = maintainIssues[0]?.detail
-      emit(
+      emitToSocket(
         createEvent({
           detail: maintainDetail,
           project: name,
@@ -187,7 +185,7 @@ export const fix = async (all = false) => {
       const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
       const changed = diff.stdout.toString().trim()
       const fileCount = changed ? changed.split('\n').length : 0
-      emit(
+      emitToSocket(
         createEvent({
           detail: fileCount > 0 ? `${fileCount} files modified` : 'clean',
           project: name,
@@ -214,7 +212,6 @@ export const fix = async (all = false) => {
     for (const s of summaries) console.log(s)
     if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   } finally {
-    await stopEmitter()
     rmSync(lockFile, { force: true })
   }
 }

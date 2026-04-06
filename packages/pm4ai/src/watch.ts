@@ -9,7 +9,7 @@ import type { WatchEvent } from './watch-types.js'
 import pkg from '../package.json' with { type: 'json' }
 import { discover } from './discover.js'
 import { projectName } from './utils.js'
-import { SOCKET_PATH } from './watch-emitter.js'
+import { installCleanup, SOCKET_PATH, startEmitter } from './watch-emitter.js'
 interface ProjectState {
   detail?: string
   status: 'done' | 'idle' | 'pending'
@@ -168,6 +168,8 @@ const watchJson = async (): Promise<void> => {
   })
 }
 const watch = async (json = false) => {
+  await startEmitter()
+  installCleanup()
   if (json) return watchJson()
   const { consumers, self, cnsync } = await discover()
   const allProjects = [self, cnsync, ...consumers]

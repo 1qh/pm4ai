@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { Server, Socket } from 'node:net'
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { createConnection, createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
@@ -18,6 +18,16 @@ const removeSocket = () => {
     /* Socket may not exist */
   }
 }
+const broadcast = (line: string, exclude?: Socket) => {
+  const msg = `${line}\n`
+  for (const client of clients)
+    if (client !== exclude)
+      try {
+        client.write(msg)
+      } catch {
+        /* Client may be disconnecting */
+      }
+}
 const startEmitter = async (): Promise<void> => {
   if (server) return
   mkdirSync(SOCKET_DIR, { recursive: true })
@@ -27,8 +37,12 @@ const startEmitter = async (): Promise<void> => {
       clients.add(socket)
       socket.on('close', () => clients.delete(socket))
       socket.on('error', () => clients.delete(socket))
-      socket.on('data', () => {
-        /* Ignore client data */
+      let buffer = ''
+      socket.on('data', chunk => {
+        buffer += chunk.toString()
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) if (line) broadcast(line, socket)
       })
     })
     s.on('error', reject)
@@ -53,13 +67,20 @@ const stopEmitter = async (): Promise<void> => {
 }
 const emit = (event: WatchEvent) => {
   if (clients.size === 0) return
-  const line = `${JSON.stringify(event)}\n`
-  for (const client of clients)
-    try {
-      client.write(line)
-    } catch {
-      /* Client may be disconnecting */
-    }
+  broadcast(JSON.stringify(event))
+}
+const emitToSocket = (event: WatchEvent) => {
+  if (!existsSync(SOCKET_PATH)) return
+  try {
+    const sock = createConnection(SOCKET_PATH)
+    sock.on('error', () => {})
+    sock.on('connect', () => {
+      sock.write(`${JSON.stringify(event)}\n`)
+      sock.end()
+    })
+  } catch {
+    /* Socket not available */
+  }
 }
 const cleanupOnExit = () => {
   stopEmitter().catch(() => {})
@@ -82,4 +103,4 @@ const installCleanup = () => {
     process.exit(143)
   })
 }
-export { clients, emit, installCleanup, SOCKET_PATH, startEmitter, stopEmitter }
+export { clients, emit, emitToSocket, installCleanup, SOCKET_PATH, startEmitter, stopEmitter }

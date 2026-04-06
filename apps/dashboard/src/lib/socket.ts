@@ -11,11 +11,16 @@ const ensureStarted = async () => {
   if (started) return
   started = true
   const { createConnection } = await import('node:net')
+  const { existsSync } = await import('node:fs')
   const { homedir } = await import('node:os')
   const { join } = await import('node:path')
   const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
   const doConnect = () => {
-    const sock = createConnection(socketPath)
+    if (!existsSync(socketPath)) {
+      setTimeout(doConnect, 1000)
+      return
+    }
+    const sock = createConnection(socketPath).on('error', () => {})
     sock.on('connect', () => {
       connected = true
     })
@@ -35,9 +40,6 @@ const ensureStarted = async () => {
     sock.on('close', () => {
       connected = false
       setTimeout(doConnect, 1000)
-    })
-    sock.on('error', () => {
-      /* Reconnect on close */
     })
   }
   doConnect()

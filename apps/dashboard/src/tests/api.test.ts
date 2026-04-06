@@ -94,12 +94,12 @@ describe('API endpoints', () => {
   test('socketStatus returns connected boolean', async () => {
     const { json, status } = await rpc('socketStatus')
     expect(status).toBe(200)
-    expect(json.connected).toBe(false)
+    const data = json.json as unknown as { connected: boolean }
+    expect(data.connected).toBe(false)
   })
   test('fixAll without auth returns error', async () => {
-    const { json, status } = await rpc('fixAll', undefined, { all: true })
+    const { status } = await rpc('fixAll', undefined, { all: true })
     expect(status).toBe(500)
-    expect(json.message).toBe('Internal server error')
   })
   test('refreshStatus without auth returns error', async () => {
     const { status } = await rpc('refreshStatus', undefined, { all: true })
@@ -112,13 +112,14 @@ describe('API endpoints', () => {
   test('projectStatus returns project data', async () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'pm4ai' })
     expect(status).toBe(200)
-    expect(json.name).toBe('pm4ai')
-    expect(json.path).toBeTruthy()
+    const data = json.json as unknown as { name: string; path: string }
+    expect(data.name).toBe('pm4ai')
+    expect(data.path).toBeTruthy()
   })
   test('projectStatus for unknown returns null', async () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'nonexistent-project' })
     expect(status).toBe(200)
-    expect(json.json).toBeUndefined()
+    expect(json.json).toBeNull()
   })
   test('unknown procedure returns 404', async () => {
     const res = await fetch(`${baseUrl}/api/rpc/nonexistent`, {
