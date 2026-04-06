@@ -324,8 +324,8 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   }
   for (const entry of subEntries) {
     const rel = entry.path.replace(`${projectPath}/`, '')
-    if (isSkipped(rel)) {
-      /* Skip readonly etc */
+    if (isSkipped(rel) || rel.startsWith('apps/')) {
+      /* Skip readonly, apps */
     } else {
       const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
       const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)

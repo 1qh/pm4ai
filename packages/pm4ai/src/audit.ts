@@ -115,7 +115,10 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
     const providedByWs = new Set<string>()
     for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
     const isRoot = pkgPath === join(projectPath, 'package.json')
-    const duplicated = [...ownDeps].filter(d => providedByWs.has(d) && !(isRoot && REQUIRED_ROOT_DEVDEPS.includes(d)))
+    const isApp = shortPath.startsWith('apps/')
+    const duplicated = [...ownDeps].filter(
+      d => providedByWs.has(d) && !(isRoot && REQUIRED_ROOT_DEVDEPS.includes(d)) && !isApp
+    )
     for (const dep of duplicated)
       issues.push({ detail: `${dep} in ${shortPath} already provided by workspace dep`, type: 'duplicate' })
   }
