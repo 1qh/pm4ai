@@ -134,8 +134,9 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
       : null
     if (!depPkg) continue
     const transitive = (depPkg.dependencies as Record<string, string> | undefined) ?? {}
+    const required = new Set(REQUIRED_ROOT_DEVDEPS)
     for (const other of allRootDepNames)
-      if (other !== depName && transitive[other] && devDeps[other]) {
+      if (other !== depName && transitive[other] && devDeps[other] && !required.has(other)) {
         delete devDeps[other]
         changed = true
         issues.push({ detail: `removed redundant "${other}" (provided by ${depName})`, type: 'synced' })
