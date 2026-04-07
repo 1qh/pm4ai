@@ -222,11 +222,17 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     })
   return issues
 }
+const KNIP_IGNORE = ['readonly/', 'Unlisted binaries', 'Unresolved imports', 'Unlisted dependencies']
 const checkUnusedDeps = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const result = await $`bunx knip --dependencies --no-exit-code --reporter compact`.cwd(projectPath).quiet().nothrow()
+  if (result.exitCode !== 0 && result.stderr.toString().includes('ENOTDIR')) return issues
   const output = result.stdout.toString().trim()
-  if (output) for (const line of output.split('\n')) if (line.trim()) issues.push({ detail: line.trim(), type: 'unused' })
+  if (output)
+    for (const line of output.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed && !KNIP_IGNORE.some(p => trimmed.includes(p))) issues.push({ detail: trimmed, type: 'unused' })
+    }
   return issues
 }
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
