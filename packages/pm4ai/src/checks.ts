@@ -222,6 +222,13 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     })
   return issues
 }
+const checkUnusedDeps = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const result = await $`bunx knip --dependencies --no-exit-code --reporter compact`.cwd(projectPath).quiet().nothrow()
+  const output = result.stdout.toString().trim()
+  if (output) for (const line of output.split('\n')) if (line.trim()) issues.push({ detail: line.trim(), type: 'unused' })
+  return issues
+}
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   if (!existsSync(join(projectPath, '.vercel'))) return issues
@@ -245,4 +252,14 @@ const checkLint = (projectPath: string): Issue[] => {
   if (result.pass) return [{ detail: `passed ${age} ${freshness}`, type: 'check' }]
   return [{ detail: `failed ${age} ${freshness}, ${result.violations} violations`, type: 'check' }]
 }
-export { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkLint, checkRootPkg, checkVercel }
+export {
+  checkCi,
+  checkConfigs,
+  checkDrift,
+  checkForbidden,
+  checkGit,
+  checkLint,
+  checkRootPkg,
+  checkUnusedDeps,
+  checkVercel
+}

@@ -11,6 +11,7 @@ import {
   checkGit,
   checkLint,
   checkRootPkg,
+  checkUnusedDeps,
   checkVercel
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
@@ -42,7 +43,7 @@ const status = async (swiftbar = false, all = false) => {
     const name = projectName(project.path)
     emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
     const issues: Issue[] = []
-    const results = await Promise.all([
+    const results: Issue[][] = await Promise.all([
       checkGit(project.path),
       checkDrift(selfPath, project.path),
       checkRootPkg(project.path),
@@ -50,6 +51,7 @@ const status = async (swiftbar = false, all = false) => {
       checkForbidden(project.path),
       audit(project.path),
       checkCi(project.path),
+      checkUnusedDeps(project.path),
       checkVercel(project.path),
       Promise.resolve(checkLint(project.path))
     ])

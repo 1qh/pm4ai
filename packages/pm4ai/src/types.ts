@@ -18,6 +18,7 @@ type IssueType =
   | 'lintmax'
   | 'missing'
   | 'synced'
+  | 'unused'
   | 'up.sh'
 interface PackageJson {
   bin?: unknown
