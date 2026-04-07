@@ -1,5 +1,6 @@
-/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
+/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth, no-continue */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
+/** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
@@ -124,6 +125,25 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps
   changed = syncRootDevDeps(pkg, devDeps, issues) || changed
+  const allRootDeps = { ...pkg.dependencies, ...devDeps }
+  const allRootDepNames = Object.keys(allRootDeps)
+  for (const depName of allRootDepNames) {
+    const depPkgPath = join(projectPath, 'node_modules', depName, 'package.json')
+    const depPkg = existsSync(depPkgPath)
+      ? (JSON.parse(readFileSync(depPkgPath, 'utf8')) as Record<string, unknown>)
+      : null
+    if (!depPkg) continue
+    const transitive = {
+      ...(depPkg.dependencies as Record<string, string> | undefined),
+      ...(depPkg.peerDependencies as Record<string, string> | undefined)
+    }
+    for (const other of allRootDepNames)
+      if (other !== depName && transitive[other] && devDeps[other]) {
+        delete devDeps[other]
+        changed = true
+        issues.push({ detail: `removed redundant "${other}" (provided by ${depName})`, type: 'synced' })
+      }
+  }
   if (!pkg.packageManager) {
     const r = await $`bun --version`.quiet().nothrow()
     const bunVersion = r.stdout.toString().trim()

@@ -75,7 +75,7 @@ const ProjectRow = ({
   const colorMap = {
     done: 'green' as const,
     failed: 'red' as const,
-    idle: state.cachedPass === true ? ('green' as const) : state.cachedPass === false ? ('red' as const) : undefined,
+    idle: state.cachedPass ? ('green' as const) : state.cachedPass ? undefined : ('red' as const),
     running: 'yellow' as const
   }
   const icon = iconMap[state.status]
