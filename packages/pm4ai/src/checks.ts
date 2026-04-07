@@ -176,7 +176,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       })
   }
   const deepUiImport =
-    await $`rg '@a/ui/' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
+    await $`rg '@a/ui/lib/' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
       .quiet()
       .nothrow()
   const deepUiFiles = deepUiImport.stdout.toString().trim()
