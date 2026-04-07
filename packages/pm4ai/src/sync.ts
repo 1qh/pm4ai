@@ -332,11 +332,15 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
   const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
   const tsdownConfig = inferTsdownConfig(pkg, pkgDir)
   if (tsdownConfig) {
-    const generatedContent = serializeTsdownConfig(tsdownConfig)
     const existingContent = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
-    if (existingContent !== generatedContent) {
-      writeFileSync(tsdownConfigPath, generatedContent)
-      issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
+    if (existingContent.includes('dts: false')) {
+      /* Skip — existing config has dts disabled intentionally */
+    } else {
+      const generatedContent = serializeTsdownConfig(tsdownConfig)
+      if (existingContent !== generatedContent) {
+        writeFileSync(tsdownConfigPath, generatedContent)
+        issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
+      }
     }
   }
   const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
