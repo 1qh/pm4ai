@@ -10,6 +10,7 @@
 /* eslint-disable @typescript-eslint/strict-void-return, @typescript-eslint/no-unnecessary-condition, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, max-depth, no-await-in-loop, no-unmodified-loop-condition, no-continue, prefer-named-capture-group, complexity, @eslint-react/jsx-no-iife, @typescript-eslint/no-use-before-define */
 import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'
+import { cn } from '@a/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createInitState,
@@ -231,7 +232,7 @@ const Dashboard = () => {
                       const delta = state.elapsed - state.lastElapsed
                       if (delta === 0) return null
                       return (
-                        <span className={delta > 0 ? 'text-red-400' : 'text-green-400'}>
+                        <span className={cn(delta > 0 ? 'text-red-400' : 'text-green-400')}>
                           ({delta > 0 ? '+' : ''}
                           {delta}s)
                         </span>
@@ -260,13 +261,25 @@ const Dashboard = () => {
             const dots = isRunning ? progressDots(ps.completedSteps, ps.step) : ''
             return (
               <div
-                className={`p-4 rounded-lg border transition-colors ${isRunning ? 'border-yellow-700 bg-yellow-950/20' : ps.status === 'failed' ? 'border-red-900 bg-red-950/10' : ps.status === 'done' ? 'border-green-900 bg-green-950/10' : 'border-neutral-800 bg-neutral-900'}`}
+                className={cn(
+                  'p-4 rounded-lg border transition-colors',
+                  isRunning
+                    ? 'border-yellow-700 bg-yellow-950/20'
+                    : ps.status === 'failed'
+                      ? 'border-red-900 bg-red-950/10'
+                      : ps.status === 'done'
+                        ? 'border-green-900 bg-green-950/10'
+                        : 'border-neutral-800 bg-neutral-900'
+                )}
                 key={p.name}>
                 <div className='flex items-center justify-between'>
                   <div className='flex items-center gap-3'>
-                    <span className={`text-lg ${color}`}>{icon}</span>
+                    <span className={cn('text-lg', color)}>{icon}</span>
                     <span
-                      className={`font-medium ${isRunning ? 'text-white' : ps.status === 'idle' ? 'text-neutral-400' : ''}`}>
+                      className={cn(
+                        'font-medium',
+                        isRunning ? 'text-white' : ps.status === 'idle' ? 'text-neutral-400' : ''
+                      )}>
                       {p.name}
                     </span>
                     {isRunning ? (
@@ -323,9 +336,9 @@ const Dashboard = () => {
                 <span className='text-neutral-600 w-20 shrink-0'>{new Date(e.at).toLocaleTimeString()}</span>
                 <span className='w-28 shrink-0'>{e.project}</span>
                 <span
-                  className={
+                  className={cn(
                     e.status === 'fail' ? 'text-red-400' : e.status === 'ok' ? 'text-green-400' : 'text-yellow-400'
-                  }>
+                  )}>
                   {e.step}.{e.status}
                 </span>
                 {e.detail ? <span className='text-neutral-500'>{e.detail}</span> : null}

@@ -8,6 +8,7 @@
     "start": "next start --port 4200"
   },
   "dependencies": {
+    "@a/ui": "workspace:*",
     "@orpc/client": "latest",
     "@orpc/react-query": "latest",
     "@orpc/server": "latest",

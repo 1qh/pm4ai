@@ -191,7 +191,15 @@ const resolveExportSource = (key: string, importPath: string, pkgDir: string): s
   const srcBase = key === '.' ? 'src/index' : `src/${key.replace(dotSlashRe, '')}`
   for (const ext of ['.ts', '.tsx']) if (existsSync(join(pkgDir, `${srcBase}${ext}`))) return `${srcBase}${ext}`
 }
-const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): string | undefined => {
+interface TsdownConfig {
+  clean: true
+  copy?: string[]
+  dts: true
+  entry: string[]
+  format: 'esm'
+  outDir: 'dist'
+}
+const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | undefined => {
   const entry: string[] = []
   const copy: string[] = []
   const exports = pkg.exports as Record<string, Record<string, string> | string> | undefined
@@ -219,8 +227,19 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): string | undefined
     if (existsSync(join(pkgDir, 'src/index.ts'))) entry.push('src/index.ts')
     else if (existsSync(join(pkgDir, 'src/index.tsx'))) entry.push('src/index.tsx')
   if (entry.length === 0) return
-  const copyLine = copy.length > 0 ? `\n  copy: [${copy.map(c => `'${c}'`).join(', ')}],` : ''
-  return `import { defineConfig } from 'tsdown'\nexport default defineConfig({\n  clean: true,${copyLine}\n  dts: true,\n  entry: [${entry.map(e => `'${e}'`).join(', ')}],\n  format: 'esm',\n  outDir: 'dist'\n})\n`
+  const config: TsdownConfig = { clean: true, dts: true, entry, format: 'esm', outDir: 'dist' }
+  if (copy.length > 0) config.copy = copy
+  return config
+}
+const serializeTsdownConfig = (config: TsdownConfig): string => {
+  const lines = ["import { defineConfig } from 'tsdown'", 'export default defineConfig({', '  clean: true,']
+  if (config.copy) lines.push(`  copy: [${config.copy.map(c => `'${c}'`).join(', ')}],`)
+  lines.push('  dts: true,')
+  lines.push(`  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`)
+  lines.push("  format: 'esm',")
+  lines.push("  outDir: 'dist'")
+  lines.push('})')
+  return `${lines.join('\n')}\n`
 }
 const syncReadmeSymlink = ({
   issues,
@@ -293,11 +312,12 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
   }
   const pkgDir = dirname(pkgPath)
   const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
-  const generatedConfig = inferTsdownConfig(pkg, pkgDir)
-  if (generatedConfig) {
-    const existingConfig = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
-    if (existingConfig !== generatedConfig) {
-      writeFileSync(tsdownConfigPath, generatedConfig)
+  const tsdownConfig = inferTsdownConfig(pkg, pkgDir)
+  if (tsdownConfig) {
+    const generatedContent = serializeTsdownConfig(tsdownConfig)
+    const existingContent = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
+    if (existingContent !== generatedContent) {
+      writeFileSync(tsdownConfigPath, generatedContent)
       issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
     }
   }

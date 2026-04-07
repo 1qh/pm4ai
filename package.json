@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "readonly/ui"
   ],
   "scripts": {
     "action": "which rg || sudo apt-get install -y ripgrep && sh up.sh && bun run test && cd packages/pm4ai && bun dist/cli.mjs && bun dist/cli.mjs status",
@@ -38,6 +39,9 @@
   },
   "packageManager": "bun@1.3.11",
   "trustedDependencies": [
-    "lintmax"
+    "esbuild",
+    "lintmax",
+    "simple-git-hooks",
+    "web"
   ]
 }
