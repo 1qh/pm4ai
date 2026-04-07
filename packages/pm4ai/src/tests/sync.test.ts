@@ -51,22 +51,22 @@ describe('syncPackageJson', () => {
     const issues = await syncPackageJson(tmp)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(pkg.trustedDependencies).toEqual(['lintmax'])
+    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'simple-git-hooks'])
     rmSync(tmp, { recursive: true })
   })
   test('preserves existing trustedDependencies', async () => {
     const tmp = makeTmp()
     writeFileSync(
       join(tmp, 'package.json'),
-      JSON.stringify({ name: 'test', private: true, trustedDependencies: ['esbuild'] })
+      JSON.stringify({ name: 'test', private: true, trustedDependencies: ['sharp'] })
     )
     const issues = await syncPackageJson(tmp)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax'])
+    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'sharp', 'simple-git-hooks'])
     rmSync(tmp, { recursive: true })
   })
-  test('no-op when lintmax already trusted', async () => {
+  test('no-op when all required already trusted', async () => {
     const tmp = makeTmp()
     writeFileSync(
       join(tmp, 'package.json'),
@@ -76,7 +76,7 @@ describe('syncPackageJson', () => {
         private: true,
         scripts: { clean: 'sh clean.sh', postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
         'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' },
-        trustedDependencies: ['lintmax']
+        trustedDependencies: ['esbuild', 'lintmax', 'simple-git-hooks']
       })
     )
     const issues = await syncPackageJson(tmp)
@@ -90,7 +90,6 @@ describe('syncPackageJson', () => {
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
     expect(pkg.devDependencies?.turbo).toBe('latest')
     expect(pkg.devDependencies?.typescript).toBe('latest')
-    expect(pkg.devDependencies?.['@types/bun']).toBe('latest')
     expect(pkg.devDependencies?.lintmax).toBe('latest')
     rmSync(tmp, { recursive: true })
   })

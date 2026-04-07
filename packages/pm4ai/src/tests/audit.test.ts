@@ -216,8 +216,8 @@ describe('checkTrustedDeps', () => {
     const issues = checkTrustedDeps({})
     expect(issues.some(i => i.detail.includes('lintmax'))).toBe(true)
   })
-  test('trustedDependencies with lintmax is clean', () => {
-    const issues = checkTrustedDeps({ trustedDependencies: ['lintmax'] })
+  test('trustedDependencies with all required is clean', () => {
+    const issues = checkTrustedDeps({ trustedDependencies: ['esbuild', 'lintmax', 'simple-git-hooks'] })
     expect(issues).toHaveLength(0)
   })
   test('trustedDependencies without lintmax is flagged', () => {
