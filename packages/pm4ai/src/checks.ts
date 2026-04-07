@@ -175,6 +175,19 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         type: 'forbidden'
       })
   }
+  const deepUiImport =
+    await $`rg '@a/ui/' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
+      .quiet()
+      .nothrow()
+  const deepUiFiles = deepUiImport.stdout.toString().trim()
+  if (deepUiFiles)
+    issues.push({
+      detail: `use import { cn } from '@a/ui', not deep paths: ${deepUiFiles
+        .split('\n')
+        .map(f => f.replace(`${projectPath}/`, ''))
+        .join(', ')}`,
+      type: 'forbidden'
+    })
   return issues
 }
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
