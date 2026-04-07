@@ -12,7 +12,6 @@
     "@orpc/client": "latest",
     "@orpc/react-query": "latest",
     "@orpc/server": "latest",
-    "@orpc/zod": "latest",
     "@tanstack/react-query": "latest",
     "next": "latest",
     "pm4ai": "workspace:*",
