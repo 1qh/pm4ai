@@ -133,10 +133,7 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
       ? (JSON.parse(readFileSync(depPkgPath, 'utf8')) as Record<string, unknown>)
       : null
     if (!depPkg) continue
-    const transitive = {
-      ...(depPkg.dependencies as Record<string, string> | undefined),
-      ...(depPkg.peerDependencies as Record<string, string> | undefined)
-    }
+    const transitive = (depPkg.dependencies as Record<string, string> | undefined) ?? {}
     for (const other of allRootDepNames)
       if (other !== depName && transitive[other] && devDeps[other]) {
         delete devDeps[other]
