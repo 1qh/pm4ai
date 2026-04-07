@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
@@ -107,20 +107,20 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const pkgPath = join(projectPath, 'package.json')
   const pkg = await readPkg(pkgPath)
   if (!pkg) return issues
-  let changed = false
+  const wasPrivate = Boolean(pkg.private)
   if (!pkg.private) {
     pkg.private = true
-    changed = true
     issues.push({ detail: 'set root package.json to private', type: 'synced' })
   }
   const scripts = pkg.scripts ?? {}
   pkg.scripts = scripts
-  changed = syncRootScripts(scripts, issues) || changed
+  const hadHooks = Boolean(pkg['simple-git-hooks'])
   if (!pkg['simple-git-hooks']) {
     pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
-    changed = true
     issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
   }
+  // oxlint-disable-next-line no-useless-assignment
+  let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps
   changed = syncRootDevDeps(pkg, devDeps, issues) || changed
@@ -182,6 +182,74 @@ interface FixPublishedPkgArgs {
   repo: string | undefined
   selfPath: string
 }
+const distPrefixRe = /^\.?\/?dist\//u
+const dotSlashRe = /^\.\//u
+const mjsExtRe = /\.mjs$/u
+const monorepoRootRe = /\/(?:packages|tool|lib)\/[^/]+$/u
+const resolveExportSource = (key: string, importPath: string, pkgDir: string): string | undefined => {
+  if (importPath.endsWith('.json')) return
+  const srcBase = key === '.' ? 'src/index' : `src/${key.replace(dotSlashRe, '')}`
+  for (const ext of ['.ts', '.tsx']) if (existsSync(join(pkgDir, `${srcBase}${ext}`))) return `${srcBase}${ext}`
+}
+const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): string | undefined => {
+  const entry: string[] = []
+  const copy: string[] = []
+  const exports = pkg.exports as Record<string, Record<string, string> | string> | undefined
+  if (exports)
+    for (const [key, val] of Object.entries(exports)) {
+      const importPath = typeof val === 'string' ? val : val.import
+      if (!importPath) {
+        /* Skip */
+      } else if (importPath.endsWith('.css')) {
+        const srcCss = importPath.replace(distPrefixRe, 'src/')
+        if (existsSync(join(pkgDir, srcCss))) copy.push(srcCss)
+      } else {
+        const src = resolveExportSource(key, importPath, pkgDir)
+        if (src) entry.push(src)
+      }
+    }
+  if (pkg.bin) {
+    const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
+    for (const binPath of Object.values(bins as Record<string, string>)) {
+      const srcPath = binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts')
+      if (existsSync(join(pkgDir, srcPath)) && !entry.includes(srcPath)) entry.push(srcPath)
+    }
+  }
+  if (entry.length === 0 && !pkg.bin)
+    if (existsSync(join(pkgDir, 'src/index.ts'))) entry.push('src/index.ts')
+    else if (existsSync(join(pkgDir, 'src/index.tsx'))) entry.push('src/index.tsx')
+  if (entry.length === 0) return
+  const copyLine = copy.length > 0 ? `\n  copy: [${copy.map(c => `'${c}'`).join(', ')}],` : ''
+  return `import { defineConfig } from 'tsdown'\nexport default defineConfig({\n  clean: true,${copyLine}\n  dts: true,\n  entry: [${entry.map(e => `'${e}'`).join(', ')}],\n  format: 'esm',\n  outDir: 'dist'\n})\n`
+}
+const syncReadmeSymlink = ({
+  issues,
+  monorepoRoot,
+  pkgDir,
+  rel
+}: {
+  issues: Issue[]
+  monorepoRoot: string
+  pkgDir: string
+  rel: string
+}): boolean => {
+  const readmeSrc = join(monorepoRoot, 'README.md')
+  const readmeDst = join(pkgDir, 'README.md')
+  if (!existsSync(readmeSrc)) return false
+  if (existsSync(readmeDst))
+    try {
+      if (readlinkSync(readmeDst) === relative(pkgDir, readmeSrc)) return false
+    } catch {
+      return false
+    }
+  try {
+    symlinkSync(relative(pkgDir, readmeSrc), readmeDst)
+    issues.push({ detail: `${rel} symlinked README.md`, type: 'synced' })
+    return true
+  } catch {
+    return false
+  }
+}
 const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPublishedPkgArgs): boolean => {
   let changed = false
   if (pkg.type !== 'module') {
@@ -223,6 +291,18 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
     changed = true
     issues.push({ detail: `${rel} set build to "tsdown"`, type: 'synced' })
   }
+  const pkgDir = dirname(pkgPath)
+  const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
+  const generatedConfig = inferTsdownConfig(pkg, pkgDir)
+  if (generatedConfig) {
+    const existingConfig = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
+    if (existingConfig !== generatedConfig) {
+      writeFileSync(tsdownConfigPath, generatedConfig)
+      issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
+    }
+  }
+  const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
+  syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
   if (!pubScripts.postpublish) {
     pubScripts[CLEANUP_SCRIPT.task] = `bun ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`
     pubScripts.postpublish = CLEANUP_SCRIPT.postpublish

@@ -139,6 +139,52 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         .join(', ')}`,
       type: 'forbidden'
     })
+  const bannedImports = [
+    { ban: 'vitest', fix: 'bun:test' },
+    { ban: '@jest', fix: 'bun:test' },
+    { ban: 'mocha', fix: 'bun:test' },
+    { ban: 'ts-node', fix: 'bun' },
+    { ban: 'tsx/', fix: 'bun' },
+    { ban: 'nodemon', fix: 'bun --watch' },
+    { ban: 'webpack', fix: 'tsdown/turbopack' },
+    { ban: 'rollup', fix: 'tsdown' },
+    { ban: '"esbuild"', fix: 'tsdown' },
+    { ban: '"vue"', fix: 'react' },
+    { ban: '@angular', fix: 'react' },
+    { ban: '"svelte"', fix: 'react' },
+    { ban: '"solid-js"', fix: 'react' },
+    { ban: '"express"', fix: 'elysia or next.js api routes' },
+    { ban: '"fastify"', fix: 'elysia or next.js api routes' },
+    { ban: '"hono"', fix: 'elysia or next.js api routes' },
+    { ban: '"koa"', fix: 'elysia or next.js api routes' },
+    { ban: '"remix"', fix: 'next.js' },
+    { ban: '"gatsby"', fix: 'next.js' },
+    { ban: '"astro"', fix: 'next.js' },
+    { ban: '"vite"', fix: 'next.js + turbopack' },
+    { ban: 'styled-components', fix: 'tailwind' },
+    { ban: '"@emotion', fix: 'tailwind' },
+    { ban: '"redux"', fix: 'zustand or tanstack-query' },
+    { ban: '"mobx"', fix: 'zustand or tanstack-query' }
+  ]
+  const banResults = await Promise.all(
+    bannedImports.map(async ({ ban, fix }) => {
+      const result =
+        await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' -g '*.json' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
+          .quiet()
+          .nothrow()
+      const files = result.stdout.toString().trim()
+      if (files) return { ban, files, fix }
+    })
+  )
+  for (const r of banResults)
+    if (r)
+      issues.push({
+        detail: `${r.ban} banned, use ${r.fix}: ${r.files
+          .split('\n')
+          .map(f => f.replace(`${projectPath}/`, ''))
+          .join(', ')}`,
+        type: 'forbidden'
+      })
   return issues
 }
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
