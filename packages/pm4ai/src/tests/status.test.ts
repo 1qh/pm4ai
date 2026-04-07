@@ -46,7 +46,7 @@ describe('getUiSyncTime', () => {
   test('returns time for real pm4ai repo', async () => {
     const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
     const result = await getUiSyncTime([pm4aiPath])
-    expect(result).toBe('?')
+    expect(result).not.toBe('?')
   })
   test('returns ? for empty paths array', async () => {
     const result = await getUiSyncTime([])
