@@ -150,11 +150,41 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)]
   const banResults = await Promise.all(
     bannedImports.map(async ({ ban, fix }) => {
-      const result = await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' -g '*.json' ${RG_EXCLUDE} -l`.quiet().nothrow()
+      const result = await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
       const files = result.stdout.toString().trim()
       if (files) return { ban, files, fix }
     })
   )
+  const pkgJsonFiles =
+    await $`find ${projectPath} -name 'package.json' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
+      .quiet()
+      .nothrow()
+  const pkgBanResults = await Promise.all(
+    pkgJsonFiles.stdout
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(async pkgPath => {
+        const raw = await readPkg(pkgPath)
+        if (!raw) return []
+        const allDeps = {
+          ...raw.dependencies,
+          ...raw.devDependencies,
+          ...raw.peerDependencies
+        }
+        const depNames = Object.keys(allDeps)
+        const matches: { ban: string; files: string; fix: string }[] = []
+        for (const { ban, fix } of bannedImports) {
+          const cleanBan = ban.replaceAll(/^"|"$/gu, '')
+          const isPrefix = !ban.endsWith('"')
+          if (depNames.some(d => (isPrefix ? d.startsWith(cleanBan) : d === cleanBan)))
+            matches.push({ ban, files: pkgPath, fix })
+        }
+        return matches
+      })
+  )
+  for (const matches of pkgBanResults) for (const m of matches) banResults.push(m)
   for (const r of banResults)
     if (r)
       issues.push({
