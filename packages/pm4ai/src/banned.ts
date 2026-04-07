@@ -168,7 +168,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"@swc',
       '"babel-cli"',
       '"babel-core"',
-      '"babel-plugin-transform"',
+      '"babel-plugin-transform',
       '"babel-preset-env"',
       '"babel-register"'
     ],
@@ -311,12 +311,12 @@ const BANNED: Record<string, Record<string, string[]>> = {
   config: {
     'bun .env auto-loading': ['"convict"'],
     [b('file')]: ['"conf"', '"configstore"', '"cosmiconfig"'],
-    'zod + bun .env auto-loading': ['"@t3-oss/env"', '"envalid"']
+    'zod + bun .env auto-loading': ['"@t3-oss/env', '"envalid"']
   },
   crypto: {
     'crypto.randomUUID()': [
       '"cuid"',
-      '"cuid2"',
+      '"@paralleldrive/cuid2"',
       '"flake-idgen"',
       '"hyperid"',
       '"ksuid"',
@@ -553,7 +553,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ]
   },
   metaFramework: {
-    'next.js': ['"astro"', '"blitz"', '"gatsby"', '"nuxt"', '"redwood"', '"remix"', '"sveltekit"'],
+    'next.js': ['"@sveltejs/kit"', '"astro"', '"blitz"', '"gatsby"', '"nuxt"', '"redwood"', '"remix"'],
     'next.js + turbopack': ['"vite"']
   },
   monorepo: {
@@ -727,7 +727,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"@reduxjs/toolkit"',
       '"effector"',
       '"immer"',
-      '"legend-state"',
+      '"@legendapp/state"',
       '"mobx"',
       '"nanostores"',
       '"proxy-state-tree"',
@@ -763,7 +763,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"twin.macro"',
       '"unocss"',
       '"vanilla-extract"',
-      '"windi-css"'
+      '"windicss"'
     ],
     'tailwind classes': ['"chroma-js"', '"color"', '"color-convert"', '"tinycolor2"']
   },
