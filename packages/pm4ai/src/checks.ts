@@ -5,7 +5,15 @@ import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY } from './banned.js'
 import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
-import { DEFAULT_SCRIPTS, EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
+import {
+  DEFAULT_SCRIPTS,
+  EXPECTED,
+  FORBIDDEN_LOCKFILES,
+  MUST_EXIST_FILES,
+  RG_EXCLUDE,
+  UI_PACKAGE_NAME,
+  VERBATIM_FILES
+} from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -114,9 +122,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
       .quiet()
       .nothrow(),
-    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -l`
-      .quiet()
-      .nothrow()
+    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   ])
   if (bunLockTracked.stdout.toString().trim())
     issues.push({ detail: 'bun.lock tracked in git, should be gitignored', type: 'forbidden' })
@@ -144,10 +150,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)]
   const banResults = await Promise.all(
     bannedImports.map(async ({ ban, fix }) => {
-      const result =
-        await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' -g '*.json' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
-          .quiet()
-          .nothrow()
+      const result = await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' -g '*.json' ${RG_EXCLUDE} -l`.quiet().nothrow()
       const files = result.stdout.toString().trim()
       if (files) return { ban, files, fix }
     })
@@ -162,7 +165,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         type: 'forbidden'
       })
   const bunGlobalResult =
-    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -g '!*.d.ts' -g '!banned.ts' -o --no-filename`
+    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!*.d.ts' ${RG_EXCLUDE} -o --no-filename`
       .quiet()
       .nothrow()
   const bunGlobalMatches = bunGlobalResult.stdout.toString().trim()
@@ -175,14 +178,13 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         type: 'forbidden'
       })
   }
-  const deepUiImport =
-    await $`rg '@a/ui/lib/' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -l`
-      .quiet()
-      .nothrow()
+  const deepUiImport = await $`rg '${UI_PACKAGE_NAME}/lib/' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`
+    .quiet()
+    .nothrow()
   const deepUiFiles = deepUiImport.stdout.toString().trim()
   if (deepUiFiles)
     issues.push({
-      detail: `use import { cn } from '@a/ui', not deep paths: ${deepUiFiles
+      detail: `use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${deepUiFiles
         .split('\n')
         .map(f => f.replace(`${projectPath}/`, ''))
         .join(', ')}`,

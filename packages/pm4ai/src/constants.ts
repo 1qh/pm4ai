@@ -13,6 +13,10 @@ const MONOREPO_NAME = 'pm4ai-monorepo'
 const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
 const PKG_NAME = 'pm4ai'
 const READONLY_UI = 'readonly/ui'
+const UI_PACKAGE_NAME = '@a/ui'
+const RG_EXCLUDE_DIRS = ['node_modules', 'readonly', '.next', 'dist', '_generated', 'generated']
+const RG_EXCLUDE_FILES = ['banned.ts']
+const RG_EXCLUDE = [...RG_EXCLUDE_DIRS.flatMap(d => ['-g', `!${d}`]), ...RG_EXCLUDE_FILES.flatMap(f => ['-g', `!**/${f}`])]
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const REQUIRED_ROOT_DEVDEPS = ['@types/bun', 'lintmax', 'sherif', 'simple-git-hooks', 'tsdown', 'turbo', 'typescript']
 const REQUIRED_TRUSTED_DEPS = ['lintmax']
@@ -53,7 +57,9 @@ export {
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   REQUIRED_TRUSTED_DEPS,
+  RG_EXCLUDE,
   SKIP_PATTERNS,
   TURBO_FLAG,
+  UI_PACKAGE_NAME,
   VERBATIM_FILES
 }
