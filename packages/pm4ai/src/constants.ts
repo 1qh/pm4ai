@@ -18,7 +18,7 @@ const RG_EXCLUDE_DIRS = ['node_modules', 'readonly', '.next', 'dist', '_generate
 const RG_EXCLUDE_FILES = ['banned.ts']
 const RG_EXCLUDE = [...RG_EXCLUDE_DIRS.flatMap(d => ['-g', `!${d}`]), ...RG_EXCLUDE_FILES.flatMap(f => ['-g', `!**/${f}`])]
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
-const REQUIRED_ROOT_DEVDEPS = ['lintmax', 'sherif', 'simple-git-hooks', 'tsdown', 'turbo', 'typescript']
+const REQUIRED_ROOT_DEVDEPS = ['lintmax', 'sherif', 'simple-git-hooks', 'tsdown', 'turbo']
 const REQUIRED_TRUSTED_DEPS = ['esbuild', 'lintmax', 'simple-git-hooks']
 const DEFAULT_DEP_VERSION = 'latest'
 const DEFAULT_FILES = ['dist']
