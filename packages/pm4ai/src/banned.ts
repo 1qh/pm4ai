@@ -1,7 +1,11 @@
+/* eslint-disable @typescript-eslint/consistent-type-imports */
 interface BannedPackage {
   ban: string
   fix: string
 }
+/* oxlint-disable typescript-eslint/consistent-type-imports */
+type BunExport = keyof typeof import('bun')
+const b = (...names: BunExport[]) => `import { ${names.join(', ')} } from bun`
 const ALLOWED_STACK = [
   '@anthropic-ai/sdk',
   '@dnd-kit',
@@ -138,8 +142,8 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"terminal-link"'
     ],
     'ink Box': ['"boxen"'],
-    'ink or import { $ } from bun': ['"clipboardy"'],
-    'ink or import { color } from bun': [
+    [`ink or ${b('$')}`]: ['"clipboardy"'],
+    [`ink or ${b('color')}`]: [
       '"ansi-colors"',
       '"ansi-styles"',
       '"chalk"',
@@ -224,12 +228,12 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ]
   },
   compression: {
-    'import { Archive } from bun': ['"archiver"', '"tar"', '"tar-fs"', '"tar-stream"'],
-    'import { gzipSync, deflateSync } from bun': ['"adm-zip"', '"fflate"', '"jszip"', '"lz-string"', '"pako"']
+    [b('Archive')]: ['"archiver"', '"tar"', '"tar-fs"', '"tar-stream"'],
+    [b('gzipSync', 'deflateSync')]: ['"adm-zip"', '"fflate"', '"jszip"', '"lz-string"', '"pako"']
   },
   config: {
     'bun .env auto-loading': ['"convict"'],
-    'import { file } from bun': ['"conf"', '"configstore"', '"cosmiconfig"'],
+    [b('file')]: ['"conf"', '"configstore"', '"cosmiconfig"'],
     'zod + bun .env auto-loading': ['"@t3-oss/env"', '"envalid"']
   },
   crypto: {
@@ -245,7 +249,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"uuid"',
       '"xid"'
     ],
-    'import { password } from bun': ['"argon2"', '"bcrypt"', '"bcryptjs"', '"scrypt-js"'],
+    [b('password')]: ['"argon2"', '"bcrypt"', '"bcryptjs"', '"scrypt-js"'],
     'native Web Crypto API': ['"crypto-js"', '"node-forge"', '"node-rsa"', '"tweetnacl"']
   },
   date: {
@@ -253,7 +257,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
   },
   dbDrivers: {
     drizzle: ['"mongodb"'],
-    'drizzle or import { sql } from bun': [
+    [`drizzle or ${b('sql')}`]: [
       '"@neondatabase',
       '"@planetscale/database"',
       '"@vercel/postgres"',
@@ -280,7 +284,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     resend: ['"@sendgrid/mail"', '"mailgun.js"', '"postmark"']
   },
   encoding: {
-    'import { escapeHTML } from bun': ['"entities"', '"escape-html"', '"he"'],
+    [b('escapeHTML')]: ['"entities"', '"escape-html"', '"he"'],
     'native Response headers or elysia': ['"content-type"', '"mime"', '"mime-types"'],
     'native TextDecoder': ['"iconv-lite"'],
     'native URL API': ['"url"', '"url-parse"'],
@@ -303,7 +307,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ]
   },
   files: {
-    'import { Glob } from bun': [
+    [b('Glob')]: [
       '"@nodelib/fs.walk"',
       '"fast-glob"',
       '"glob"',
@@ -318,7 +322,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"recursive-readdir"',
       '"walk"'
     ],
-    'import { Glob } from bun or node:fs walk': ['"find-up"', '"pkg-dir"'],
+    [`${b('Glob')} or node:fs walk`]: ['"find-up"', '"pkg-dir"'],
     'import.meta.resolve': ['"resolve"', '"resolve-from"'],
     'node:fs': [
       '"cpy"',
@@ -331,11 +335,11 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"write-json-file"'
     ],
     'node:fs mkdir recursive': ['"make-dir"', '"mkdirp"'],
-    'node:fs or import { $ } from bun': ['"del"', '"rimraf"'],
+    [`node:fs or ${b('$')}`]: ['"del"', '"rimraf"'],
     'node:os tmpdir + node:fs': ['"tmp"', '"tmp-promise"'],
     'node:path': ['"normalize-path"'],
     'node:path/posix': ['"slash"'],
-    'readableStreamToText/Bytes from bun': ['"concat-stream"', '"get-stream"']
+    [b('readableStreamToText', 'readableStreamToBytes')]: ['"concat-stream"', '"get-stream"']
   },
   forms: {
     'tanstack-form': [
@@ -365,7 +369,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     'react + next.js': ['"qwik"']
   },
   hashing: {
-    'import { CryptoHasher } from bun': [
+    [b('CryptoHasher')]: [
       '"crc"',
       '"crc-32"',
       '"hash-sum"',
@@ -415,14 +419,14 @@ const BANNED: Record<string, Record<string, string[]>> = {
   },
   infra: {
     'Map or bun:sqlite': ['"keyv"', '"lru-cache"', '"quick-lru"'],
-    'better-auth or import { Cookie } from bun': ['"connect-redis"', '"cookie"', '"express-session"'],
+    [`better-auth or ${b('Cookie')}`]: ['"connect-redis"', '"cookie"', '"express-session"'],
     'bun:sqlite': ['"better-sqlite3"'],
     'elysia plugin or platform': ['"@upstash/ratelimit"', '"rate-limiter-flexible"'],
-    'import { cron } from bun or platform cron': ['"cron"', '"cron-parser"', '"cronstrue"', '"node-cron"'],
-    'import { redis } from bun or upstash REST': ['"@upstash/redis"', '"ioredis"', '"redis"'],
-    'import { s3, S3Client } from bun': ['"@aws-sdk', '"uploadthing"'],
-    'import { serve } from bun (WebSocket)': ['"ws"'],
-    'import { sql } from bun or platform queues': ['"bull"', '"bullmq"'],
+    [`${b('cron')} or platform cron`]: ['"cron"', '"cron-parser"', '"cronstrue"', '"node-cron"'],
+    [`${b('redis')} or upstash REST`]: ['"@upstash/redis"', '"ioredis"', '"redis"'],
+    [b('s3', 'S3Client')]: ['"@aws-sdk', '"uploadthing"'],
+    [`${b('serve')} (WebSocket)`]: ['"ws"'],
+    [`${b('sql')} or platform queues`]: ['"bull"', '"bullmq"'],
     'next.js rewrites or elysia': ['"http-proxy"', '"http-proxy-middleware"'],
     'next/image optimization': ['"imagemin"', '"jimp"', '"sharp"'],
     'next/image placeholder=blur': ['"blurhash"', '"plaiceholder"'],
@@ -461,7 +465,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ]
   },
   markdown: {
-    'import { markdown } from bun or remark/rehype': [
+    [`${b('markdown')} or remark/rehype`]: [
       '"gray-matter"',
       '"markdown-it"',
       '"marked"',
@@ -504,11 +508,11 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"env-cmd"',
       '"nconf"'
     ],
-    'import { JSON5, JSONC } from bun': ['"comment-json"', '"hjson"', '"json5"', '"jsonc-parser"'],
-    'import { JSONL } from bun': ['"jsonlines"', '"ndjson"'],
-    'import { TOML } from bun': ['"@iarna/toml"', '"smol-toml"', '"toml"'],
-    'import { YAML } from bun': ['"js-yaml"', '"yaml"'],
-    'import { file } from bun + string split': [
+    [b('JSON5', 'JSONC')]: ['"comment-json"', '"hjson"', '"json5"', '"jsonc-parser"'],
+    [b('JSONL')]: ['"jsonlines"', '"ndjson"'],
+    [b('TOML')]: ['"@iarna/toml"', '"smol-toml"', '"toml"'],
+    [b('YAML')]: ['"js-yaml"', '"yaml"'],
+    [`${b('file')} + string split`]: [
       '"csv-parse"',
       '"csv-stringify"',
       '"fast-csv"',
@@ -537,8 +541,8 @@ const BANNED: Record<string, Record<string, string[]>> = {
     turbo: ['"concurrently"', '"npm-run-all"', '"npm-run-all2"', '"wireit"']
   },
   queue: {
-    'import { cron } from bun': ['"agenda"'],
-    'import { sql } from bun or platform queues': ['"bee-queue"', '"pg-boss"']
+    [b('cron')]: ['"agenda"'],
+    [`${b('sql')} or platform queues`]: ['"bee-queue"', '"pg-boss"']
   },
   reactHooks: {
     'React built-ins or es-toolkit': ['"ahooks"', '"react-use"', '"usehooks-ts"']
@@ -570,7 +574,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     'tanstack-query': ['"react-query"', '"swr"']
   },
   realtime: {
-    'import { serve } from bun (WebSocket)': ['"@stomp/stompjs"', '"ably"', '"pusher"', '"pusher-js"', '"sockjs-client"']
+    [`${b('serve')} (WebSocket)`]: ['"@stomp/stompjs"', '"ably"', '"pusher"', '"pusher-js"', '"sockjs-client"']
   },
   retry: {
     AbortController: ['"p-cancelable"'],
@@ -606,7 +610,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     'Promise.any': ['"p-any"', '"p-some"'],
     'Promise.race': ['"p-race"'],
     'es-toolkit': ['"p-debounce"', '"p-memoize"', '"p-throttle"'],
-    'import { sleep } from bun': ['"delay"']
+    [b('sleep')]: ['"delay"']
   },
   routing: {
     'URLPattern API': ['"path-to-regexp"']
@@ -622,22 +626,14 @@ const BANNED: Record<string, Record<string, string[]>> = {
     'async iterators or ReadableStream': ['"rxjs"']
   },
   sanitize: {
-    'import { CSRF } from bun': ['"csurf"'],
-    'import { escapeHTML } from bun': ['"dompurify"', '"sanitize-html"', '"xss"'],
+    [b('CSRF')]: ['"csurf"'],
+    [b('escapeHTML')]: ['"dompurify"', '"sanitize-html"', '"xss"'],
     zod: ['"validator"']
   },
   shell: {
-    'import { $ } from bun': [
-      '"@actions/exec"',
-      '"@npmcli/run-script"',
-      '"execa"',
-      '"open"',
-      '"shelljs"',
-      '"tinyexec"',
-      '"zx"'
-    ],
-    'import { spawn } from bun': ['"cross-spawn"', '"pidtree"', '"tree-kill"'],
-    'import { which } from bun': ['"npm-which"', '"which"'],
+    [b('$')]: ['"@actions/exec"', '"@npmcli/run-script"', '"execa"', '"open"', '"shelljs"', '"tinyexec"', '"zx"'],
+    [b('spawn')]: ['"cross-spawn"', '"pidtree"', '"tree-kill"'],
+    [b('which')]: ['"npm-which"', '"which"'],
     'node:fs watch': ['"chokidar"', '"gaze"', '"node-watch"'],
     'process.on exit': ['"signal-exit"']
   },
@@ -748,12 +744,12 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ],
     'es-toolkit or native': ['"fast-levenshtein"', '"leven"', '"natural-compare"'],
     'es-toolkit or regex': ['"slugify"', '"speakingurl"'],
-    'import { deepEquals } from bun': ['"deep-equal"', '"dequal"', '"fast-deep-equal"'],
-    'import { inspect } from bun': ['"object-inspect"'],
-    'import { sliceAnsi } from bun': ['"slice-ansi"'],
-    'import { stringWidth } from bun': ['"string-width"'],
-    'import { stripANSI } from bun': ['"ansi-regex"', '"strip-ansi"'],
-    'import { wrapAnsi } from bun': ['"wrap-ansi"'],
+    [b('deepEquals')]: ['"deep-equal"', '"dequal"', '"fast-deep-equal"'],
+    [b('inspect')]: ['"object-inspect"'],
+    [b('sliceAnsi')]: ['"slice-ansi"'],
+    [b('stringWidth')]: ['"string-width"'],
+    [b('stripANSI')]: ['"ansi-regex"', '"strip-ansi"'],
+    [b('wrapAnsi')]: ['"wrap-ansi"'],
     'literal numbers': ['"http-status-codes"'],
     'native Array.flat': ['"array-flatten"', '"flat"'],
     'native Array.from': ['"arrify"'],
@@ -797,7 +793,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     ]
   },
   versioning: {
-    'import { semver } from bun': ['"compare-versions"', '"node-semver"', '"semver"', '"semver-diff"', '"semver-regex"']
+    [b('semver')]: ['"compare-versions"', '"node-semver"', '"semver"', '"semver-diff"', '"semver-regex"']
   },
   virtualization: {
     'native scroll or tanstack-virtual': ['"react-virtualized"', '"react-virtuoso"', '"react-window"']
