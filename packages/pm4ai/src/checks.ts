@@ -3,7 +3,7 @@ import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
-import { ALL_BANNED, LINTMAX_ONLY } from './banned.js'
+import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY } from './banned.js'
 import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
 import { DEFAULT_SCRIPTS, EXPECTED, FORBIDDEN_LOCKFILES, MUST_EXIST_FILES, VERBATIM_FILES } from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
@@ -161,6 +161,20 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
           .join(', ')}`,
         type: 'forbidden'
       })
+  const bunGlobalResult =
+    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!node_modules' -g '!readonly' -g '!.next' -g '!dist' -g '!*.d.ts' -g '!banned.ts' -o --no-filename`
+      .quiet()
+      .nothrow()
+  const bunGlobalMatches = bunGlobalResult.stdout.toString().trim()
+  if (bunGlobalMatches) {
+    const usedGlobals = [...new Set(bunGlobalMatches.split('\n'))]
+    const fixable = usedGlobals.filter(g => BUN_GLOBALS[g])
+    if (fixable.length > 0)
+      issues.push({
+        detail: `use named imports: ${fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')}`,
+        type: 'forbidden'
+      })
+  }
   return issues
 }
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
