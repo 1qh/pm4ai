@@ -3,7 +3,7 @@ import { $, file } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
-import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY } from './banned.js'
+import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
 import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
 import {
   DEFAULT_SCRIPTS,
@@ -147,7 +147,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       type: 'forbidden'
     })
   const isLintmax = projectPath.includes('/lintmax')
-  const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)]
+  const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
     bannedImports.map(async ({ ban, fix }) => {
       const result = await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()

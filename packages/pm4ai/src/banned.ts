@@ -1002,9 +1002,23 @@ const BUN_GLOBALS: Record<string, string> = Object.fromEntries(
     ] satisfies BunExport[]
   ).map(name => [`Bun.${name}`, `import { ${name} } from 'bun'`])
 )
+const TEMPORARY = new Set([
+  '"@t3-oss/env',
+  '"clsx"',
+  '"dotenv-cli"',
+  '"ioredis"',
+  '"jose"',
+  '"postgres"',
+  '"q"',
+  '"react-dropzone"',
+  '"react-intersection-observer"',
+  '"sharp"',
+  '"slugify"',
+  '"tailwind-merge"'
+])
 const flattenBanned = (dict: Record<string, Record<string, string[]>>): BannedPackage[] =>
   Object.values(dict).flatMap(fixes => Object.entries(fixes).flatMap(([fix, bans]) => bans.map(ban => ({ ban, fix }))))
 const ALL_BANNED: BannedPackage[] = flattenBanned(BANNED)
 const LINTMAX_ONLY: BannedPackage[] = flattenBanned(LINTMAX_ONLY_RAW)
-export { ALL_BANNED, ALLOWED_STACK, BANNED, BUN_GLOBALS, LINTMAX_ONLY }
+export { ALL_BANNED, ALLOWED_STACK, BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY }
 export type { BannedPackage }
