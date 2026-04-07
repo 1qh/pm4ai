@@ -11,7 +11,6 @@ import {
   checkGit,
   checkLint,
   checkRootPkg,
-  checkUnusedDeps,
   checkVercel
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
@@ -51,7 +50,6 @@ const status = async (swiftbar = false, all = false) => {
       checkForbidden(project.path),
       audit(project.path),
       checkCi(project.path),
-      checkUnusedDeps(project.path),
       checkVercel(project.path),
       Promise.resolve(checkLint(project.path))
     ])
