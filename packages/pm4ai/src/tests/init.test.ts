@@ -78,7 +78,7 @@ describe('init scaffold', () => {
   })
   test('package names are correct', () => {
     const rootPkg = readPkg(join(TEST_DIR, 'package.json'))
-    expect(rootPkg.name).toBe(TEST_NAME)
+    expect(rootPkg.name).toBeUndefined()
     expect(rootPkg.private).toBe(true)
     const cliPkg = readPkg(join(TEST_DIR, 'packages/cli/package.json'))
     expect(cliPkg.name).toBe(TEST_NAME)

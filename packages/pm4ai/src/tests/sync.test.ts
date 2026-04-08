@@ -270,7 +270,7 @@ describe('syncClaudeMd', () => {
   test('generates CLAUDE.md from always rules', async () => {
     const selfDir = makeTmp()
     const projectDir = makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
     mkdirSync(rulesDir, { recursive: true })
     writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
     writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
@@ -284,7 +284,7 @@ describe('syncClaudeMd', () => {
   test('no-op when CLAUDE.md already matches', async () => {
     const selfDir = makeTmp()
     const projectDir = makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
     mkdirSync(rulesDir, { recursive: true })
     writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
     writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
@@ -305,7 +305,7 @@ describe('syncClaudeMd', () => {
   test('includes dep-based rules when dep present', async () => {
     const selfDir = makeTmp()
     const projectDir = makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'web', 'content', 'rules')
+    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
     mkdirSync(rulesDir, { recursive: true })
     writeFileSync(join(rulesDir, 'react.mdx'), '---\ntitle: React\ninfer: react\n---\nreact rules')
     writeFileSync(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase rules')
