@@ -112,7 +112,8 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
-const providerJsxRe = /<\w+Provider/u
+const providerJsxRe = /<\w+Provider/gu
+const serverProviderRe = /<\w*Server\w*Provider/u
 const providerImportRe = /from\s+['"].*providers/u
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -153,9 +154,10 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const providerChecks = await Promise.all(
     providerLayoutFiles.map(async layoutFile => {
       const content = await file(layoutFile).text()
-      const usesProviderJsx = providerJsxRe.test(content)
+      const providerMatches = content.match(providerJsxRe) ?? []
+      const hasClientProvider = providerMatches.some(m => !serverProviderRe.test(m))
       const importsFromProviders = providerImportRe.test(content)
-      if (usesProviderJsx && !importsFromProviders) return layoutFile.replace(`${projectPath}/`, '')
+      if (hasClientProvider && !importsFromProviders) return layoutFile.replace(`${projectPath}/`, '')
     })
   )
   for (const f of providerChecks)
