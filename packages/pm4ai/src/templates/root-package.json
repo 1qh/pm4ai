@@ -1,0 +1,26 @@
+{
+  "private": true,
+  "workspaces": ["packages/*", "apps/*", "readonly/ui"],
+  "scripts": {
+    "action": "sh up.sh",
+    "build": "turbo build --output-logs=errors-only",
+    "check": "lintmax check",
+    "clean": "sh clean.sh",
+    "fix": "lintmax fix",
+    "postinstall": "sherif",
+    "prepare": "bunx simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "sh up.sh && git add -u"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "lintmax": "latest",
+    "sherif": "latest",
+    "simple-git-hooks": "latest",
+    "tsdown": "latest",
+    "turbo": "latest",
+    "typescript": "latest"
+  },
+  "trustedDependencies": ["esbuild", "lintmax", "simple-git-hooks"]
+}

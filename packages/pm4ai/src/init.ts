@@ -67,10 +67,6 @@ const patchFile = async (path: string, replacements: [string, string][]) => {
   await write(path, content)
 }
 const writeJson = async (path: string, obj: unknown) => write(path, `${JSON.stringify(obj, null, 2)}\n`)
-const omit = (obj: Record<string, string>, keys: string[]) => {
-  const exclude = new Set(keys)
-  return Object.fromEntries(Object.entries(obj).filter(([k]) => !exclude.has(k)))
-}
 const templateDir = join(dirname(new URL(import.meta.url).pathname), 'templates')
 const init = async (name: string) => {
   const projectName = basename(resolve(process.cwd(), name))
@@ -95,25 +91,10 @@ const init = async (name: string) => {
     copyTemplateDir(join(templateDir, 'docs'), join(dir, 'apps', 'docs'), projectName)
   ])
   const bunVersion = await getBunVersion()
-  const rootPkg = (await file(join(src, 'package.json')).json()) as Record<string, unknown>
-  Reflect.deleteProperty(rootPkg, 'name')
+  const rootPkg = JSON.parse(await file(join(templateDir, 'root-package.json')).text()) as Record<string, unknown>
   rootPkg.packageManager = `bun@${bunVersion}`
-  rootPkg.devDependencies = omit(rootPkg.devDependencies as Record<string, string>, ['@playwright/test', '@types/mdx'])
-  const webPkg = (await file(join(src, 'apps', 'web', 'package.json')).json()) as Record<string, unknown>
-  webPkg.dependencies = omit((webPkg.dependencies ?? {}) as Record<string, string>, [
-    '@orpc/client',
-    '@orpc/react-query',
-    '@orpc/server',
-    '@tanstack/react-query',
-    'pm4ai',
-    'zod'
-  ])
-  const docsPkg = (await file(join(src, 'apps', 'docs', 'package.json')).json()) as Record<string, unknown>
-  docsPkg.dependencies = omit((docsPkg.dependencies ?? {}) as Record<string, string>, ['pm4ai'])
   await Promise.all([
     writeJson(join(dir, 'package.json'), rootPkg),
-    writeJson(join(dir, 'apps', 'web', 'package.json'), webPkg),
-    writeJson(join(dir, 'apps', 'docs', 'package.json'), docsPkg),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'layout.shared.tsx'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'web', 'src', 'app', 'layout.tsx'), [['pm4ai dashboard', projectName]])

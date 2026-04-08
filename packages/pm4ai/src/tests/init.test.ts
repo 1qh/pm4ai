@@ -4,6 +4,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS } from '../constants.js'
 import { init } from '../init.js'
 const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
@@ -104,6 +105,19 @@ describe('init scaffold', () => {
   test('docs uses content/docs path', () => {
     const sourceConfig = readFileSync(join(TEST_DIR, 'apps/docs/source.config.ts'), 'utf8')
     expect(sourceConfig).toContain("'content/docs'")
+  })
+  test('template root package.json matches constants', () => {
+    const tplPkg = readPkg(join(TEST_DIR, 'package.json'))
+    const scripts = tplPkg.scripts as Record<string, string>
+    for (const [key, val] of Object.entries(DEFAULT_SCRIPTS)) expect(scripts[key]).toBe(val)
+    const hooks = tplPkg['simple-git-hooks'] as Record<string, string>
+    expect(hooks['pre-commit']).toBe(EXPECTED.preCommit)
+    const devDeps = Object.keys(tplPkg.devDependencies as Record<string, string>)
+    for (const dep of REQUIRED_ROOT_DEVDEPS) expect(devDeps).toContain(dep)
+    const trusted = tplPkg.trustedDependencies as string[]
+    for (const dep of REQUIRED_TRUSTED_DEPS) expect(trusted).toContain(dep)
+    expect(tplPkg.private).toBe(true)
+    expect(tplPkg.name).toBeUndefined()
   })
   test.skipIf(!process.env.CI)(
     'bun install succeeds',
