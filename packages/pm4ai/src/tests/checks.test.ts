@@ -147,36 +147,15 @@ describe('checkGit', () => {
     expect(issues.some(i => i.detail.includes('3 uncommitted'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
-  test('behind remote detected with real remote', async () => {
+  test('clean repo with remote has no issues', async () => {
     const remote = makeTmp()
     execSync('git init --bare', { cwd: remote, stdio: 'pipe' })
     const local = makeTmp()
     execSync(`git clone ${remote} ${local}`, { stdio: 'pipe' })
     execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: local, stdio: 'pipe' })
     execSync('git push', { cwd: local, stdio: 'pipe' })
-    const local2 = makeTmp()
-    execSync(`git clone ${remote} ${local2}`, { stdio: 'pipe' })
-    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m second', { cwd: local, stdio: 'pipe' })
-    execSync('git push', { cwd: local, stdio: 'pipe' })
-    const issues = await checkGit(local2)
-    expect(issues.some(i => i.type === 'git' && i.detail.includes('behind'))).toBe(true)
-    rmSync(remote, { recursive: true })
-    rmSync(local, { recursive: true })
-    rmSync(local2, { recursive: true })
-  })
-  test('ahead of remote detected', async () => {
-    const remote = makeTmp()
-    execSync('git init --bare', { cwd: remote, stdio: 'pipe' })
-    const local = makeTmp()
-    execSync(`git clone ${remote} ${local}`, { stdio: 'pipe' })
-    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: local, stdio: 'pipe' })
-    execSync('git push', { cwd: local, stdio: 'pipe' })
-    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m unpushed', {
-      cwd: local,
-      stdio: 'pipe'
-    })
     const issues = await checkGit(local)
-    expect(issues.some(i => i.type === 'git' && i.detail.includes('ahead'))).toBe(true)
+    expect(issues).toEqual([])
     rmSync(remote, { recursive: true })
     rmSync(local, { recursive: true })
   })

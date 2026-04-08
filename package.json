@@ -1,5 +1,4 @@
 {
-  "name": "pm4ai",
   "private": true,
   "workspaces": [
     "packages/*",
