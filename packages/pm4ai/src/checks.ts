@@ -32,6 +32,9 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
+  const dirtyCheck = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
+  const dirty = dirtyCheck.stdout.toString().trim()
+  if (!dirty) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
   const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
   if (statusResult.exitCode !== 0) debug('command failed:', 'git status --porcelain')
   const statusOut = statusResult.stdout.toString().trim()
