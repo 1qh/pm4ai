@@ -96,7 +96,8 @@ const init = async (name: string) => {
   ])
   const bunVersion = await getBunVersion()
   const rootPkg = (await file(join(src, 'package.json')).json()) as Record<string, unknown>
-  rootPkg.name = projectName
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete rootPkg.name
   rootPkg.packageManager = `bun@${bunVersion}`
   rootPkg.devDependencies = omit(rootPkg.devDependencies as Record<string, string>, ['@playwright/test', '@types/mdx'])
   const webPkg = (await file(join(src, 'apps', 'web', 'package.json')).json()) as Record<string, unknown>
