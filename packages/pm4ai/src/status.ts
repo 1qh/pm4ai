@@ -3,16 +3,7 @@ import { $ } from 'bun'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { spawnBackgroundCheck } from './check-cache.js'
-import {
-  checkCi,
-  checkConfigs,
-  checkDrift,
-  checkForbidden,
-  checkGit,
-  checkLint,
-  checkRootPkg,
-  checkVercel
-} from './checks.js'
+import { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkRootPkg, checkVercel } from './checks.js'
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
 import { isInsideProject, projectName } from './utils.js'
@@ -50,8 +41,7 @@ const status = async (swiftbar = false, all = false) => {
       checkForbidden(project.path),
       audit(project.path),
       checkCi(project.path),
-      checkVercel(project.path),
-      Promise.resolve(checkLint(project.path))
+      checkVercel(project.path)
     ])
     for (const r of results) issues.push(...r)
     allIssues.set(project.path, issues)
