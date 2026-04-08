@@ -11,6 +11,7 @@ If `README.md` exists at the repo root, read it first.
 All projects with lintmax in deps are managed by pm4ai (`bunx pm4ai@latest`). The tool syncs configs, generates CLAUDE.md, enforces conventions, and runs maintenance.
 
 Key repos:
+
 - **pm4ai** — the management tool. Rules in `apps/docs/content/rules/*.mdx`. Checks in `packages/pm4ai/src/`.
 - **lintmax** — max-strict lint/format orchestrator. All projects depend on it.
 - **cnsync** — canonical source for `readonly/ui` (shadcn + ai-elements components).
@@ -20,6 +21,7 @@ For full documentation: `curl https://pm4ai.vercel.app/llms-full.txt`
 ## Managed Files
 
 These files are auto-generated and synced by pm4ai. Never edit them directly:
+
 - `CLAUDE.md` — generated from rules based on project dependencies
 - `.github/workflows/ci.yml` — universal CI workflow
 - `clean.sh` — universal cleanup script
@@ -31,6 +33,7 @@ These files are auto-generated and synced by pm4ai. Never edit them directly:
 ## Role Detection
 
 Run `gh auth status` to determine your role:
+
 - If you are the repo owner (`1qh`): you can modify pm4ai rules and checks directly in the pm4ai repo
 - Otherwise: do not edit managed files, only use companion files
 
@@ -46,6 +49,7 @@ Run `gh auth status` to determine your role:
 ## Companion Files
 
 Use these for project-specific content:
+
 - `LEARNING.md` — lessons learned, gotchas, known issues
 - `RULES.md` — project-specific rules that don't apply to other projects
 - `PROGRESS.md` — tracking ongoing work
@@ -56,6 +60,7 @@ Use these for project-specific content:
 Run `bunx pm4ai@latest status` to see issues in this project. Run `bunx pm4ai@latest fix` to sync and maintain.
 
 Check states:
+
 - `check: passed 5m ago (current)` — safe to proceed
 - `check: passed 3h ago (before 2 commits)` — stale, run `bunx pm4ai@latest status` again and wait for refresh
 - `check: failed 5m ago (current), 15 violations` — fix violations before proceeding

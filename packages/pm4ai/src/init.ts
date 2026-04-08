@@ -92,10 +92,12 @@ const init = async (name: string) => {
     copyTemplateDir(join(templateDir, 'docs'), join(dir, 'apps', 'docs'), projectName)
   ])
   const bunVersion = await getBunVersion()
-  const rootPkg = JSON.parse(await file(join(templateDir, 'root-package.json')).text()) as Record<string, unknown>
-  rootPkg.packageManager = `bun@${bunVersion}`
+  const rootPkgText = (await file(join(templateDir, 'root-package.json')).text()).replace(
+    '__PACKAGE_MANAGER__',
+    `bun@${bunVersion}`
+  )
   await Promise.all([
-    writeJson(join(dir, 'package.json'), rootPkg),
+    write(join(dir, 'package.json'), rootPkgText),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'layout.shared.tsx'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'web', 'src', 'app', 'layout.tsx'), [['pm4ai dashboard', projectName]])

@@ -1,6 +1,10 @@
 {
   "private": true,
-  "workspaces": ["packages/*", "apps/*", "readonly/ui"],
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "readonly/ui"
+  ],
   "scripts": {
     "action": "sh up.sh",
     "build": "turbo build --output-logs=errors-only",
@@ -22,5 +26,10 @@
     "turbo": "latest",
     "typescript": "latest"
   },
-  "trustedDependencies": ["esbuild", "lintmax", "simple-git-hooks"]
+  "packageManager": "__PACKAGE_MANAGER__",
+  "trustedDependencies": [
+    "esbuild",
+    "lintmax",
+    "simple-git-hooks"
+  ]
 }
