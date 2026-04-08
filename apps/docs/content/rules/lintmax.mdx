@@ -10,11 +10,11 @@ lintmax is our own max-strict lint/format orchestrator. We own it — read the s
 
 ### Ignore Syntax
 
-| Linter | File-level | Per-line |
+| Linter | File-level                                           | Per-line                                         |
 | ------ | ---------------------------------------------------- | ------------------------------------------------ |
-| oxlint | `/* oxlint-disable rule-name */` | `// oxlint-disable-next-line rule-name` |
-| eslint | `/* eslint-disable rule-name */` | `// eslint-disable-next-line rule-name` |
-| biome | `/** biome-ignore-all lint/category/rule: reason */` | `/** biome-ignore lint/category/rule: reason */` |
+| oxlint | `/* oxlint-disable rule-name */`                     | `// oxlint-disable-next-line rule-name`          |
+| eslint | `/* eslint-disable rule-name */`                     | `// eslint-disable-next-line rule-name`          |
+| biome  | `/** biome-ignore-all lint/category/rule: reason */` | `/** biome-ignore lint/category/rule: reason */` |
 
 ### Ignore Strategy
 
@@ -26,14 +26,14 @@ lintmax is our own max-strict lint/format orchestrator. We own it — read the s
 
 - File-level directives go at absolute file top, above any imports/code (including `'use client'`/`'use node'`).
 - Per-line directives go on the line ABOVE the code, NEVER inline on the same line (triggers `no-inline-comments`).
-- When 2+ linters flag the same line, use file-level for one and per-line for the other — don't stack multiple per-line directives above one line.
+- When 2+ linters flag the same line, use file-level for one and per-line for the other — don’t stack multiple per-line directives above one line.
 - Remove duplicate directives; keep one canonical directive block.
 - Use one top `eslint-disable` line per file; combine multiple rules with commas.
 
 ### Cross-linter Rules
 
 - 2 linters with the same rule (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, NOT a conflict. Never disable one because the other covers it.
-- To suppress a shared eslint/oxlint rule: suppress eslint's version — oxlint auto-picks up eslint rules and is faster.
+- To suppress a shared eslint/oxlint rule: suppress eslint’s version — oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` conflicts with perfectionist (ASCII vs natural sort) — disabled in lintmax.
 
 ### Never-ignore Rules
@@ -57,5 +57,5 @@ If an agent suppresses any of these, the code must be rewritten to satisfy the r
 
 ## Playbook Maintenance
 
-- Every new lesson must be merged into the most relevant existing section immediately; do NOT create append-only "recent lessons" buckets.
+- Every new lesson must be merged into the most relevant existing section immediately; do NOT create append-only “recent lessons” buckets.
 - Correct rules in place (single source of truth), then remove superseded guidance.

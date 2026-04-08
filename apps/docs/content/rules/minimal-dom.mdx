@@ -6,14 +6,14 @@ infer: tailwindcss
 
 ## Minimal DOM (React + Tailwind)
 
-Same UI, fewest DOM nodes. Every element must earn its place. If you can delete it and nothing breaks (semantics, layout, behavior, required styling) → it shouldn't exist.
+Same UI, fewest DOM nodes. Every element must earn its place. If you can delete it and nothing breaks (semantics, layout, behavior, required styling) → it shouldn’t exist.
 
 A node is allowed only if it provides:
 
 - **Semantics/a11y** — correct elements (`ul/li`, `button`, `label`, `form`, `nav`, `section`), ARIA patterns, focus behavior
 - **Layout constraint** — needs its own containing block / positioning / clipping / scroll / stacking context (`relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`)
 - **Behavior** — measurement refs, observers, portals, event boundary, virtualization
-- **Component API** — can't pass props/classes to the real root (and you tried `as`/`asChild`/prop forwarding)
+- **Component API** — can’t pass props/classes to the real root (and you tried `as`/`asChild`/prop forwarding)
 
 Before adding wrappers:
 
