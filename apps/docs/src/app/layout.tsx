@@ -5,7 +5,7 @@ import { Providers } from './providers'
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html className={cn('font-sans', sans.variable, mono.variable)} lang='en' suppressHydrationWarning>
-      <body className='flex flex-col min-h-screen'>
+      <body className='flex flex-col min-h-screen antialiased'>
         <Providers>{children}</Providers>
       </body>
     </html>
