@@ -1,15 +1,18 @@
-import { RootProvider } from 'fumadocs-ui/provider/next'
-import './global.css'
-import { Inter, JetBrains_Mono } from 'next/font/google'
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
-const fonts = `${inter.variable} ${jetbrainsMono.variable}`
-export default function Layout({ children }: LayoutProps<'/'>) {
-  return (
-    <html className={fonts} lang='en' suppressHydrationWarning>
-      <body className='flex flex-col min-h-screen font-[family-name:var(--font-inter)]'>
-        <RootProvider>{children}</RootProvider>
-      </body>
-    </html>
-  )
+/* eslint-disable @eslint-react/no-unused-props, react/no-unused-prop-types, @typescript-eslint/require-await */
+import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
+import { Providers } from '@/lib/providers'
+import './globals.css'
+const metadata: Metadata = {
+  description: 'Real-time project monitoring dashboard',
+  title: 'pm4ai dashboard'
 }
+const RootLayout = async ({ children }: { children: ReactNode; params: Promise<Record<string, string>> }) => (
+  <html lang='en'>
+    <body className='bg-neutral-950 text-neutral-100 font-mono antialiased'>
+      <Providers>{children}</Providers>
+    </body>
+  </html>
+)
+export default RootLayout
+export { metadata }

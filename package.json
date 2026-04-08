@@ -36,6 +36,6 @@
     "esbuild",
     "lintmax",
     "simple-git-hooks",
-    "web"
+    "docs"
   ]
 }

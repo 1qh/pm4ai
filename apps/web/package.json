@@ -3,19 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "fumadocs-mdx && next build",
-    "dev": "next dev",
-    "postinstall": "fumadocs-mdx",
-    "start": "next start"
+    "build": "next build",
+    "dev": "next dev --port 4200",
+    "start": "next start --port 4200"
   },
   "dependencies": {
-    "fumadocs-core": "latest",
-    "fumadocs-mdx": "latest",
-    "fumadocs-ui": "latest",
-    "lucide-react": "latest",
+    "@a/ui": "workspace:*",
+    "@orpc/client": "latest",
+    "@orpc/react-query": "latest",
+    "@orpc/server": "latest",
+    "@tanstack/react-query": "latest",
     "next": "latest",
     "pm4ai": "workspace:*",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "zod": "latest"
   }
 }

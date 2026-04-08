@@ -6,10 +6,10 @@ import { join } from 'node:path'
 import { discover } from './discover.js'
 const dashboard = async () => {
   const { self } = await discover()
-  const dashboardDir = join(self.path, 'apps', 'dashboard')
+  const dashboardDir = join(self.path, 'apps', 'web')
   if (!existsSync(dashboardDir)) {
     console.log('dashboard app not found at', dashboardDir)
-    console.log('run from pm4ai monorepo or ensure apps/dashboard exists')
+    console.log('run from pm4ai monorepo or ensure apps/web exists')
     return
   }
   const token = randomUUID()

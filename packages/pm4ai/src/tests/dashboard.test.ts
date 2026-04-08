@@ -33,14 +33,14 @@ describe('dashboard token file', () => {
   })
 })
 describe('dashboard directory detection', () => {
-  test('detects when apps/dashboard exists', () => {
+  test('detects when apps/web exists', () => {
     const tmp = makeTmp()
     const dashDir = join(tmp, 'apps', 'dashboard')
     mkdirSync(dashDir, { recursive: true })
     expect(existsSync(dashDir)).toBe(true)
     rmSync(tmp, { recursive: true })
   })
-  test('detects when apps/dashboard is missing', () => {
+  test('detects when apps/web is missing', () => {
     const tmp = makeTmp()
     expect(existsSync(join(tmp, 'apps', 'dashboard'))).toBe(false)
     rmSync(tmp, { recursive: true })

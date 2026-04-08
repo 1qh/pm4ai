@@ -3,7 +3,7 @@ import { source } from '@/lib/source'
 const ecosystem = `## Ecosystem
 All projects with lintmax in deps are managed by pm4ai. The tool syncs configs, generates CLAUDE.md, enforces conventions, and runs maintenance.
 Key repos:
-- pm4ai — the management tool. Rules in apps/web/content/rules/*.mdx. Checks in packages/pm4ai/src/.
+- pm4ai — the management tool. Rules in apps/docs/content/rules/*.mdx. Checks in packages/pm4ai/src/.
 - lintmax — max-strict lint/format orchestrator. All projects depend on it.
 - cnsync — canonical source for readonly/ui (shadcn + ai-elements components).
 Owner workflow:
@@ -12,7 +12,7 @@ Owner workflow:
 - bunx pm4ai@latest fix --all — all projects
 - sh up.sh — clean + install + build + fix + check
 When to improve pm4ai:
-- New universal rule → add .mdx to apps/web/content/rules/ with infer frontmatter
+- New universal rule → add .mdx to apps/docs/content/rules/ with infer frontmatter
 - New check → add to packages/pm4ai/src/audit.ts or checks.ts
 - New dotfile → add to VERBATIM_FILES in constants.ts and repo root
 - After changes: fix, check, test, commit, push, publish, then pm4ai fix --all
