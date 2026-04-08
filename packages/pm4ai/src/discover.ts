@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { GH_ORG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
-import { debug, projectName, readPkg } from './utils.js'
+import { debug, projectName } from './utils.js'
 interface Project {
   isCnsync: boolean
   isSelf: boolean
@@ -64,8 +64,7 @@ const discover = async (
   const projectDirs = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
   const projects: Project[] = await Promise.all(
     projectDirs.map(async dir => {
-      const pkg = await readPkg(join(dir, 'package.json'))
-      const name = pkg?.name ?? projectName(dir)
+      const name = projectName(dir)
       return {
         isCnsync: await isCnsyncRepo(dir),
         isSelf: name === MONOREPO_NAME || name === PKG_NAME,
