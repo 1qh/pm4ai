@@ -67,7 +67,6 @@ const patchFile = async (path: string, replacements: [string, string][]) => {
   for (const [from, to] of replacements) content = content.replaceAll(from, to)
   await write(path, content)
 }
-const writeJson = async (path: string, obj: unknown) => write(path, `${JSON.stringify(obj, null, 2)}\n`)
 const templateDir = join(dirname(new URL(import.meta.url).pathname), 'templates')
 const init = async (name: string) => {
   const projectName = basename(resolve(process.cwd(), name))
@@ -92,10 +91,8 @@ const init = async (name: string) => {
     copyTemplateDir(join(templateDir, 'docs'), join(dir, 'apps', 'docs'), projectName)
   ])
   const bunVersion = await getBunVersion()
-  const rootPkgText = (await file(join(templateDir, 'root-package.json')).text()).replace(
-    '__PACKAGE_MANAGER__',
-    `bun@${bunVersion}`
-  )
+  const rootPkgRaw = await file(join(templateDir, 'root-package.txt')).text()
+  const rootPkgText = rootPkgRaw.replace('__PACKAGE_MANAGER__', `bun@${bunVersion}`)
   await Promise.all([
     write(join(dir, 'package.json'), rootPkgText),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),

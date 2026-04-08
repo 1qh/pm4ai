@@ -66,7 +66,6 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const pkg = await readPkg(join(projectPath, 'package.json'))
   if (!pkg) return issues
-  if (pkg.name) issues.push({ detail: 'root package.json should not have "name" field', type: 'drift' })
   if (!pkg.private) issues.push({ detail: 'root package.json should be private', type: 'drift' })
   if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
   if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
