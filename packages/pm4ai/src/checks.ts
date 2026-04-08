@@ -39,13 +39,6 @@ const checkGit = async (projectPath: string): Promise<Issue[]> => {
     const count = statusOut.split('\n').length
     issues.push({ detail: `${count} uncommitted changes`, type: 'git' })
   }
-  await $`git fetch`.cwd(projectPath).quiet().nothrow()
-  const behindResult = await $`git rev-list --count HEAD..@{u}`.cwd(projectPath).quiet().nothrow()
-  const behind = Number.parseInt(behindResult.stdout.toString().trim(), 10)
-  if (behind > 0) issues.push({ detail: `${behind} commits behind remote`, type: 'git' })
-  const aheadResult = await $`git rev-list --count @{u}..HEAD`.cwd(projectPath).quiet().nothrow()
-  const ahead = Number.parseInt(aheadResult.stdout.toString().trim(), 10)
-  if (ahead > 0) issues.push({ detail: `${ahead} commits ahead of remote`, type: 'git' })
   return issues
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
