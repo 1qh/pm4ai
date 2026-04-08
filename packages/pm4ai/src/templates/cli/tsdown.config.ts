@@ -1,9 +1,8 @@
 import { defineConfig } from 'tsdown'
 export default defineConfig({
   clean: true,
-  copy: ['src/templates'],
   dts: true,
-  entry: ['src/index.ts', 'src/cli.ts', 'src/guide.ts', 'src/watch-state.ts', 'src/check-worker.ts'],
+  entry: ['src/index.ts', 'src/cli.ts', 'src/tui.tsx'],
   format: 'esm',
   outDir: 'dist'
 })

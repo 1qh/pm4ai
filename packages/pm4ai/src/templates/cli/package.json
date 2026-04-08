@@ -1,0 +1,30 @@
+{
+  "name": "__NAME__",
+  "version": "0.0.1",
+  "description": "__NAME__ CLI",
+  "license": "MIT",
+  "author": "1qh",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "bin": {
+    "__NAME__": "dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "ink": "latest",
+    "ink-spinner": "latest",
+    "react": "latest"
+  }
+}
