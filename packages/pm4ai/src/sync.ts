@@ -158,11 +158,10 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
     changed = true
     issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
   }
-  const expectedAction = scripts.test ? 'sh up.sh && bun run test' : 'sh up.sh'
-  if (scripts.action !== expectedAction) {
-    scripts.action = expectedAction
+  if (!scripts.action?.startsWith('sh up.sh')) {
+    scripts.action = scripts.action ? `sh up.sh && ${scripts.action}` : 'sh up.sh'
     changed = true
-    issues.push({ detail: `set action to "${expectedAction}"`, type: 'synced' })
+    issues.push({ detail: 'action must start with "sh up.sh"', type: 'synced' })
   }
   if (changed) {
     pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})
