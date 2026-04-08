@@ -108,6 +108,10 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const pkgPath = join(projectPath, 'package.json')
   const pkg = await readPkg(pkgPath)
   if (!pkg) return issues
+  if (pkg.name) {
+    Reflect.deleteProperty(pkg, 'name')
+    issues.push({ detail: 'removed root package.json "name" field', type: 'synced' })
+  }
   const wasPrivate = Boolean(pkg.private)
   if (!pkg.private) {
     pkg.private = true
