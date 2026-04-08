@@ -6,13 +6,14 @@
     "readonly/ui"
   ],
   "scripts": {
-    "action": "which rg || sudo apt-get install -y ripgrep && sh up.sh && bun run test && cd packages/pm4ai && bun dist/cli.mjs && bun dist/cli.mjs status",
+    "action": "sh up.sh && bun run test",
     "build": "turbo build --output-logs=errors-only",
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
     "postinstall": "sherif",
     "prepare": "bunx simple-git-hooks",
+    "pretest": "which rg || sudo apt-get install -y ripgrep",
     "test": "turbo test --output-logs=errors-only"
   },
   "simple-git-hooks": {

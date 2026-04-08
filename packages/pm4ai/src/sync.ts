@@ -158,6 +158,28 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
     changed = true
     issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
   }
+  const turboPath = join(projectPath, 'turbo.json')
+  const turbo = await readJson(turboPath)
+  const turboTasks =
+    turbo && typeof turbo === 'object' && 'tasks' in turbo
+      ? Object.keys((turbo as Record<string, Record<string, unknown>>).tasks ?? {})
+      : []
+  const ciTasks = turboTasks.filter(t => t === 'test' || t === 'smoke' || t.startsWith('test:')).toSorted()
+  const hasCI = ciTasks.length > 0
+  const expectedAction = hasCI ? 'sh up.sh && bun run test' : 'sh up.sh'
+  if (scripts.action !== expectedAction) {
+    scripts.action = expectedAction
+    changed = true
+    issues.push({ detail: `set action to "${expectedAction}"`, type: 'synced' })
+  }
+  if (hasCI) {
+    const expectedTest = `turbo ${ciTasks.join(' ')} --output-logs=errors-only`
+    if (scripts.test !== expectedTest) {
+      scripts.test = expectedTest
+      changed = true
+      issues.push({ detail: `set test to "${expectedTest}"`, type: 'synced' })
+    }
+  }
   if (changed) {
     pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})
     await write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`)
