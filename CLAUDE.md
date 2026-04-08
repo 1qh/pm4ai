@@ -6,7 +6,7 @@ All projects with lintmax in deps are managed by pm4ai (`bunx pm4ai@latest`). Th
 
 Key repos:
 
-- **pm4ai** — the management tool. Rules in `apps/web/content/rules/*.mdx`. Checks in `packages/pm4ai/src/`.
+- **pm4ai** — the management tool. Rules in `apps/docs/content/rules/*.mdx`. Checks in `packages/pm4ai/src/`.
 - **lintmax** — max-strict lint/format orchestrator. All projects depend on it.
 - **cnsync** — canonical source for `readonly/ui` (shadcn + ai-elements components).
 
@@ -35,7 +35,7 @@ Run `gh auth status` to determine your role:
 - `bunx pm4ai@latest status` — check current project
 - `bunx pm4ai@latest fix` — sync + maintain (requires clean git)
 - `bunx pm4ai@latest fix --all` — all projects
-- New universal rule → add `.mdx` to pm4ai `apps/web/content/rules/` with `infer` frontmatter
+- New universal rule → add `.mdx` to pm4ai `apps/docs/content/rules/` with `infer` frontmatter
 - New check → add to pm4ai `packages/pm4ai/src/audit.ts` or `checks.ts`
 - If you discover something during this session that should apply to all projects, note it for pm4ai
 
@@ -264,6 +264,16 @@ className={cn('base-classes', variant === 'a' ? 'class-a' : 'class-b')}
 ```
 
 NEVER use template literals for conditional classNames.
+
+---
+
+## Library Publishing
+
+- Use `tsdown` for building and publishing packages
+- ESM format with declaration files
+- `prepublishOnly` script to build before publish
+- Never bundle dependencies that consumers should install themselves
+- Export all types used in public API — DTS generation fails on unexported internal types leaking through re-exports
 
 ---
 

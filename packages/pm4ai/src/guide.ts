@@ -18,7 +18,7 @@ flags:
   --verbose        print debug info to stderr
 fix behavior:
   blocks if git is dirty, behind remote, or ahead (unpushed)
-  syncs: clean.sh, up.sh, bunfig.toml, .gitignore, CLAUDE.md, readonly/ui
+  syncs: .github/workflows/ci.yml, clean.sh, up.sh, bunfig.toml, .gitignore, CLAUDE.md, readonly/ui
   maintains: runs sh up.sh (clean + install + build + fix + check)
   shows file change summary after completion
 status output (only issues shown, healthy projects omitted):

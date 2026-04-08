@@ -2,6 +2,11 @@
   "name": "@pm4ai/lib",
   "version": "0.0.1",
   "description": "Shared utilities",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1qh/pm4ai",
+    "directory": "packages/lib"
+  },
   "license": "MIT",
   "author": "1qh",
   "type": "module",
@@ -17,6 +22,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown"
+    "build": "tsdown",
+    "cleanup-old-versions": "bun script/cleanup-old-versions.ts",
+    "postpublish": "bun run cleanup-old-versions"
   }
 }
