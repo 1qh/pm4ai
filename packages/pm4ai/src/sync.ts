@@ -49,7 +49,7 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
 }
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const rulesDir = join(selfPath, 'apps', 'web', 'content', 'rules')
+  const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
   if (!existsSync(rulesDir)) {
     issues.push({ detail: 'rules directory not found in pm4ai repo', type: 'error' })
     return issues

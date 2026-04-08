@@ -112,17 +112,20 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
+const providerJsxRe = /<\w+Provider/u
+const providerImportRe = /from\s+['"].*providers/u
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   for (const f of FORBIDDEN_LOCKFILES)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
-  const [bunLockTracked, nestedGitignores, postcssFiles, tsNoCheck] = await Promise.all([
+  const [bunLockTracked, nestedGitignores, postcssFiles, tsNoCheck, providerInLayout] = await Promise.all([
     $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow(),
     $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow(),
     $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
       .quiet()
       .nothrow(),
-    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
+    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow(),
+    $`rg 'Provider' ${projectPath} -g 'layout.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   ])
   if (bunLockTracked.stdout.toString().trim())
     issues.push({ detail: 'bun.lock tracked in git, should be gitignored', type: 'forbidden' })
@@ -146,6 +149,17 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         .join(', ')}`,
       type: 'forbidden'
     })
+  const providerLayoutFiles = providerInLayout.stdout.toString().trim().split('\n').filter(Boolean)
+  const providerChecks = await Promise.all(
+    providerLayoutFiles.map(async layoutFile => {
+      const content = await file(layoutFile).text()
+      const usesProviderJsx = providerJsxRe.test(content)
+      const importsFromProviders = providerImportRe.test(content)
+      if (usesProviderJsx && !importsFromProviders) return layoutFile.replace(`${projectPath}/`, '')
+    })
+  )
+  for (const f of providerChecks)
+    if (f) issues.push({ detail: `Provider in layout, move to providers.tsx: ${f}`, type: 'drift' })
   const isLintmax = projectPath.includes('/lintmax')
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
