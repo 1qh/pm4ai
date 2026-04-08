@@ -84,13 +84,13 @@ const init = async (name: string) => {
   console.log(`scaffolding ${projectName} from ${src}...`)
   mkdirSync(dir, { recursive: true })
   copyTree(src, dir, new Set(['packages']))
-  mkdirSync(join(dir, 'packages'), { recursive: true })
-  copyTree(join(src, 'packages', 'lib'), join(dir, 'packages', 'lib'))
   for (const p of REMOVE_PATHS) rmSync(join(dir, p), { force: true, recursive: true })
+  rmSync(join(dir, 'packages'), { force: true, recursive: true })
   rmSync(join(dir, 'apps', 'docs', 'content', 'rules'), { force: true, recursive: true })
   mkdirSync(join(dir, 'apps', 'docs', 'content', 'docs'), { recursive: true })
   await Promise.all([
     copyTemplateDir(join(templateDir, 'cli'), join(dir, 'packages', 'cli'), projectName),
+    copyTemplateDir(join(templateDir, 'lib'), join(dir, 'packages', 'lib'), projectName),
     copyTemplateDir(join(templateDir, 'web'), join(dir, 'apps', 'web'), projectName),
     copyTemplateDir(join(templateDir, 'docs'), join(dir, 'apps', 'docs'), projectName)
   ])
@@ -110,13 +110,10 @@ const init = async (name: string) => {
   ])
   const docsPkg = (await file(join(src, 'apps', 'docs', 'package.json')).json()) as Record<string, unknown>
   docsPkg.dependencies = omit((docsPkg.dependencies ?? {}) as Record<string, string>, ['pm4ai'])
-  const libPkg = (await file(join(src, 'packages', 'lib', 'package.json')).json()) as Record<string, unknown>
-  libPkg.name = `@${projectName}/lib`
   await Promise.all([
     writeJson(join(dir, 'package.json'), rootPkg),
     writeJson(join(dir, 'apps', 'web', 'package.json'), webPkg),
     writeJson(join(dir, 'apps', 'docs', 'package.json'), docsPkg),
-    writeJson(join(dir, 'packages', 'lib', 'package.json'), libPkg),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'layout.shared.tsx'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'web', 'src', 'app', 'layout.tsx'), [['pm4ai dashboard', projectName]])
