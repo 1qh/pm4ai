@@ -103,7 +103,7 @@ const init = async (name: string) => {
   await syncClaudeMd(src, dir)
   await $`git init`.cwd(dir).quiet()
   await $`git add -A`.cwd(dir).quiet()
-  await $`git commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet()
+  await $`git -c user.name=pm4ai -c user.email=pm4ai commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet().nothrow()
   console.log(`\ncreated ${projectName}/`)
   console.log(`\n  cd ${projectName}`)
   console.log('  bun i')
