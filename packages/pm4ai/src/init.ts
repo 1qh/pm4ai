@@ -3,6 +3,7 @@ import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { discover } from './discover.js'
+import { syncClaudeMd } from './sync.js'
 import { getBunVersion } from './utils.js'
 const SKIP = new Set([
   '.git',
@@ -99,6 +100,7 @@ const init = async (name: string) => {
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'layout.shared.tsx'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'web', 'src', 'app', 'layout.tsx'), [['pm4ai dashboard', projectName]])
   ])
+  await syncClaudeMd(src, dir)
   await $`git init`.cwd(dir).quiet()
   await $`git add -A`.cwd(dir).quiet()
   await $`git commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet()

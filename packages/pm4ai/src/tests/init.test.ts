@@ -19,6 +19,7 @@ describe('init scaffold', () => {
   }, 30_000)
   test('has all required structure', () => {
     const must = [
+      'CLAUDE.md',
       'package.json',
       'turbo.json',
       'tsconfig.json',
@@ -61,7 +62,6 @@ describe('init scaffold', () => {
     const forbidden = [
       'vercel.json',
       'prompts',
-      'CLAUDE.md',
       'apps/web/src/lib/router.ts',
       'apps/web/src/lib/socket.ts',
       'apps/web/src/lib/auth.ts',
@@ -132,6 +132,27 @@ describe('init scaffold', () => {
     async () => {
       const result = await $`bun run build`.cwd(TEST_DIR).quiet().nothrow()
       expect(result.exitCode).toBe(0)
+    },
+    120_000
+  )
+  test.skipIf(!process.env.CI)(
+    'fix produces no changes',
+    async () => {
+      const result = await $`bun run fix`.cwd(TEST_DIR).quiet().nothrow()
+      expect(result.exitCode).toBe(0)
+      const status = await $`git status --porcelain`.cwd(TEST_DIR).quiet().nothrow()
+      expect(status.stdout.toString().trim()).toBe('')
+    },
+    120_000
+  )
+  test.skipIf(!process.env.CI)(
+    'status has no issues',
+    async () => {
+      const result = await $`bunx pm4ai@latest status`.cwd(TEST_DIR).quiet().nothrow()
+      const output = result.stdout.toString()
+      expect(output).not.toContain('forbidden')
+      expect(output).not.toContain('missing')
+      expect(output).not.toContain('drift')
     },
     120_000
   )
