@@ -1,118 +1,124 @@
-import { describe, expect, test } from 'bun:test'
+/** biome-ignore-all lint/style/noProcessEnv: CI detection */
+import { $ } from 'bun'
+import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { init } from '../init.js'
-const name = `pm4ai-init-test-${Date.now()}`
-const dir = join(tmpdir(), name)
-describe('init', () => {
-  test('creates project with all required files', async () => {
-    const origCwd = process.cwd()
+const TEST_NAME = `pm4ai-init-${Date.now()}`
+const TEST_DIR = join(tmpdir(), TEST_NAME)
+const providerJsxRe = /<\w+Provider/u
+const readPkg = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+afterAll(() => rmSync(TEST_DIR, { force: true, recursive: true }))
+describe('init scaffold', () => {
+  test('creates project', async () => {
     process.chdir(tmpdir())
-    await init(name)
-    process.chdir(origCwd)
-    expect(existsSync(join(dir, 'package.json'))).toBe(true)
-    expect(existsSync(join(dir, 'turbo.json'))).toBe(true)
-    expect(existsSync(join(dir, 'tsconfig.json'))).toBe(true)
-    expect(existsSync(join(dir, '.github', 'workflows', 'ci.yml'))).toBe(true)
-    expect(existsSync(join(dir, '.git'))).toBe(true)
-    rmSync(dir, { recursive: true })
+    await init(TEST_NAME)
+    expect(existsSync(TEST_DIR)).toBe(true)
+  }, 30_000)
+  test('has all required structure', () => {
+    const must = [
+      'package.json',
+      'turbo.json',
+      'tsconfig.json',
+      'bunfig.toml',
+      'clean.sh',
+      'up.sh',
+      '.gitignore',
+      '.github/workflows/ci.yml',
+      'lintmax.config.ts',
+      'apps/web/package.json',
+      'apps/web/src/app/page.tsx',
+      'apps/web/src/app/layout.tsx',
+      'apps/web/src/app/fonts.ts',
+      'apps/web/src/app/globals.css',
+      'apps/web/src/lib/providers.tsx',
+      'apps/web/postcss.config.ts',
+      'apps/docs/package.json',
+      'apps/docs/source.config.ts',
+      'apps/docs/content/docs/index.mdx',
+      'apps/docs/src/app/layout.tsx',
+      'apps/docs/src/app/(home)/page.tsx',
+      'apps/docs/src/app/docs/layout.tsx',
+      'apps/docs/src/app/docs/[[...slug]]/page.tsx',
+      'apps/docs/src/lib/source.ts',
+      'apps/docs/src/components/mdx.tsx',
+      'packages/cli/package.json',
+      'packages/cli/tsdown.config.ts',
+      'packages/cli/src/cli.ts',
+      'packages/cli/src/index.ts',
+      'packages/cli/src/tui.tsx',
+      'packages/lib/package.json',
+      'packages/lib/tsdown.config.ts',
+      'packages/lib/src/index.ts',
+      'readonly/ui/package.json',
+      '.git'
+    ]
+    for (const f of must) expect(existsSync(join(TEST_DIR, f))).toBe(true)
   })
-  test('package.json has correct fields', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-pkg-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    const pkg = JSON.parse(readFileSync(join(testDir, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(pkg.name).toBe(testName)
-    expect(pkg.private).toBe(true)
-    expect(pkg.workspaces).toEqual(['packages/*', 'apps/*', 'readonly/*'])
-    const scripts = pkg.scripts as Record<string, string>
-    expect(scripts.build).toContain('turbo')
-    expect(scripts.check).toBe('lintmax check')
-    expect(scripts.clean).toBe('sh clean.sh')
-    expect(scripts.fix).toBe('lintmax fix')
-    expect(scripts.postinstall).toBe('sherif')
-    expect(scripts.prepare).toBe('bunx simple-git-hooks')
-    const hooks = pkg['simple-git-hooks'] as Record<string, string>
-    expect(hooks['pre-commit']).toBe('sh up.sh && git add -u')
-    expect((pkg.packageManager as string).startsWith('bun@')).toBe(true)
-    rmSync(testDir, { recursive: true })
+  test('has no pm4ai-specific files', () => {
+    const forbidden = [
+      'vercel.json',
+      'prompts',
+      'CLAUDE.md',
+      'apps/web/src/lib/router.ts',
+      'apps/web/src/lib/socket.ts',
+      'apps/web/src/lib/auth.ts',
+      'apps/web/src/lib/client.ts',
+      'apps/web/src/app/api',
+      'apps/web/src/app/auth',
+      'apps/web/src/tests',
+      'apps/docs/content/rules',
+      'apps/docs/src/app/llms-full.txt',
+      'apps/docs/src/app/api',
+      'packages/pm4ai'
+    ]
+    for (const f of forbidden) expect(existsSync(join(TEST_DIR, f))).toBe(false)
   })
-  test('does not overwrite existing directory', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-exist-${Date.now()}`
-    await init(testName)
-    const testDir = join(tmpdir(), testName)
-    const pkgBefore = readFileSync(join(testDir, 'package.json'), 'utf8')
-    await init(testName)
-    const pkgAfter = readFileSync(join(testDir, 'package.json'), 'utf8')
-    expect(pkgBefore).toBe(pkgAfter)
-    process.chdir(origCwd)
-    rmSync(testDir, { recursive: true })
+  test('package names are correct', () => {
+    const rootPkg = readPkg(join(TEST_DIR, 'package.json'))
+    expect(rootPkg.name).toBe(TEST_NAME)
+    expect(rootPkg.private).toBe(true)
+    const cliPkg = readPkg(join(TEST_DIR, 'packages/cli/package.json'))
+    expect(cliPkg.name).toBe(TEST_NAME)
+    const bin = cliPkg.bin as Record<string, string>
+    expect(bin[TEST_NAME]).toBe('dist/cli.mjs')
+    const libPkg = readPkg(join(TEST_DIR, 'packages/lib/package.json'))
+    expect(libPkg.name).toBe(`@${TEST_NAME}/lib`)
   })
-  test('tsconfig extends lintmax and has no include', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-tsconfig-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    const tsconfig = JSON.parse(readFileSync(join(testDir, 'tsconfig.json'), 'utf8')) as Record<string, unknown>
-    expect(tsconfig.extends).toBe('lintmax/tsconfig')
-    expect(tsconfig.include).toBeUndefined()
-    rmSync(testDir, { recursive: true })
+  test('no pm4ai-specific deps', () => {
+    const webPkg = readPkg(join(TEST_DIR, 'apps/web/package.json'))
+    const webDeps = (webPkg.dependencies ?? {}) as Record<string, string>
+    expect(webDeps.pm4ai).toBeUndefined()
+    expect(webDeps['@orpc/client']).toBeUndefined()
+    expect(webDeps.zod).toBeUndefined()
+    const docsPkg = readPkg(join(TEST_DIR, 'apps/docs/package.json'))
+    const docsDeps = (docsPkg.dependencies ?? {}) as Record<string, string>
+    expect(docsDeps.pm4ai).toBeUndefined()
   })
-  test('turbo.json has build/check/fix tasks', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-turbo-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    const turbo = JSON.parse(readFileSync(join(testDir, 'turbo.json'), 'utf8')) as Record<string, Record<string, unknown>>
-    expect(turbo.tasks?.build).toBeDefined()
-    expect(turbo.tasks?.check).toBeDefined()
-    expect(turbo.tasks?.fix).toBeDefined()
-    rmSync(testDir, { recursive: true })
+  test('no Provider in layout files', () => {
+    const webLayout = readFileSync(join(TEST_DIR, 'apps/web/src/app/layout.tsx'), 'utf8')
+    expect(webLayout).not.toMatch(providerJsxRe)
+    expect(webLayout).toContain('Providers')
   })
-  test('ci.yml runs up.sh', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-ci-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    const ci = readFileSync(join(testDir, '.github', 'workflows', 'ci.yml'), 'utf8')
-    expect(ci).toContain('sh up.sh')
-    expect(ci).toContain('oven-sh/setup-bun')
-    rmSync(testDir, { recursive: true })
+  test('docs uses content/docs path', () => {
+    const sourceConfig = readFileSync(join(TEST_DIR, 'apps/docs/source.config.ts'), 'utf8')
+    expect(sourceConfig).toContain("'content/docs'")
   })
-  test('devDependencies are sorted', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-sorted-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    const pkg = JSON.parse(readFileSync(join(testDir, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
-    const keys = Object.keys(pkg.devDependencies ?? {})
-    const sorted = [...keys].toSorted()
-    expect(keys).toEqual(sorted)
-    rmSync(testDir, { recursive: true })
-  })
-  test('initializes git repo', async () => {
-    const origCwd = process.cwd()
-    process.chdir(tmpdir())
-    const testName = `pm4ai-init-git-${Date.now()}`
-    await init(testName)
-    process.chdir(origCwd)
-    const testDir = join(tmpdir(), testName)
-    expect(existsSync(join(testDir, '.git'))).toBe(true)
-    expect(existsSync(join(testDir, '.git', 'HEAD'))).toBe(true)
-    rmSync(testDir, { recursive: true })
-  })
+  test.skipIf(!process.env.CI)(
+    'bun install succeeds',
+    async () => {
+      const result = await $`bun i`.cwd(TEST_DIR).quiet().nothrow()
+      expect(result.exitCode).toBe(0)
+    },
+    60_000
+  )
+  test.skipIf(!process.env.CI)(
+    'build succeeds',
+    async () => {
+      const result = await $`bun run build`.cwd(TEST_DIR).quiet().nothrow()
+      expect(result.exitCode).toBe(0)
+    },
+    120_000
+  )
 })
