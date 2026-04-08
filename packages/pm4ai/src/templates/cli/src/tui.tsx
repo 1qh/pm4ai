@@ -5,12 +5,12 @@ import { useState } from 'react'
 import pkg from '../package.json' with { type: 'json' }
 const ITEMS = ['build', 'test', 'deploy']
 const App = () => {
-  const { exit } = useApp()
+  const app = useApp()
   const [selected, setSelected] = useState(0)
   const [running, setRunning] = useState<null | string>(null)
   const [done, setDone] = useState<Set<string>>(() => new Set())
   useInput((input, key) => {
-    if (input === 'q') exit()
+    if (input === 'q') app.exit()
     if (key.upArrow || input === 'k') setSelected(i => Math.max(0, i - 1))
     if (key.downArrow || input === 'j') setSelected(i => Math.min(ITEMS.length - 1, i + 1))
     if (key.return && !running) {

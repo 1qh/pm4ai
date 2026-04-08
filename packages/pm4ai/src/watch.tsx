@@ -228,7 +228,7 @@ const RunningFooter = ({
 )
 RunningFooter.displayName = 'RunningFooter'
 const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
-  const { exit } = useApp()
+  const app = useApp()
   const { stdout } = useStdout()
   const [cols, setCols] = useState(stdout?.columns ?? 80)
   useEffect(() => {
@@ -305,7 +305,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         },
         match: (i: string) => i === 'G'
       },
-      { handler: () => exit(), match: (i: string) => i === 'q' },
+      { handler: () => app.exit(), match: (i: string) => i === 'q' },
       { guard: () => hasFails, handler: () => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), key: 'return' },
       {
         guard: () => !hasFails && stats.running === 0,
@@ -335,11 +335,11 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         match: (i: string) => i === 's'
       }
     ],
-    [sorted, focusedIdx, hasFails, stats.running, projects, exit, focus, showToast]
+    [sorted, focusedIdx, hasFails, stats.running, projects, app, focus, showToast]
   )
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
-      exit()
+      app.exit()
       return
     }
     for (const action of keymap) {
