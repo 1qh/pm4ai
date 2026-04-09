@@ -11,6 +11,7 @@ const GH_ORG = '1qh'
 const LINTMAX_PKG = 'lintmax'
 const MONOREPO_NAME = 'pm4ai-monorepo'
 const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
+const CONFIG_DIR = '.pm4ai'
 const PKG_NAME = 'pm4ai'
 const READONLY_UI = 'readonly/ui'
 const UI_PACKAGE_NAME = '@a/ui'
@@ -42,6 +43,7 @@ const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig
 export {
   CLAUDE_MD,
   CLEANUP_SCRIPT,
+  CONFIG_DIR,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
   DEFAULT_LICENSE,

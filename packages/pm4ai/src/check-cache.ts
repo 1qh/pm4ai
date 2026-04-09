@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
+import { CLAUDE_MD, CONFIG_DIR, VERBATIM_FILES } from './constants.js'
 import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
 interface CheckResult {
   at: string
@@ -15,7 +15,7 @@ interface CheckResult {
   summary?: string
   violations: number
 }
-const checksDir = () => join(homedir(), '.pm4ai', 'checks')
+const checksDir = () => join(homedir(), CONFIG_DIR, 'checks')
 const leadingSepRe = /^--/u
 const safeFileName = (projectPath: string) => projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
 const cachePath = (projectPath: string) => join(checksDir(), `${safeFileName(projectPath)}.json`)

@@ -2,9 +2,10 @@ import type { z } from 'zod/v4'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { CONFIG_DIR } from './constants.js'
 import { logEntrySchema, safeParseJson } from './schemas.js'
 type LogEntry = z.infer<typeof logEntrySchema>
-const logDir = join(homedir(), '.pm4ai', 'logs')
+const logDir = join(homedir(), CONFIG_DIR, 'logs')
 const leadingSepRe = /^--/u
 const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '--').replace(leadingSepRe, '')}.json`)
 const readLog = (): LogEntry[] => {

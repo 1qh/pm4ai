@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { writeCheckResult } from './check-cache.js'
-import { READONLY_UI } from './constants.js'
+import { CONFIG_DIR, READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { lockSchema, safeParseJson } from './schemas.js'
@@ -26,7 +26,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   const { exitCode } = result
   const stderr = result.stderr.toString().trim()
   if (exitCode === 0) {
-    const snapshotDir = join(homedir(), '.pm4ai', 'snapshots', projectName(projectPath))
+    const snapshotDir = join(homedir(), CONFIG_DIR, 'snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
     if (existsSync(lockfile)) {
       mkdirSync(snapshotDir, { recursive: true })
@@ -51,8 +51,8 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 }
 export { maintain }
 export const fix = async (all = false) => {
-  const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
-  mkdirSync(join(homedir(), '.pm4ai'), { recursive: true })
+  const lockFile = join(homedir(), CONFIG_DIR, 'fix.lock')
+  mkdirSync(join(homedir(), CONFIG_DIR), { recursive: true })
   const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
   const tryAcquireLock = (): boolean => {
     try {

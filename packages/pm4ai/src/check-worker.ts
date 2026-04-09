@@ -2,10 +2,11 @@ import { execFileSync, execSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { CONFIG_DIR } from './constants.js'
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')
 const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')
-const dir = join(homedir(), '.pm4ai', 'checks')
+const dir = join(homedir(), CONFIG_DIR, 'checks')
 const cp = join(dir, `${safeName}.json`)
 const lp = join(dir, `${safeName}.lock`)
 mkdirSync(dir, { recursive: true })

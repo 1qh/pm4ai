@@ -2,7 +2,7 @@ import { $ } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { GH_ORG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { CONFIG_DIR, GH_ORG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { debug, projectName } from './utils.js'
 interface Project {
   isCnsync: boolean
@@ -75,7 +75,7 @@ const discover = async (
   )
   let self = projects.find(p => p.isSelf)
   let cnsync = projects.find(p => p.isCnsync)
-  const reposDir = join(home, '.pm4ai', 'repos')
+  const reposDir = join(home, CONFIG_DIR, 'repos')
   if (!self) {
     const dest = join(reposDir, PKG_NAME)
     await cloneIfMissing(PKG_NAME, dest)
@@ -91,7 +91,7 @@ const discover = async (
 }
 const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
   const home = searchRoot ?? homedir()
-  const reposDir = join(home, '.pm4ai', 'repos')
+  const reposDir = join(home, CONFIG_DIR, 'repos')
   const selfDir = join(reposDir, PKG_NAME)
   const cnsyncDir = join(reposDir, 'cnsync')
   let self: Project | undefined
