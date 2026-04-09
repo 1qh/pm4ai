@@ -201,7 +201,8 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     nextConfigFiles.map(async configFile => {
       const content = await file(configFile).text()
       const rel = configFile.replace(`${projectPath}/`, '')
-      if (!content.includes('reactStrictMode')) issues.push({ detail: `missing reactStrictMode in ${rel}`, type: 'drift' })
+      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig')))
+        issues.push({ detail: `missing reactStrictMode in ${rel}`, type: 'drift' })
     })
   )
   const isLintmax = projectPath.includes('/lintmax')
