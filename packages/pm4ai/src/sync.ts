@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
@@ -526,6 +526,8 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   }
   if (projectPath === cnsyncPath) return issues
   cpSync(src, dst, { recursive: true })
+  const mjsPath = join(dst, 'postcss.config.mjs')
+  if (existsSync(mjsPath) && existsSync(join(dst, 'postcss.config.ts'))) rmSync(mjsPath)
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }

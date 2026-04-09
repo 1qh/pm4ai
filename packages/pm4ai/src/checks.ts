@@ -158,6 +158,26 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   )
   for (const f of providerChecks)
     if (f) issues.push({ detail: `Provider in layout, move to providers.tsx: ${f}`, type: 'drift' })
+  const layoutFiles = (
+    await $`find ${projectPath} -name 'layout.tsx' -path '*/app/layout.tsx' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'`
+      .quiet()
+      .nothrow()
+  ).stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+  await Promise.all(
+    layoutFiles.map(async layoutFile => {
+      const content = await file(layoutFile).text()
+      const rel = layoutFile.replace(`${projectPath}/`, '')
+      const hasHtml = content.includes('<html')
+      if (!hasHtml) return
+      if (!content.includes('suppressHydrationWarning'))
+        issues.push({ detail: `missing suppressHydrationWarning on <html>: ${rel}`, type: 'drift' })
+      if (!content.includes('antialiased')) issues.push({ detail: `missing antialiased on <body>: ${rel}`, type: 'drift' })
+    })
+  )
   const isLintmax = projectPath.includes('/lintmax')
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
