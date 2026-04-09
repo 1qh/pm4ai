@@ -22,10 +22,10 @@ type IssueType =
   | 'unused'
   | 'up.sh'
 interface PackageJson {
-  bin?: unknown
+  bin?: Record<string, string> | string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
-  exports?: unknown
+  exports?: Record<string, Record<string, string> | string>
   files?: string[]
   license?: string
   main?: string
@@ -33,7 +33,7 @@ interface PackageJson {
   packageManager?: string
   peerDependencies?: Record<string, string>
   private?: boolean
-  repository?: unknown
+  repository?: { directory?: string; type?: string; url?: string }
   scripts?: Record<string, string>
   'simple-git-hooks'?: Record<string, string>
   trustedDependencies?: string[]

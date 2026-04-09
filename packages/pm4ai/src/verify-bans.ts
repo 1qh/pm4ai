@@ -13,7 +13,7 @@ const checkExists = async (name: string): Promise<boolean> => {
   return res.ok
 }
 const batchSize = 50
-const names = [...new Set(ALL_BANNED.map(b => extractExactName(b.ban)).filter(Boolean))] as string[]
+const names = [...new Set(ALL_BANNED.map(b => extractExactName(b.ban)).filter((n): n is string => Boolean(n)))]
 const prefixCount = ALL_BANNED.length - names.length
 const missing: string[] = []
 for (let i = 0; i < names.length; i += batchSize) {

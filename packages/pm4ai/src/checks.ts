@@ -12,7 +12,7 @@ import {
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 } from './constants.js'
-import { debug, getGhRepo, readJson, readPkg, rel } from './utils.js'
+import { debug, getGhRepo, getTsconfigTypes, readJson, readPkg, rel } from './utils.js'
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
@@ -104,8 +104,7 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
     if (ts.extends && ts.extends !== EXPECTED.tsconfigExtends)
       issues.push(drift('tsconfig.json should extend lintmax/tsconfig'))
     if (ts.include) issues.push(drift('root tsconfig.json should not have "include"'))
-    const co = ts.compilerOptions as Record<string, unknown> | undefined
-    const types = co?.types as string[] | undefined
+    const types = getTsconfigTypes(ts)
     if (!types?.includes('bun-types')) issues.push(issue('missing', 'root tsconfig.json missing "bun-types"'))
   }
   const v = await readJson(join(projectPath, 'vercel.json'))

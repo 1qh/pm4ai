@@ -75,6 +75,8 @@ const isInsideProject = async (): Promise<string | undefined> => {
   if (hasLintmax) return root
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
+const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined =>
+  (config.compilerOptions as Record<string, unknown> | undefined)?.types as string[] | undefined
 const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
 const isSkippedPath = (path: string) => path.includes('/readonly/') || path.includes('/.next/')
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
@@ -97,6 +99,7 @@ export {
   debug,
   getBunVersion,
   getGhRepo,
+  getTsconfigTypes,
   gitCleanRe,
   isInsideProject,
   isSkippedPath,

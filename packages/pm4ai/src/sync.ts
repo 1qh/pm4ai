@@ -25,6 +25,7 @@ import {
   buildPkgDepMap,
   collectWorkspacePackages,
   getGhRepo,
+  getTsconfigTypes,
   gitCleanRe,
   isSkippedPath,
   readJson,
@@ -127,11 +128,9 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   const allRootDepNames = Object.keys(allRootDeps)
   for (const depName of allRootDepNames) {
     const depPkgPath = join(projectPath, 'node_modules', depName, 'package.json')
-    const depPkg = existsSync(depPkgPath)
-      ? (JSON.parse(readFileSync(depPkgPath, 'utf8')) as Record<string, unknown>)
-      : null
+    const depPkg = await readPkg(depPkgPath)
     if (!depPkg) continue
-    const transitive = (depPkg.dependencies as Record<string, string> | undefined) ?? {}
+    const transitive = depPkg.dependencies ?? {}
     const required = new Set(REQUIRED_ROOT_DEVDEPS)
     for (const other of allRootDepNames)
       if (other !== depName && transitive[other] && devDeps[other] && !required.has(other)) {
@@ -183,11 +182,10 @@ const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
     changed = true
     issues.push({ detail: `set tsconfig extends to "${EXPECTED.tsconfigExtends}"`, type: 'synced' })
   }
-  const compilerOptions = (tsconfig.compilerOptions ?? {}) as Record<string, unknown>
-  const types = compilerOptions.types as string[] | undefined
-  if (!types?.includes('bun-types')) {
-    compilerOptions.types = ['bun-types']
-    tsconfig.compilerOptions = compilerOptions
+  if (!getTsconfigTypes(tsconfig)?.includes('bun-types')) {
+    const co = (tsconfig.compilerOptions ?? {}) as Record<string, unknown>
+    co.types = ['bun-types']
+    tsconfig.compilerOptions = co
     changed = true
     issues.push({ detail: 'added "bun-types" to tsconfig compilerOptions.types', type: 'synced' })
   }
@@ -222,7 +220,7 @@ interface TsdownConfig {
 const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | undefined => {
   const entry: string[] = []
   const copy: string[] = []
-  const exports = pkg.exports as Record<string, Record<string, string> | string> | undefined
+  const { exports } = pkg
   if (exports)
     for (const [key, val] of Object.entries(exports)) {
       const importPath = typeof val === 'string' ? val : val.import
@@ -237,7 +235,7 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
     }
   if (pkg.bin) {
     const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
-    for (const binPath of Object.values(bins as Record<string, string>)) {
+    for (const binPath of Object.values(bins)) {
       const srcPath = binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts')
       if (existsSync(join(pkgDir, srcPath)) && !entry.includes(srcPath)) entry.push(srcPath)
     }
