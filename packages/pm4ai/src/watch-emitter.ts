@@ -8,7 +8,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
 import { CONFIG_DIR } from './constants.js'
-import { safeParse, watchEventSchema } from './schemas.js'
+import { safeParseJson, watchEventSchema } from './schemas.js'
 const SOCKET_DIR = join(homedir(), CONFIG_DIR)
 const SOCKET_PATH = join(SOCKET_DIR, 'watch.sock')
 type Listener = (event: WatchEvent) => void
@@ -46,14 +46,11 @@ const startEmitter = async (): Promise<void> => {
         buffer += chunk.toString()
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
-        for (const line of lines)
-          if (line) {
-            broadcast(line, socket)
-            try {
-              const event = safeParse(watchEventSchema, JSON.parse(line))
-              if (event) for (const fn of listeners) fn(event)
-            } catch {}
-          }
+        for (const line of lines.filter(Boolean)) {
+          broadcast(line, socket)
+          const event = safeParseJson(watchEventSchema, line)
+          if (event) for (const fn of listeners) fn(event)
+        }
       })
     })
     s.on('error', reject)
