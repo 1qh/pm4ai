@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { cn } from '@a/ui'
-import { Providers } from '@/lib/providers'
 import { mono, sans } from './fonts'
+import { Providers } from './providers'
 import './global.css'
 const metadata: Metadata = {
   description: 'Real-time project monitoring dashboard',

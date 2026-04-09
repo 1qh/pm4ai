@@ -182,6 +182,26 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       if (content.includes('export default function'))
         issues.push({ detail: `use arrow function + export default Layout: ${rel}`, type: 'drift' })
       if (!content.includes('Metadata')) issues.push({ detail: `missing metadata export: ${rel}`, type: 'drift' })
+      if (!content.includes('font-sans')) issues.push({ detail: `missing font-sans on <html>: ${rel}`, type: 'drift' })
+      const dir = layoutFile.replace('/layout.tsx', '')
+      const hasFonts = existsSync(join(dir, 'fonts.ts'))
+      if (!hasFonts) issues.push({ detail: `missing fonts.ts next to layout: ${rel}`, type: 'drift' })
+      const hasProviders = existsSync(join(dir, 'providers.tsx'))
+      if (content.includes('Providers') && !hasProviders)
+        issues.push({ detail: `providers.tsx should be next to layout: ${rel}`, type: 'drift' })
+    })
+  )
+  const pageResult =
+    await $`find ${projectPath} -name 'page.tsx' -path '*/app/*' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'`
+      .quiet()
+      .nothrow()
+  const pageFiles = pageResult.stdout.toString().trim().split('\n').filter(Boolean)
+  await Promise.all(
+    pageFiles.map(async pageFile => {
+      const content = await file(pageFile).text()
+      const rel = pageFile.replace(`${projectPath}/`, '')
+      if (content.includes('export default function'))
+        issues.push({ detail: `use arrow function + export default Page: ${rel}`, type: 'drift' })
     })
   )
   const nextConfigResult =
