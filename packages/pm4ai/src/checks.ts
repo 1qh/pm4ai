@@ -180,8 +180,6 @@ const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
         issues.push(drift(`missing reactStrictMode in ${rel(configFile, projectPath)}`))
     })
   )
-  for (const f of await glob('**/apps/*/postcss.config.*', projectPath))
-    issues.push(drift(`redundant ${rel(f, projectPath)}, remove it`))
   return issues
 }
 const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
