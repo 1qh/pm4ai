@@ -17,13 +17,14 @@ flags:
   --json           (watch) output raw newline-delimited JSON events
   --verbose        print debug info to stderr
 fix behavior:
-  blocks if git is dirty, behind remote, or ahead (unpushed)
+  blocks if git is dirty or ahead (unpushed)
+  pulls clean repos before syncing
   syncs: .github/workflows/ci.yml, clean.sh, up.sh, bunfig.toml, .gitignore, CLAUDE.md, readonly/ui
   maintains: runs sh up.sh (clean + install + build + fix + check)
   shows file change summary after completion
 status output (only issues shown, healthy projects omitted):
   /path/to/project
-    git 3 commits behind remote
+    git 3 uncommitted changes
     file clean.sh out of sync
     missing turbo.json
     drift clean should start with "sh clean.sh"
@@ -32,22 +33,24 @@ status output (only issues shown, healthy projects omitted):
     forbidden npm found, use bun only
     ci failed 2026-04-02
     deploy vercel deployment failed
-    check failed 5m ago (current), 15 violations
-    check passed 0m ago (current)
 checks:
-  git status, behind/ahead remote
+  git status (auto-pulls clean repos)
   config drift (synced files match source)
   missing infra (turbo.json, tsconfig.json, ci.yml)
   root package.json (private, packageManager, hooks, sherif, prepare, clean)
-  tsconfig extends lintmax/tsconfig
+  tsconfig extends lintmax/tsconfig, no include
   vercel.json installCommand is bun i
   vercel deployment status
+  layout conventions (suppressHydrationWarning, antialiased, tracking, min-h-screen, font-sans, metadata, fonts.ts, providers.tsx, global.css, arrow function export, no RootLayout, no Provider inline)
+  page conventions (arrow function export)
+  next.config (reactStrictMode, no redundant postcss in apps)
+  app tsconfig (extends lintmax, no include)
+  banned packages (817 entries), bun globals, @a/ui deep imports
   deps on latest or ^major, no duplicates across workspaces
   no npm/yarn/pnpm in scripts or lockfiles
   turbo scripts have --output-logs=errors-only
   published packages have type:module, exports, files, license, repository
   workspace devDependencies hoisted to root
   no nested .gitignore, no postcss.config.mjs, no @ts-nocheck
-  no bun.lock tracked in git, no redundant clean scripts in sub-packages
-  ci status via github api
-  background lint check with commit-aware staleness detection`
+  no bun.lock tracked in git, no redundant clean scripts
+  ci status via github api`
