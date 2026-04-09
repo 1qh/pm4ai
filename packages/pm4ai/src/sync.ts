@@ -127,17 +127,20 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   changed = syncRootDevDeps(pkg, devDeps, issues) || changed
   const allRootDeps = { ...pkg.dependencies, ...devDeps }
   const allRootDepNames = Object.keys(allRootDeps)
-  for (const depName of allRootDepNames) {
-    const depPkgPath = join(projectPath, 'node_modules', depName, 'package.json')
-    const depPkg = await readPkg(depPkgPath)
-    if (!depPkg) continue
-    const transitive = depPkg.dependencies ?? {}
-    const required = new Set(REQUIRED_ROOT_DEVDEPS)
+  const required = new Set(REQUIRED_ROOT_DEVDEPS)
+  const depPkgs = await Promise.all(
+    allRootDepNames.map(async depName => {
+      const depPkg = await readPkg(join(projectPath, 'node_modules', depName, 'package.json'))
+      return depPkg ? { depName, transitive: depPkg.dependencies ?? {} } : undefined
+    })
+  )
+  for (const dep of depPkgs) {
+    if (!dep) continue
     for (const other of allRootDepNames)
-      if (other !== depName && transitive[other] && devDeps[other] && !required.has(other)) {
+      if (other !== dep.depName && dep.transitive[other] && devDeps[other] && !required.has(other)) {
         delete devDeps[other]
         changed = true
-        issues.push({ detail: `removed redundant "${other}" (provided by ${depName})`, type: 'synced' })
+        issues.push({ detail: `removed redundant "${other}" (provided by ${dep.depName})`, type: 'synced' })
       }
   }
   if (!pkg.packageManager) {

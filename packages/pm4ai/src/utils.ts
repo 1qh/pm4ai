@@ -10,7 +10,7 @@ const readJson = async (path: string): Promise<Record<string, unknown> | undefin
   const f = file(path)
   if (!(await f.exists())) return
   try {
-    const raw = await f.json()
+    const raw: unknown = await f.json()
     if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) return raw as Record<string, unknown>
   } catch {}
 }
@@ -83,15 +83,15 @@ const isSkippedPath = (path: string) => path.includes('/readonly/') || path.incl
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {
   const result = new Map<string, Set<string>>()
-  for (const { pkg } of entries) {
-    if (!pkg.name) continue
-    const deps = new Set(
-      Object.entries(pkg.dependencies ?? {})
-        .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
-        .map(([n]) => n)
-    )
-    result.set(pkg.name, deps)
-  }
+  for (const { pkg } of entries)
+    if (pkg.name) {
+      const deps = new Set(
+        Object.entries(pkg.dependencies ?? {})
+          .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
+          .map(([n]) => n)
+      )
+      result.set(pkg.name, deps)
+    }
   return result
 }
 export {
