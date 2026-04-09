@@ -13,6 +13,7 @@ const MONOREPO_NAME = 'pm4ai-monorepo'
 const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
 const CONFIG_DIR = '.pm4ai'
 const PKG_NAME = 'pm4ai'
+const SWIFTBAR_FONT = '| font=Menlo size=13'
 const READONLY_UI = 'readonly/ui'
 const UI_PACKAGE_NAME = '@a/ui'
 const RG_EXCLUDE_DIRS = ['node_modules', 'readonly', '.next', 'dist', '_generated', 'generated']
@@ -61,6 +62,7 @@ export {
   REQUIRED_TRUSTED_DEPS,
   RG_EXCLUDE,
   SKIP_PATTERNS,
+  SWIFTBAR_FONT,
   TURBO_FLAG,
   UI_PACKAGE_NAME,
   VERBATIM_FILES

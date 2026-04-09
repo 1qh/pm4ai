@@ -2,6 +2,7 @@ import { $ } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
+import { SWIFTBAR_FONT } from './constants.js'
 import { getBunVersion, getGhRepo, projectName } from './utils.js'
 const shellMetaRe = /[^\w\s./:@=-]/gu
 const shellEscape = (s: string): string => s.replaceAll(shellMetaRe, String.raw`\$&`)
@@ -45,7 +46,7 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   const lines: string[] = []
   if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
   else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
-  const f = '| font=Menlo size=13'
+  const f = SWIFTBAR_FONT
   lines.push('---')
   lines.push(`${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`)
   lines.push('---')

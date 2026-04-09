@@ -23,8 +23,8 @@ import { createConnection } from 'node:net'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-const SOCK = join(homedir(), CONFIG_DIR, 'watch.sock')
-const CHECKS = join(homedir(), CONFIG_DIR, 'checks')
+const SOCK = join(homedir(), '.pm4ai', 'watch.sock')
+const CHECKS = join(homedir(), '.pm4ai', 'checks')
 const f = '| font=Menlo size=13'
 const SPINNER = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 const state = new Map()
