@@ -34,7 +34,7 @@ describe('init scaffold', () => {
       'apps/web/src/app/layout.tsx',
       'apps/web/src/app/fonts.ts',
       'apps/web/src/app/global.css',
-      'apps/web/src/lib/providers.tsx',
+      'apps/web/src/app/providers.tsx',
       'apps/web/postcss.config.ts',
       'apps/docs/package.json',
       'apps/docs/source.config.ts',
