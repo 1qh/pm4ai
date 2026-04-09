@@ -84,16 +84,6 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
 }
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
-  if (!devDeps.sherif) {
-    devDeps.sherif = DEFAULT_DEP_VERSION
-    changed = true
-    issues.push({ detail: 'added sherif to devDependencies', type: 'synced' })
-  }
-  if (!devDeps['simple-git-hooks']) {
-    devDeps['simple-git-hooks'] = DEFAULT_DEP_VERSION
-    changed = true
-    issues.push({ detail: 'added simple-git-hooks to devDependencies', type: 'synced' })
-  }
   const allDeps = { ...pkg.dependencies, ...devDeps }
   for (const dep of REQUIRED_ROOT_DEVDEPS)
     if (!allDeps[dep]) {
@@ -229,9 +219,8 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
   if (exports)
     for (const [key, val] of Object.entries(exports)) {
       const importPath = typeof val === 'string' ? val : val.import
-      if (!importPath) {
-        /* Skip */
-      } else if (importPath.endsWith('.css')) {
+      if (!importPath) continue
+      if (importPath.endsWith('.css')) {
         const srcCss = importPath.replace(distPrefixRe, 'src/')
         if (existsSync(join(pkgDir, srcCss))) copy.push(srcCss)
       } else {
@@ -458,23 +447,17 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   const pkgDepsByName = new Map<string, Set<string>>()
   for (const entry of entries) {
     const { name } = entry.pkg
-    if (name) {
-      const prodDeps = entry.pkg.dependencies
-      const deps = new Set(
-        Object.entries(prodDeps ?? {})
-          .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
-          .map(([n]) => n)
-      )
-      pkgDepsByName.set(name, deps)
-    } else {
-      /* Skip unnamed */
-    }
+    if (!name) continue
+    const deps = new Set(
+      Object.entries(entry.pkg.dependencies ?? {})
+        .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
+        .map(([n]) => n)
+    )
+    pkgDepsByName.set(name, deps)
   }
   for (const entry of subEntries) {
     const rel = entry.path.replace(`${projectPath}/`, '')
-    if (isSkipped(rel) || rel.startsWith('apps/')) {
-      /* Skip readonly, apps */
-    } else {
+    if (!(isSkipped(rel) || rel.startsWith('apps/'))) {
       const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
       const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
       const providedByWs = new Set<string>()
@@ -482,17 +465,14 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
       let dedupChanged = false
       for (const field of ['dependencies', 'devDependencies'] as const) {
         const deps = entry.pkg[field]
-        if (deps) {
-          for (const [name, version] of Object.entries(deps))
-            if (!version.startsWith('workspace:') && providedByWs.has(name)) {
-              delete deps[name]
-              dedupChanged = true
-              issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
-            }
-          if (Object.keys(deps).length === 0) delete entry.pkg[field]
-        } else {
-          /* No deps */
-        }
+        if (!deps) continue
+        for (const [name, version] of Object.entries(deps))
+          if (!version.startsWith('workspace:') && providedByWs.has(name)) {
+            delete deps[name]
+            dedupChanged = true
+            issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
+          }
+        if (Object.keys(deps).length === 0) delete entry.pkg[field]
       }
       if (dedupChanged) writes.push(writeJson(entry.path, entry.pkg))
     }
