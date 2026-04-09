@@ -4,7 +4,6 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
-import { getCodeCommitsSince, isCheckRunning, readCheckResult } from './check-cache.js'
 import {
   DEFAULT_SCRIPTS,
   EXPECTED,
@@ -15,45 +14,57 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
+const findFiles = async (pattern: string, projectPath: string, extra = ''): Promise<string[]> => {
+  const cmd = extra ? `find ${projectPath} ${pattern} ${extra}` : `find ${projectPath} ${pattern}`
+  const result = await $`sh -c ${cmd}`.quiet().nothrow()
+  return result.stdout.toString().trim().split('\n').filter(Boolean)
+}
+const rgFiles = async (
+  pattern: string,
+  projectPath: string,
+  globs: string[] = ['-g', '*.ts', '-g', '*.tsx']
+): Promise<string> => {
+  const result = await $`rg ${pattern} ${projectPath} ${globs} ${RG_EXCLUDE} -l`.quiet().nothrow()
+  return result.stdout.toString().trim()
+}
+const rel = (fullPath: string, projectPath: string) => fullPath.replace(`${projectPath}/`, '')
+const providerJsxRe = /<\w+Provider/gu
+const serverProviderRe = /<\w*Server\w*Provider/u
+const providerImportRe = /from\s+['"].*providers/u
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const repo = await getGhRepo(projectPath)
-  if (!repo) return issues
-  const ciResult =
+  if (!repo) return []
+  const result =
     await $`gh run list --repo ${repo} --limit 1 --json conclusion,createdAt --jq '.[0] | "\(.conclusion) \(.createdAt)"'`
       .quiet()
       .nothrow()
-  if (ciResult.exitCode !== 0) debug('command failed:', `gh run list --repo ${repo}`)
-  const ciLine = ciResult.stdout.toString().trim()
-  const [ciConclusion, ciTime] = ciLine.split(' ')
-  if (ciConclusion === 'failure') issues.push({ detail: `failed ${ciTime ?? ''}`, type: 'ci' })
-  else if (ciConclusion === 'success') issues.push({ detail: `passed ${ciTime ?? ''}`, type: 'info' })
-  return issues
+  if (result.exitCode !== 0) {
+    debug('command failed:', `gh run list --repo ${repo}`)
+    return []
+  }
+  const [conclusion, time] = result.stdout.toString().trim().split(' ')
+  if (conclusion === 'failure') return [{ detail: `failed ${time ?? ''}`, type: 'ci' }]
+  if (conclusion === 'success') return [{ detail: `passed ${time ?? ''}`, type: 'info' }]
+  return []
 }
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const dirtyCheck = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
-  const dirty = dirtyCheck.stdout.toString().trim()
-  if (!dirty) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
-  const statusResult = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
-  if (statusResult.exitCode !== 0) debug('command failed:', 'git status --porcelain')
-  const statusOut = statusResult.stdout.toString().trim()
-  if (statusOut) {
-    const count = statusOut.split('\n').length
-    issues.push({ detail: `${count} uncommitted changes`, type: 'git' })
-  }
-  return issues
+  if (!dirtyCheck.stdout.toString().trim()) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
+  const result = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
+  if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain')
+  const out = result.stdout.toString().trim()
+  if (!out) return []
+  return [{ detail: `${out.split('\n').length} uncommitted changes`, type: 'git' }]
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
-  const names = VERBATIM_FILES
   const results = await Promise.all(
-    names.map(async name => {
+    VERBATIM_FILES.map(async name => {
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return
       if (!(await dst.exists())) return { detail: `${name} missing`, type: 'file' } as Issue
-      const [srcContent, dstContent] = await Promise.all([src.text(), dst.text()])
-      if (srcContent !== dstContent) return { detail: `${name} out of sync`, type: 'file' } as Issue
+      const [s, d] = await Promise.all([src.text(), dst.text()])
+      if (s !== d) return { detail: `${name} out of sync`, type: 'file' } as Issue
     })
   )
   return results.filter((r): r is Issue => r !== undefined)
@@ -88,15 +99,9 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
     const ext = 'extends' in tsRaw ? String(tsRaw.extends) : ''
     if (ext && ext !== EXPECTED.tsconfigExtends)
       issues.push({ detail: 'tsconfig.json should extend lintmax/tsconfig', type: 'drift' })
-    if ('include' in tsRaw)
-      issues.push({
-        detail: 'root tsconfig.json should not have "include" — let lintmax/tsconfig handle it',
-        type: 'drift'
-      })
-    const compilerOptions = ('compilerOptions' in tsRaw ? tsRaw.compilerOptions : undefined) as
-      | Record<string, unknown>
-      | undefined
-    const types = compilerOptions?.types as string[] | undefined
+    if ('include' in tsRaw) issues.push({ detail: 'root tsconfig.json should not have "include"', type: 'drift' })
+    const types = (('compilerOptions' in tsRaw ? tsRaw.compilerOptions : undefined) as Record<string, unknown> | undefined)
+      ?.types as string[] | undefined
     if (!types?.includes('bun-types'))
       issues.push({ detail: 'root tsconfig.json missing "bun-types" in compilerOptions.types', type: 'missing' })
   }
@@ -108,21 +113,111 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
-const providerJsxRe = /<\w+Provider/gu
-const serverProviderRe = /<\w*Server\w*Provider/u
-const providerImportRe = /from\s+['"].*providers/u
+const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await findFiles(
+    "-name 'layout.tsx' -path '*/app/layout.tsx'",
+    projectPath,
+    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'"
+  )
+  await Promise.all(
+    files.map(async layoutFile => {
+      const content = await file(layoutFile).text()
+      const r = rel(layoutFile, projectPath)
+      if (!content.includes('<html')) return
+      const required: [string, string][] = [
+        ['suppressHydrationWarning', 'missing suppressHydrationWarning on <html>'],
+        ['antialiased', 'missing antialiased on <body>'],
+        ['tracking-[-0.02em]', 'missing tracking-[-0.02em] on <html>'],
+        ['min-h-screen', 'missing min-h-screen on <body>'],
+        ['font-sans', 'missing font-sans on <html>'],
+        ['Metadata', 'missing metadata export']
+      ]
+      for (const [check, msg] of required)
+        if (!content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
+      const forbidden: [string, string][] = [
+        ['RootLayout', 'use Layout not RootLayout'],
+        ['export default function', 'use arrow function + export default Layout']
+      ]
+      for (const [check, msg] of forbidden)
+        if (content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
+      if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
+        issues.push({ detail: `use global.css not globals.css: ${r}`, type: 'drift' })
+      const dir = layoutFile.replace('/layout.tsx', '')
+      if (!existsSync(join(dir, 'fonts.ts')))
+        issues.push({ detail: `missing fonts.ts next to layout: ${r}`, type: 'drift' })
+      if (content.includes('Providers') && !existsSync(join(dir, 'providers.tsx')))
+        issues.push({ detail: `providers.tsx should be next to layout: ${r}`, type: 'drift' })
+      const providerMatches = content.match(providerJsxRe) ?? []
+      const hasClientProvider = providerMatches.some(m => !serverProviderRe.test(m))
+      if (hasClientProvider && !providerImportRe.test(content))
+        issues.push({ detail: `Provider in layout, move to providers.tsx: ${r}`, type: 'drift' })
+    })
+  )
+  return issues
+}
+const checkPages = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await findFiles(
+    "-name 'page.tsx' -path '*/app/*'",
+    projectPath,
+    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'"
+  )
+  await Promise.all(
+    files.map(async pageFile => {
+      const content = await file(pageFile).text()
+      if (content.includes('export default function'))
+        issues.push({ detail: `use arrow function + export default Page: ${rel(pageFile, projectPath)}`, type: 'drift' })
+    })
+  )
+  return issues
+}
+const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const configs = await findFiles(
+    "-name 'next.config.ts'",
+    projectPath,
+    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*'"
+  )
+  await Promise.all(
+    configs.map(async configFile => {
+      const content = await file(configFile).text()
+      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig')))
+        issues.push({ detail: `missing reactStrictMode in ${rel(configFile, projectPath)}`, type: 'drift' })
+    })
+  )
+  const redundant = await findFiles(
+    "-name 'postcss.config.*' -path '*/apps/*'",
+    projectPath,
+    "-not -path '*/node_modules/*' -not -path '*/readonly/*'"
+  )
+  for (const f of redundant) issues.push({ detail: `redundant ${rel(f, projectPath)}, remove it`, type: 'drift' })
+  return issues
+}
+const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await findFiles("-path '*/apps/*/tsconfig.json'", projectPath, "-not -path '*/node_modules/*'")
+  await Promise.all(
+    files.map(async tsconfigFile => {
+      const content = await file(tsconfigFile).text()
+      const r = rel(tsconfigFile, projectPath)
+      if (!content.includes('"extends"')) issues.push({ detail: `${r} should extend lintmax/tsconfig`, type: 'drift' })
+      if (content.includes('"include"')) issues.push({ detail: `${r} should not have "include"`, type: 'drift' })
+    })
+  )
+  return issues
+}
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   for (const f of FORBIDDEN_LOCKFILES)
     if (existsSync(join(projectPath, f))) issues.push({ detail: `${f} found, use bun only`, type: 'forbidden' })
-  const [bunLockTracked, nestedGitignores, postcssFiles, tsNoCheck, providerInLayout] = await Promise.all([
+  const [bunLockTracked, nestedGitignores, postcssFiles, tsNoCheck] = await Promise.all([
     $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow(),
     $`find ${projectPath} -name .gitignore -not -path '*/node_modules/*' -not -path '*/.git/*'`.quiet().nothrow(),
     $`find ${projectPath} -name 'postcss.config.mjs' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
       .quiet()
       .nothrow(),
-    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow(),
-    $`rg 'Provider' ${projectPath} -g 'layout.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
+    $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   ])
   if (bunLockTracked.stdout.toString().trim())
     issues.push({ detail: 'bun.lock tracked in git, should be gitignored', type: 'forbidden' })
@@ -133,7 +228,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     .filter(f => f && f !== join(projectPath, '.gitignore'))
   if (extraGitignores.length > 0)
     issues.push({
-      detail: `nested .gitignore: ${extraGitignores.map(f => f.replace(`${projectPath}/`, '')).join(', ')}`,
+      detail: `nested .gitignore: ${extraGitignores.map(f => rel(f, projectPath)).join(', ')}`,
       type: 'drift'
     })
   if (postcssFiles.stdout.toString().trim()) issues.push({ detail: 'postcss.config.mjs should be .ts', type: 'drift' })
@@ -142,140 +237,41 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     issues.push({
       detail: `@ts-nocheck in: ${tsNoCheckFiles
         .split('\n')
-        .map(f => f.replace(`${projectPath}/`, ''))
+        .map(f => rel(f, projectPath))
         .join(', ')}`,
       type: 'forbidden'
     })
-  const providerLayoutFiles = providerInLayout.stdout.toString().trim().split('\n').filter(Boolean)
-  const providerChecks = await Promise.all(
-    providerLayoutFiles.map(async layoutFile => {
-      const content = await file(layoutFile).text()
-      const providerMatches = content.match(providerJsxRe) ?? []
-      const hasClientProvider = providerMatches.some(m => !serverProviderRe.test(m))
-      const importsFromProviders = providerImportRe.test(content)
-      if (hasClientProvider && !importsFromProviders) return layoutFile.replace(`${projectPath}/`, '')
-    })
-  )
-  for (const f of providerChecks)
-    if (f) issues.push({ detail: `Provider in layout, move to providers.tsx: ${f}`, type: 'drift' })
-  const layoutResult =
-    await $`find ${projectPath} -name 'layout.tsx' -path '*/app/layout.tsx' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'`
-      .quiet()
-      .nothrow()
-  const layoutFiles = layoutResult.stdout.toString().trim().split('\n').filter(Boolean)
-  await Promise.all(
-    layoutFiles.map(async layoutFile => {
-      const content = await file(layoutFile).text()
-      const rel = layoutFile.replace(`${projectPath}/`, '')
-      const hasHtml = content.includes('<html')
-      if (!hasHtml) return
-      if (!content.includes('suppressHydrationWarning'))
-        issues.push({ detail: `missing suppressHydrationWarning on <html>: ${rel}`, type: 'drift' })
-      if (!content.includes('antialiased')) issues.push({ detail: `missing antialiased on <body>: ${rel}`, type: 'drift' })
-      if (!content.includes('tracking-[-0.02em]'))
-        issues.push({ detail: `missing tracking-[-0.02em] on <html>: ${rel}`, type: 'drift' })
-      if (!content.includes('min-h-screen'))
-        issues.push({ detail: `missing min-h-screen on <body>: ${rel}`, type: 'drift' })
-      if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
-        issues.push({ detail: `use global.css not globals.css: ${rel}`, type: 'drift' })
-      if (content.includes('RootLayout')) issues.push({ detail: `use Layout not RootLayout: ${rel}`, type: 'drift' })
-      if (content.includes('export default function'))
-        issues.push({ detail: `use arrow function + export default Layout: ${rel}`, type: 'drift' })
-      if (!content.includes('Metadata')) issues.push({ detail: `missing metadata export: ${rel}`, type: 'drift' })
-      if (!content.includes('font-sans')) issues.push({ detail: `missing font-sans on <html>: ${rel}`, type: 'drift' })
-      const dir = layoutFile.replace('/layout.tsx', '')
-      const hasFonts = existsSync(join(dir, 'fonts.ts'))
-      if (!hasFonts) issues.push({ detail: `missing fonts.ts next to layout: ${rel}`, type: 'drift' })
-      const hasProviders = existsSync(join(dir, 'providers.tsx'))
-      if (content.includes('Providers') && !hasProviders)
-        issues.push({ detail: `providers.tsx should be next to layout: ${rel}`, type: 'drift' })
-    })
-  )
-  const pageResult =
-    await $`find ${projectPath} -name 'page.tsx' -path '*/app/*' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'`
-      .quiet()
-      .nothrow()
-  const pageFiles = pageResult.stdout.toString().trim().split('\n').filter(Boolean)
-  await Promise.all(
-    pageFiles.map(async pageFile => {
-      const content = await file(pageFile).text()
-      const rel = pageFile.replace(`${projectPath}/`, '')
-      if (content.includes('export default function'))
-        issues.push({ detail: `use arrow function + export default Page: ${rel}`, type: 'drift' })
-    })
-  )
-  const nextConfigResult =
-    await $`find ${projectPath} -name 'next.config.ts' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*'`
-      .quiet()
-      .nothrow()
-  const nextConfigFiles = nextConfigResult.stdout.toString().trim().split('\n').filter(Boolean)
-  await Promise.all(
-    nextConfigFiles.map(async configFile => {
-      const content = await file(configFile).text()
-      const rel = configFile.replace(`${projectPath}/`, '')
-      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig')))
-        issues.push({ detail: `missing reactStrictMode in ${rel}`, type: 'drift' })
-    })
-  )
-  const postcssInApps =
-    await $`find ${projectPath} -name 'postcss.config.*' -path '*/apps/*' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
-      .quiet()
-      .nothrow()
-  for (const f of postcssInApps.stdout.toString().trim().split('\n').filter(Boolean))
-    issues.push({ detail: `redundant ${f.replace(`${projectPath}/`, '')}, remove it`, type: 'drift' })
-  const appTsconfigs = await $`find ${projectPath} -path '*/apps/*/tsconfig.json' -not -path '*/node_modules/*'`
-    .quiet()
-    .nothrow()
-  await Promise.all(
-    appTsconfigs.stdout
-      .toString()
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map(async tsconfigFile => {
-        const content = await file(tsconfigFile).text()
-        const rel = tsconfigFile.replace(`${projectPath}/`, '')
-        if (!content.includes('"extends"')) issues.push({ detail: `${rel} should extend lintmax/tsconfig`, type: 'drift' })
-        if (content.includes('"include"')) issues.push({ detail: `${rel} should not have "include"`, type: 'drift' })
-      })
-  )
+  return issues
+}
+const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
   const isLintmax = projectPath.includes('/lintmax')
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
     bannedImports.map(async ({ ban, fix }) => {
-      const result = await $`rg ${ban} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
-      const files = result.stdout.toString().trim()
+      const files = await rgFiles(ban, projectPath)
       if (files) return { ban, files, fix }
     })
   )
-  const pkgJsonFiles =
-    await $`find ${projectPath} -name 'package.json' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
-      .quiet()
-      .nothrow()
+  const pkgJsonFiles = await findFiles(
+    "-name 'package.json'",
+    projectPath,
+    "-not -path '*/node_modules/*' -not -path '*/readonly/*'"
+  )
   const pkgBanResults = await Promise.all(
-    pkgJsonFiles.stdout
-      .toString()
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map(async pkgPath => {
-        const raw = await readPkg(pkgPath)
-        if (!raw) return []
-        const allDeps = {
-          ...raw.dependencies,
-          ...raw.devDependencies,
-          ...raw.peerDependencies
-        }
-        const depNames = Object.keys(allDeps)
-        const matches: { ban: string; files: string; fix: string }[] = []
-        for (const { ban, fix } of bannedImports) {
-          const cleanBan = ban.replaceAll(/^"|"$/gu, '')
-          const isPrefix = !ban.endsWith('"')
-          if (depNames.some(d => (isPrefix ? d.startsWith(cleanBan) : d === cleanBan)))
-            matches.push({ ban, files: pkgPath, fix })
-        }
-        return matches
-      })
+    pkgJsonFiles.map(async pkgPath => {
+      const raw = await readPkg(pkgPath)
+      if (!raw) return []
+      const depNames = Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies })
+      const matches: { ban: string; files: string; fix: string }[] = []
+      for (const { ban, fix } of bannedImports) {
+        const cleanBan = ban.replaceAll(/^"|"$/gu, '')
+        const isPrefix = !ban.endsWith('"')
+        if (depNames.some(d => (isPrefix ? d.startsWith(cleanBan) : d === cleanBan)))
+          matches.push({ ban, files: pkgPath, fix })
+      }
+      return matches
+    })
   )
   for (const matches of pkgBanResults) for (const m of matches) banResults.push(m)
   for (const r of banResults)
@@ -283,7 +279,7 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       issues.push({
         detail: `${r.ban} banned, use ${r.fix}: ${r.files
           .split('\n')
-          .map(f => f.replace(`${projectPath}/`, ''))
+          .map(f => rel(f, projectPath))
           .join(', ')}`,
         type: 'forbidden'
       })
@@ -293,72 +289,50 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       .nothrow()
   const bunGlobalMatches = bunGlobalResult.stdout.toString().trim()
   if (bunGlobalMatches) {
-    const usedGlobals = [...new Set(bunGlobalMatches.split('\n'))]
-    const fixable = usedGlobals.filter(g => BUN_GLOBALS[g])
+    const fixable = [...new Set(bunGlobalMatches.split('\n'))].filter(g => BUN_GLOBALS[g])
     if (fixable.length > 0)
       issues.push({
         detail: `use named imports: ${fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')}`,
         type: 'forbidden'
       })
   }
-  const deepUiImport = await $`rg '${UI_PACKAGE_NAME}/lib/' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`
-    .quiet()
-    .nothrow()
-  const deepUiFiles = deepUiImport.stdout.toString().trim()
+  const deepUiFiles = await rgFiles(`${UI_PACKAGE_NAME}/lib/`, projectPath)
   if (deepUiFiles)
     issues.push({
       detail: `use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${deepUiFiles
         .split('\n')
-        .map(f => f.replace(`${projectPath}/`, ''))
+        .map(f => rel(f, projectPath))
         .join(', ')}`,
       type: 'forbidden'
     })
   return issues
 }
-const KNIP_IGNORE = ['readonly/', 'Unlisted binaries', 'Unresolved imports', 'Unlisted dependencies']
-const checkUnusedDeps = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
-  const result = await $`bunx knip --dependencies --no-exit-code --reporter compact`.cwd(projectPath).quiet().nothrow()
-  if (result.exitCode !== 0 && result.stderr.toString().includes('ENOTDIR')) return issues
-  const output = result.stdout.toString().trim()
-  if (output)
-    for (const line of output.split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed && !KNIP_IGNORE.some(p => trimmed.includes(p))) issues.push({ detail: trimmed, type: 'unused' })
-    }
-  return issues
-}
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
-  if (!existsSync(join(projectPath, '.vercel'))) return issues
+  if (!existsSync(join(projectPath, '.vercel'))) return []
   const result = await $`bunx vercel@latest ls`.cwd(projectPath).quiet().nothrow()
-  if (result.exitCode !== 0) debug('command failed:', 'bunx vercel@latest ls')
-  const out = result.stdout.toString().trim()
-  const latestLine = out.split('\n').find(l => l.includes('●'))
-  if (latestLine?.includes('● Error')) issues.push({ detail: 'vercel deployment failed', type: 'deploy' })
-  return issues
-}
-const checkLint = (projectPath: string): Issue[] => {
-  if (isCheckRunning(projectPath)) return [{ detail: 'running...', type: 'check' }]
-  const result = readCheckResult(projectPath)
-  if (!result) return [{ detail: 'never run', type: 'check' }]
-  const ms = Date.now() - new Date(result.at).getTime()
-  const mins = Math.floor(ms / 60_000)
-  const age =
-    mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
-  const commitsBehind = getCodeCommitsSince(projectPath, result.commit)
-  const freshness = commitsBehind === 0 ? '(current)' : commitsBehind > 0 ? `(before ${commitsBehind} commits)` : ''
-  if (result.pass) return [{ detail: `passed ${age} ${freshness}`, type: 'check' }]
-  return [{ detail: `failed ${age} ${freshness}, ${result.violations} violations`, type: 'check' }]
+  if (result.exitCode !== 0) {
+    debug('command failed:', 'bunx vercel@latest ls')
+    return []
+  }
+  const latestLine = result.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .find(l => l.includes('●'))
+  if (latestLine?.includes('● Error')) return [{ detail: 'vercel deployment failed', type: 'deploy' }]
+  return []
 }
 export {
+  checkAppTsconfigs,
+  checkBannedImports,
   checkCi,
   checkConfigs,
   checkDrift,
   checkForbidden,
   checkGit,
-  checkLint,
+  checkLayouts,
+  checkNextConfigs,
+  checkPages,
   checkRootPkg,
-  checkUnusedDeps,
   checkVercel
 }

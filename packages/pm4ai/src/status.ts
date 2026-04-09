@@ -3,7 +3,20 @@ import { $ } from 'bun'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { spawnBackgroundCheck } from './check-cache.js'
-import { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkRootPkg, checkVercel } from './checks.js'
+import {
+  checkAppTsconfigs,
+  checkBannedImports,
+  checkCi,
+  checkConfigs,
+  checkDrift,
+  checkForbidden,
+  checkGit,
+  checkLayouts,
+  checkNextConfigs,
+  checkPages,
+  checkRootPkg,
+  checkVercel
+} from './checks.js'
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
 import { isInsideProject, projectName } from './utils.js'
@@ -39,6 +52,11 @@ const status = async (swiftbar = false, all = false) => {
       checkRootPkg(project.path),
       checkConfigs(project.path),
       checkForbidden(project.path),
+      checkLayouts(project.path),
+      checkPages(project.path),
+      checkNextConfigs(project.path),
+      checkAppTsconfigs(project.path),
+      checkBannedImports(project.path),
       audit(project.path),
       checkCi(project.path),
       checkVercel(project.path)

@@ -3,17 +3,7 @@ import { execSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { writeCheckResult } from '../check-cache.js'
-import {
-  checkCi,
-  checkConfigs,
-  checkDrift,
-  checkForbidden,
-  checkGit,
-  checkLint,
-  checkRootPkg,
-  checkVercel
-} from '../checks.js'
+import { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkRootPkg, checkVercel } from '../checks.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {
@@ -160,28 +150,6 @@ describe('checkGit', () => {
     rmSync(local, { recursive: true })
   })
 })
-describe('checkLint', () => {
-  test('returns never run when no check cache', () => {
-    const tmp = makeTmp()
-    const issues = checkLint(tmp)
-    expect(issues.some(i => i.detail.includes('never run'))).toBe(true)
-    rmSync(tmp, { recursive: true })
-  })
-  test('returns passed with age when check result exists', () => {
-    const tmp = makeTmp()
-    writeCheckResult({ pass: true, projectPath: tmp, violations: 0 })
-    const issues = checkLint(tmp)
-    expect(issues.some(i => i.detail.includes('passed'))).toBe(true)
-    rmSync(tmp, { recursive: true })
-  })
-  test('returns failed with violations when check failed', () => {
-    const tmp = makeTmp()
-    writeCheckResult({ pass: false, projectPath: tmp, summary: 'lint errors', violations: 10 })
-    const issues = checkLint(tmp)
-    expect(issues.some(i => i.detail.includes('failed') && i.detail.includes('10 violations'))).toBe(true)
-    rmSync(tmp, { recursive: true })
-  })
-})
 describe('checkDrift', () => {
   test('reports missing file', async () => {
     const src = makeTmp()
@@ -300,17 +268,6 @@ describe('checkRootPkg edge cases', () => {
     )
     const issues = await checkRootPkg(tmp)
     expect(issues.some(i => i.detail.includes('clean'))).toBe(true)
-    rmSync(tmp, { recursive: true })
-  })
-})
-describe('checkLint edge cases', () => {
-  test('shows commit staleness info', () => {
-    const tmp = makeTmp()
-    execSync('git init', { cwd: tmp, stdio: 'pipe' })
-    execSync('git -c user.name=test -c user.email=test@test commit --allow-empty -m init', { cwd: tmp, stdio: 'pipe' })
-    writeCheckResult({ pass: true, projectPath: tmp, violations: 0 })
-    const issues = checkLint(tmp)
-    expect(issues.some(i => i.detail.includes('passed') && i.detail.includes('current'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
 })
