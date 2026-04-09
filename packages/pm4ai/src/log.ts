@@ -1,13 +1,9 @@
+import type { z } from 'zod/v4'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-interface LogEntry {
-  at: string
-  error?: string
-  pass: boolean
-  path: string
-  project: string
-}
+import { logEntrySchema, safeParseJson } from './schemas.js'
+type LogEntry = z.infer<typeof logEntrySchema>
 const logDir = join(homedir(), '.pm4ai', 'logs')
 const leadingSepRe = /^--/u
 const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '--').replace(leadingSepRe, '')}.json`)
@@ -17,7 +13,8 @@ const readLog = (): LogEntry[] => {
   const entries: LogEntry[] = []
   for (const f of files)
     try {
-      entries.push(JSON.parse(readFileSync(join(logDir, f), 'utf8')) as LogEntry)
+      const entry = safeParseJson(logEntrySchema, readFileSync(join(logDir, f), 'utf8'))
+      if (entry) entries.push(entry)
     } catch {
       /* Corrupt file */
     }

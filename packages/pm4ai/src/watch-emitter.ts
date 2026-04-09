@@ -7,6 +7,7 @@ import { createConnection, createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
+import { safeParse, watchEventSchema } from './schemas.js'
 const SOCKET_DIR = join(homedir(), '.pm4ai')
 const SOCKET_PATH = join(SOCKET_DIR, 'watch.sock')
 type Listener = (event: WatchEvent) => void
@@ -48,11 +49,9 @@ const startEmitter = async (): Promise<void> => {
           if (line) {
             broadcast(line, socket)
             try {
-              const event = JSON.parse(line) as WatchEvent
-              for (const fn of listeners) fn(event)
-            } catch {
-              /* Malformed JSON */
-            }
+              const event = safeParse(watchEventSchema, JSON.parse(line))
+              if (event) for (const fn of listeners) fn(event)
+            } catch {}
           }
       })
     })

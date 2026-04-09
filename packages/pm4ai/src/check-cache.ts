@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
+import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
 interface CheckResult {
   at: string
   commit: string
@@ -23,7 +24,7 @@ const readCheckResult = (projectPath: string): CheckResult | undefined => {
   const p = cachePath(projectPath)
   if (!existsSync(p)) return
   try {
-    return JSON.parse(readFileSync(p, 'utf8')) as CheckResult
+    return safeParseJson(checkResultSchema, readFileSync(p, 'utf8'))
   } catch {}
 }
 const getHeadCommit = (projectPath: string): string => {
@@ -45,7 +46,11 @@ const isCheckRunning = (projectPath: string): boolean => {
   const lp = lockPath(projectPath)
   if (!existsSync(lp)) return false
   try {
-    const lock = JSON.parse(readFileSync(lp, 'utf8')) as { at: string; pid: number }
+    const lock = safeParseJson(lockSchema, readFileSync(lp, 'utf8'))
+    if (!lock) {
+      rmSync(lp)
+      return false
+    }
     const age = Date.now() - new Date(lock.at).getTime()
     if (age > 600_000) {
       rmSync(lp)

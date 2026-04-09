@@ -9,6 +9,7 @@ import { writeCheckResult } from './check-cache.js'
 import { READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
+import { lockSchema, safeParseJson } from './schemas.js'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
@@ -65,7 +66,8 @@ export const fix = async (all = false) => {
   }
   if (!tryAcquireLock()) {
     try {
-      const lock = JSON.parse(readFileSync(lockFile, 'utf8')) as { at: string; pid: number }
+      const lock = safeParseJson(lockSchema, readFileSync(lockFile, 'utf8'))
+      if (!lock) return
       const age = Date.now() - new Date(lock.at).getTime()
       let alive = false
       try {

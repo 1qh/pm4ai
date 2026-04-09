@@ -46,6 +46,7 @@
   "dependencies": {
     "ink": "latest",
     "ink-spinner": "latest",
-    "react": "latest"
+    "react": "latest",
+    "zod": "latest"
   }
 }

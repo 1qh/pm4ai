@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { FORBIDDEN_PM_PREFIXES, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS, TURBO_FLAG } from './constants.js'
+import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
 interface PkgEntry {
@@ -17,8 +18,8 @@ const fetchNpmVersion = async (pkg: string): Promise<string | undefined> => {
     debug('fetch failed:', url)
     return
   }
-  const data = (await res.json()) as { version: string }
-  return data.version
+  const data = safeParse(npmVersionSchema, await res.json())
+  return data?.version
 }
 const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => {
   const cached = latestNpmVersionCache.get(pkg)
@@ -37,8 +38,8 @@ const fetchBunVersion = async (): Promise<string | undefined> => {
     debug('fetch failed:', url)
     return
   }
-  const data = (await res.json()) as { tag_name: string }
-  return data.tag_name.replace('bun-v', '')
+  const data = safeParse(ghReleaseSchema, await res.json())
+  return data?.tag_name.replace('bun-v', '')
 }
 const getLatestBunVersion = async (): Promise<string | undefined> => {
   if (latestBunVersionCache) return latestBunVersionCache
