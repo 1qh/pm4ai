@@ -10,7 +10,7 @@ const FORBIDDEN_PM_PREFIXES = ['npm ', 'npx ', 'yarn ', 'pnpm ']
 const GH_ORG = '1qh'
 const LINTMAX_PKG = 'lintmax'
 const MONOREPO_NAME = 'pm4ai-monorepo'
-const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', '.github/workflows/ci.yml']
+const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', 'postcss.config.ts', '.github/workflows/ci.yml']
 const CONFIG_DIR = '.pm4ai'
 const PKG_NAME = 'pm4ai'
 const SWIFTBAR_FONT = '| font=Menlo size=13'
@@ -40,7 +40,7 @@ const CLEANUP_SCRIPT = {
   task: 'cleanup-old-versions'
 }
 const TURBO_FLAG = '--output-logs=errors-only'
-const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore', 'postcss.config.ts']
 export {
   CLAUDE_MD,
   CLEANUP_SCRIPT,
