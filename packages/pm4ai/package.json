@@ -26,6 +26,10 @@
       "types": "./dist/guide.d.mts",
       "import": "./dist/guide.mjs"
     },
+    "./schemas": {
+      "types": "./dist/schemas.d.mts",
+      "import": "./dist/schemas.mjs"
+    },
     "./watch-state": {
       "types": "./dist/watch-state.d.mts",
       "import": "./dist/watch-state.mjs"

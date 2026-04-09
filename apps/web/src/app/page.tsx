@@ -12,6 +12,7 @@ import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'
 import { cn } from '@a/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { watchEventSchema } from 'pm4ai/schemas'
 import {
   createInitState,
   deriveStats,
@@ -114,8 +115,10 @@ const Dashboard = () => {
             if (eventMatch?.[1] === 'done') return
             if (eventMatch?.[1] !== 'message' || !dataMatch?.[1]) continue
             try {
-              const event = (JSON.parse(dataMatch[1]) as { json: WatchEvent }).json
-              if (!event?.project) continue
+              const raw = JSON.parse(dataMatch[1]) as { json: unknown }
+              const parsed = watchEventSchema.safeParse(raw.json)
+              if (!parsed.success) continue
+              const event = parsed.data
               dispatch({ event, type: 'event' })
               setEventLog(prev => [event, ...prev].slice(0, 200))
               if (event.step === 'done') queryClient.invalidateQueries({ queryKey: ['projects'] }).catch(() => {})

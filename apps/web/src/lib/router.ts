@@ -9,16 +9,17 @@ import { os } from '@orpc/server'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { z } from 'zod'
+import { z } from 'zod/v4'
 import { validateSession } from './auth'
 import { isConnected, subscribe } from './socket'
-interface CheckResult {
-  at: string
-  commit: string
-  pass: boolean
-  summary?: string
-  violations: number
-}
+const checkResultSchema = z.object({
+  at: z.string(),
+  commit: z.string().optional(),
+  pass: z.boolean(),
+  summary: z.string().optional(),
+  violations: z.number()
+})
+type CheckResult = z.infer<typeof checkResultSchema>
 const checksDir = join(homedir(), '.pm4ai', 'checks')
 const leadingSepRe = /^--/u
 const readCheckResult = (projectPath: string): CheckResult | null => {
@@ -26,7 +27,7 @@ const readCheckResult = (projectPath: string): CheckResult | null => {
   const p = join(checksDir, `${safeName}.json`)
   if (!existsSync(p)) return null
   try {
-    return JSON.parse(readFileSync(p, 'utf8')) as CheckResult
+    return checkResultSchema.parse(JSON.parse(readFileSync(p, 'utf8')))
   } catch {
     return null
   }
@@ -46,7 +47,7 @@ const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string
     .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 }
 const authed = os.middleware(async ({ context, next }) => {
-  const { headers } = context as { headers: Headers }
+  const headers = (context as Record<string, unknown>).headers as Headers
   if (!validateSession(headers.get('cookie'))) throw new Error('Unauthorized')
   return next({})
 })

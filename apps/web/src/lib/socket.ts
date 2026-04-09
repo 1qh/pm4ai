@@ -2,6 +2,7 @@
 /* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then) */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { WatchEvent } from 'pm4ai'
+import { watchEventSchema } from 'pm4ai/schemas'
 type Listener = (event: WatchEvent) => void
 const listeners = new Set<Listener>()
 let buffer = ''
@@ -31,11 +32,9 @@ const ensureStarted = async () => {
       for (const line of lines)
         if (line)
           try {
-            const event = JSON.parse(line) as WatchEvent
-            for (const fn of listeners) fn(event)
-          } catch {
-            /* Malformed */
-          }
+            const parsed = watchEventSchema.safeParse(JSON.parse(line))
+            if (parsed.success) for (const fn of listeners) fn(parsed.data)
+          } catch {}
     })
     sock.on('close', () => {
       connected = false
