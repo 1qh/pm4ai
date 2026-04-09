@@ -158,15 +158,11 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   )
   for (const f of providerChecks)
     if (f) issues.push({ detail: `Provider in layout, move to providers.tsx: ${f}`, type: 'drift' })
-  const layoutFiles = (
+  const layoutResult =
     await $`find ${projectPath} -name 'layout.tsx' -path '*/app/layout.tsx' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'`
       .quiet()
       .nothrow()
-  ).stdout
-    .toString()
-    .trim()
-    .split('\n')
-    .filter(Boolean)
+  const layoutFiles = layoutResult.stdout.toString().trim().split('\n').filter(Boolean)
   await Promise.all(
     layoutFiles.map(async layoutFile => {
       const content = await file(layoutFile).text()
@@ -188,15 +184,11 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       if (!content.includes('Metadata')) issues.push({ detail: `missing metadata export: ${rel}`, type: 'drift' })
     })
   )
-  const nextConfigFiles = (
+  const nextConfigResult =
     await $`find ${projectPath} -name 'next.config.ts' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*'`
       .quiet()
       .nothrow()
-  ).stdout
-    .toString()
-    .trim()
-    .split('\n')
-    .filter(Boolean)
+  const nextConfigFiles = nextConfigResult.stdout.toString().trim().split('\n').filter(Boolean)
   await Promise.all(
     nextConfigFiles.map(async configFile => {
       const content = await file(configFile).text()
