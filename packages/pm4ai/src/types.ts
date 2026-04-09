@@ -1,3 +1,4 @@
+type DepField = 'dependencies' | 'devDependencies' | 'peerDependencies'
 interface Issue {
   detail: string
   type: IssueType
@@ -39,4 +40,7 @@ interface PackageJson {
   type?: string
   workspaces?: string[]
 }
-export type { Issue, IssueType, PackageJson }
+const DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies']
+const ALL_DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies', 'peerDependencies']
+export { ALL_DEP_FIELDS, DEP_FIELDS }
+export type { DepField, Issue, IssueType, PackageJson }

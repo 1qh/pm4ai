@@ -20,6 +20,7 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
+import { DEP_FIELDS } from './types.js'
 import {
   buildPkgDepMap,
   collectWorkspacePackages,
@@ -48,7 +49,7 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
       const dstContent = (await dst.exists()) ? await dst.text() : ''
       if (srcContent !== dstContent) {
         await write(dst, srcContent)
-        return { detail: `${name} updated`, type: 'synced' } as Issue
+        return { detail: `${name} updated`, type: 'synced' } satisfies Issue
       }
     })
   )
@@ -458,7 +459,7 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
       const providedByWs = new Set<string>()
       for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
       let dedupChanged = false
-      for (const field of ['dependencies', 'devDependencies'] as const) {
+      for (const field of DEP_FIELDS) {
         const deps = entry.pkg[field]
         if (!deps) continue
         for (const [name, version] of Object.entries(deps))

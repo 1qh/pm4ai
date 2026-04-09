@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { FORBIDDEN_PM_PREFIXES, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS, TURBO_FLAG } from './constants.js'
+import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
 interface PkgEntry {
   path: string
@@ -50,7 +51,7 @@ const isPublishedPkg = (pkg: PackageJson): boolean =>
   !pkg.private && Boolean(pkg.name) && Boolean(pkg.exports ?? pkg.main ?? pkg.bin)
 const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
   const result = new Map<string, string>()
-  for (const field of ['dependencies', 'devDependencies'] as const) {
+  for (const field of DEP_FIELDS) {
     const deps = pkg[field]
     if (deps) for (const [n, v] of Object.entries(deps)) result.set(n, v)
   }

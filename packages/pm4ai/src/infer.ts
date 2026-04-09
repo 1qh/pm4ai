@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { ALL_DEP_FIELDS } from './types.js'
 import { collectWorkspacePackages } from './utils.js'
 const parseFrontmatter = (content: string): Record<string, string> => {
   if (!content.startsWith('---')) return {}
@@ -23,7 +24,7 @@ const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
   const deps = new Set<string>()
   const entries = await collectWorkspacePackages(projectPath)
   for (const { pkg } of entries)
-    for (const field of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+    for (const field of ALL_DEP_FIELDS) {
       const d = pkg[field]
       if (d) for (const name of Object.keys(d)) deps.add(name)
     }

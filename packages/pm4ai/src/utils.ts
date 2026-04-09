@@ -75,6 +75,11 @@ const isInsideProject = async (): Promise<string | undefined> => {
   if (hasLintmax) return root
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
+const parseJson = <T>(text: string): T | undefined => {
+  try {
+    return JSON.parse(text) as T
+  } catch {}
+}
 const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
 const isSkippedPath = (path: string) => path.includes('/readonly/') || path.includes('/.next/')
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
@@ -100,6 +105,7 @@ export {
   gitCleanRe,
   isInsideProject,
   isSkippedPath,
+  parseJson,
   projectName,
   readJson,
   readPkg,
