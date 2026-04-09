@@ -12,7 +12,7 @@ import {
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 } from './constants.js'
-import { debug, getGhRepo, readJson, readPkg } from './utils.js'
+import { debug, getGhRepo, readJson, readPkg, rel } from './utils.js'
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
@@ -25,7 +25,6 @@ const shell = async (projectPath: string, ...args: string[]) => {
   const result = await $`rg ${args} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   return result.stdout.toString().trim()
 }
-const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
 const relList = (files: string, base: string) =>
   files
     .split('\n')
