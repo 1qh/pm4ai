@@ -75,12 +75,30 @@ const isInsideProject = async (): Promise<string | undefined> => {
   if (hasLintmax) return root
 }
 const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
+const isSkippedPath = (path: string) => path.includes('/readonly/') || path.includes('/.next/')
+const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
+const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {
+  const result = new Map<string, Set<string>>()
+  for (const { pkg } of entries) {
+    if (!pkg.name) continue
+    const deps = new Set(
+      Object.entries(pkg.dependencies ?? {})
+        .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
+        .map(([n]) => n)
+    )
+    result.set(pkg.name, deps)
+  }
+  return result
+}
 export {
+  buildPkgDepMap,
   collectWorkspacePackages,
   debug,
   getBunVersion,
   getGhRepo,
+  gitCleanRe,
   isInsideProject,
+  isSkippedPath,
   projectName,
   readJson,
   readPkg,

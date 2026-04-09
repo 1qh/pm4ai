@@ -2,14 +2,8 @@ import { $ } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
-import {
-  FORBIDDEN_PM_PREFIXES,
-  REQUIRED_ROOT_DEVDEPS,
-  REQUIRED_TRUSTED_DEPS,
-  SKIP_PATTERNS,
-  TURBO_FLAG
-} from './constants.js'
-import { collectWorkspacePackages, debug } from './utils.js'
+import { FORBIDDEN_PM_PREFIXES, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS, TURBO_FLAG } from './constants.js'
+import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
 interface PkgEntry {
   path: string
   pkg: PackageJson
@@ -52,7 +46,6 @@ const getLatestBunVersion = async (): Promise<string | undefined> => {
   if (!v) latestBunVersionCache = undefined
   return v
 }
-const isAutoSynced = (pkgPath: string) => SKIP_PATTERNS.some(p => pkgPath.includes(p))
 const isPublishedPkg = (pkg: PackageJson): boolean =>
   !pkg.private && Boolean(pkg.name) && Boolean(pkg.exports ?? pkg.main ?? pkg.bin)
 const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
@@ -65,7 +58,7 @@ const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
 }
 const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  const filtered = pkgs.filter(p => !isAutoSynced(p.path) && p.path !== join(projectPath, 'package.json'))
+  const filtered = pkgs.filter(p => !isSkippedPath(p.path) && p.path !== join(projectPath, 'package.json'))
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     const isPublished = isPublishedPkg(pkg)
@@ -84,7 +77,7 @@ const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[]
 }
 const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  const filtered = pkgs.filter(p => !isAutoSynced(p.path))
+  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     for (const [name, version] of getDepsFromPkg(pkg))
@@ -95,18 +88,8 @@ const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
 }
 const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
-  const pkgDepsByName = new Map<string, Set<string>>()
-  for (const { pkg } of pkgs.filter(p => p.pkg.name)) {
-    const prodDeps = pkg.dependencies
-    const deps = new Set(
-      Object.entries(prodDeps ?? {})
-        .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
-        .map(([n]) => n)
-    )
-    const { name } = pkg
-    if (name) pkgDepsByName.set(name, deps)
-  }
-  const filtered = pkgs.filter(p => !isAutoSynced(p.path))
+  const pkgDepsByName = buildPkgDepMap(pkgs)
+  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     const allDeps = [...getDepsFromPkg(pkg)]
@@ -130,7 +113,7 @@ const turboRe = /\bturbo\b/u
 const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const rootPkgPath = join(projectPath, 'package.json')
-  const filtered = pkgs.filter(p => !isAutoSynced(p.path))
+  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     const isRoot = pkgPath === rootPkgPath
@@ -196,11 +179,10 @@ const checkAppPackages = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   }
   return issues
 }
-const gitCleanRe = /\bgit\s+clean\b/u
 const checkSubPkgScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const rootPkgPath = join(projectPath, 'package.json')
-  const filtered = pkgs.filter(p => !isAutoSynced(p.path) && p.path !== rootPkgPath)
+  const filtered = pkgs.filter(p => !isSkippedPath(p.path) && p.path !== rootPkgPath)
   for (const { path: pkgPath, pkg } of filtered) {
     const shortPath = pkgPath.replace(`${projectPath}/`, '')
     for (const [script, cmd] of Object.entries(pkg.scripts ?? {}))

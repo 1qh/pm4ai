@@ -17,11 +17,19 @@ import {
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   REQUIRED_TRUSTED_DEPS,
-  SKIP_PATTERNS,
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
-import { collectWorkspacePackages, getGhRepo, readJson, readPkg, writeJson } from './utils.js'
+import {
+  buildPkgDepMap,
+  collectWorkspacePackages,
+  getGhRepo,
+  gitCleanRe,
+  isSkippedPath,
+  readJson,
+  readPkg,
+  writeJson
+} from './utils.js'
 const sortKeys = (obj: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {
@@ -30,7 +38,6 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
-const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
     VERBATIM_FILES.map(async name => {
@@ -362,7 +369,6 @@ const fixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean =>
   }
   return changed
 }
-const isSkipped = (rel: string) => SKIP_PATTERNS.some(p => rel.includes(p.replace('/', '')))
 interface HoistArgs {
   issues: Issue[]
   rel: string
@@ -444,20 +450,10 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
     const changed = fixSubEntry({ entry, issues, projectPath, repo, selfPath })
     if (changed) writes.push(writeJson(entry.path, entry.pkg))
   }
-  const pkgDepsByName = new Map<string, Set<string>>()
-  for (const entry of entries) {
-    const { name } = entry.pkg
-    if (!name) continue
-    const deps = new Set(
-      Object.entries(entry.pkg.dependencies ?? {})
-        .filter(([n, v]) => !(v.startsWith('workspace:') || n.startsWith('@types/')))
-        .map(([n]) => n)
-    )
-    pkgDepsByName.set(name, deps)
-  }
+  const pkgDepsByName = buildPkgDepMap(entries)
   for (const entry of subEntries) {
     const rel = entry.path.replace(`${projectPath}/`, '')
-    if (!(isSkipped(rel) || rel.startsWith('apps/'))) {
+    if (!(isSkippedPath(rel) || rel.startsWith('apps/'))) {
       const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
       const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
       const providedByWs = new Set<string>()
@@ -483,7 +479,7 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   let rootChanged = false
   const rootDevDeps = rootPkg.devDependencies ?? {}
   const subWrites: Promise<number>[] = []
-  const nonSkipped = subEntries.filter(e => !isSkipped(e.path.replace(`${projectPath}/`, '')))
+  const nonSkipped = subEntries.filter(e => !isSkippedPath(e.path.replace(`${projectPath}/`, '')))
   for (const entry of nonSkipped) {
     const result = hoistSubEntry({ entry, issues, projectPath, rootDevDeps })
     if (result.hoisted) rootChanged = true
