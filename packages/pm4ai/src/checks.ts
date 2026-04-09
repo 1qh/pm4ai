@@ -217,6 +217,28 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
         issues.push({ detail: `missing reactStrictMode in ${rel}`, type: 'drift' })
     })
   )
+  const postcssInApps =
+    await $`find ${projectPath} -name 'postcss.config.*' -path '*/apps/*' -not -path '*/node_modules/*' -not -path '*/readonly/*'`
+      .quiet()
+      .nothrow()
+  for (const f of postcssInApps.stdout.toString().trim().split('\n').filter(Boolean))
+    issues.push({ detail: `redundant ${f.replace(`${projectPath}/`, '')}, remove it`, type: 'drift' })
+  const appTsconfigs = await $`find ${projectPath} -path '*/apps/*/tsconfig.json' -not -path '*/node_modules/*'`
+    .quiet()
+    .nothrow()
+  await Promise.all(
+    appTsconfigs.stdout
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(async tsconfigFile => {
+        const content = await file(tsconfigFile).text()
+        const rel = tsconfigFile.replace(`${projectPath}/`, '')
+        if (!content.includes('"extends"')) issues.push({ detail: `${rel} should extend lintmax/tsconfig`, type: 'drift' })
+        if (content.includes('"include"')) issues.push({ detail: `${rel} should not have "include"`, type: 'drift' })
+      })
+  )
   const isLintmax = projectPath.includes('/lintmax')
   const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
