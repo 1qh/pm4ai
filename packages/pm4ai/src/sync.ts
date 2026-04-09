@@ -504,8 +504,10 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   }
   if (projectPath === cnsyncPath) return issues
   cpSync(src, dst, { recursive: true })
-  const mjsPath = join(dst, 'postcss.config.mjs')
-  if (existsSync(mjsPath) && existsSync(join(dst, 'postcss.config.ts'))) rmSync(mjsPath)
+  for (const ext of ['mjs', 'ts', 'js']) {
+    const p = join(dst, `postcss.config.${ext}`)
+    if (existsSync(p)) rmSync(p)
+  }
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }
