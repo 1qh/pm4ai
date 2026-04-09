@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import type { ProjectInfo, ProjectState } from './watch-state.js'
 import pkg from '../package.json' with { type: 'json' }
 import { readCheckResult } from './check-cache.js'
+import { PKG_NAME } from './constants.js'
 import { discover } from './discover.js'
 import { projectName } from './utils.js'
 import { installCleanup, onEvent, startEmitter } from './watch-emitter.js'
@@ -312,7 +313,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         handler: () => {
           const p = sorted[focusedIdx]
           if (p && existsSync(p.path))
-            if (safeSpawn(['pm4ai', 'fix'], p.path)) showToast(`fixing ${p.name}...`)
+            if (safeSpawn([PKG_NAME, 'fix'], p.path)) showToast(`fixing ${p.name}...`)
             else showToast(`${p.name}: spawn failed`)
           else if (p) showToast(`${p.name}: ${p.path} not found`)
         },
@@ -321,7 +322,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       {
         guard: () => !hasFails && stats.running === 0,
         handler: () => {
-          if (safeSpawn(['pm4ai', 'fix', '--all'])) showToast('starting fix --all...')
+          if (safeSpawn([PKG_NAME, 'fix', '--all'])) showToast('starting fix --all...')
           else showToast('spawn failed')
         },
         match: (i: string) => i === 'f'
@@ -329,7 +330,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       {
         guard: () => !hasFails && stats.running === 0,
         handler: () => {
-          if (safeSpawn(['pm4ai', 'status', '--all'])) showToast('starting status --all...')
+          if (safeSpawn([PKG_NAME, 'status', '--all'])) showToast('starting status --all...')
           else showToast('spawn failed')
         },
         match: (i: string) => i === 's'

@@ -14,6 +14,7 @@ import {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   REQUIRED_TRUSTED_DEPS,
@@ -310,7 +311,7 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
   }
   const pubScripts = pkg.scripts ?? {}
   const directSrc = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
-  const nestedSrc = join(selfPath, 'packages', 'pm4ai', CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
+  const nestedSrc = join(selfPath, 'packages', PKG_NAME, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
   const srcScript = existsSync(directSrc) ? directSrc : nestedSrc
   const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
   const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
