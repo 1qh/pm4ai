@@ -176,6 +176,32 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
       if (!content.includes('suppressHydrationWarning'))
         issues.push({ detail: `missing suppressHydrationWarning on <html>: ${rel}`, type: 'drift' })
       if (!content.includes('antialiased')) issues.push({ detail: `missing antialiased on <body>: ${rel}`, type: 'drift' })
+      if (!content.includes('tracking-[-0.02em]'))
+        issues.push({ detail: `missing tracking-[-0.02em] on <html>: ${rel}`, type: 'drift' })
+      if (!content.includes('min-h-screen'))
+        issues.push({ detail: `missing min-h-screen on <body>: ${rel}`, type: 'drift' })
+      if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
+        issues.push({ detail: `use global.css not globals.css: ${rel}`, type: 'drift' })
+      if (content.includes('RootLayout')) issues.push({ detail: `use Layout not RootLayout: ${rel}`, type: 'drift' })
+      if (content.includes('export default function'))
+        issues.push({ detail: `use arrow function + export default Layout: ${rel}`, type: 'drift' })
+      if (!content.includes('Metadata')) issues.push({ detail: `missing metadata export: ${rel}`, type: 'drift' })
+    })
+  )
+  const nextConfigFiles = (
+    await $`find ${projectPath} -name 'next.config.ts' -not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*'`
+      .quiet()
+      .nothrow()
+  ).stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+  await Promise.all(
+    nextConfigFiles.map(async configFile => {
+      const content = await file(configFile).text()
+      const rel = configFile.replace(`${projectPath}/`, '')
+      if (!content.includes('reactStrictMode')) issues.push({ detail: `missing reactStrictMode in ${rel}`, type: 'drift' })
     })
   )
   const isLintmax = projectPath.includes('/lintmax')
