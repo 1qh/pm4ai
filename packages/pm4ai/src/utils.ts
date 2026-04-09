@@ -5,17 +5,17 @@ import { $, file, Glob, write } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
-const readJson = async (path: string): Promise<unknown> => {
+const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
   const f = file(path)
   if (!(await f.exists())) return
   try {
-    return (await f.json()) as unknown
+    const raw = await f.json()
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) return raw as Record<string, unknown>
   } catch {}
 }
-const isPkg = (v: unknown): v is PackageJson => typeof v === 'object' && v !== null && !Array.isArray(v)
 const readPkg = async (path: string): Promise<PackageJson | undefined> => {
   const raw = await readJson(path)
-  return isPkg(raw) ? raw : undefined
+  return raw as PackageJson | undefined
 }
 const projectName = (path: string): string => path.split('/').pop() ?? ''
 const getBunVersion = async (): Promise<string> => {

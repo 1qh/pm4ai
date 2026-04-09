@@ -169,9 +169,8 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
 const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const tsconfigPath = join(projectPath, 'tsconfig.json')
-  const raw = await readJson(tsconfigPath)
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return issues
-  const tsconfig = raw as Record<string, unknown>
+  const tsconfig = await readJson(tsconfigPath)
+  if (!tsconfig) return issues
   let changed = false
   if ('include' in tsconfig) {
     delete tsconfig.include

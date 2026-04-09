@@ -1,7 +1,7 @@
 import { $, file, Glob } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Issue } from './types.js'
+import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
 import {
   DEFAULT_SCRIPTS,
@@ -30,8 +30,9 @@ const relList = (files: string, base: string) =>
     .split('\n')
     .map(f => rel(f, base))
     .join(', ')
-const drift = (detail: string): Issue => ({ detail, type: 'drift' })
-const forbidden = (detail: string): Issue => ({ detail, type: 'forbidden' })
+const issue = (type: IssueType, detail: string): Issue => ({ detail, type })
+const drift = (detail: string) => issue('drift', detail)
+const forbidden = (detail: string) => issue('forbidden', detail)
 const providerJsxRe = /<\w+Provider/gu
 const serverProviderRe = /<\w*Server\w*Provider/u
 const providerImportRe = /from\s+['"].*providers/u
@@ -47,8 +48,8 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
     return []
   }
   const [conclusion, time] = result.stdout.toString().trim().split(' ')
-  if (conclusion === 'failure') return [{ detail: `failed ${time ?? ''}`, type: 'ci' }]
-  if (conclusion === 'success') return [{ detail: `passed ${time ?? ''}`, type: 'info' }]
+  if (conclusion === 'failure') return [issue('ci', `failed ${time ?? ''}`)]
+  if (conclusion === 'success') return [issue('info', `passed ${time ?? ''}`)]
   return []
 }
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
@@ -58,7 +59,7 @@ const checkGit = async (projectPath: string): Promise<Issue[]> => {
   if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain')
   const out = result.stdout.toString().trim()
   if (!out) return []
-  return [{ detail: `${out.split('\n').length} uncommitted changes`, type: 'git' }]
+  return [issue('git', `${out.split('\n').length} uncommitted changes`)]
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
@@ -66,9 +67,9 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return
-      if (!(await dst.exists())) return { detail: `${name} missing`, type: 'file' } as Issue
+      if (!(await dst.exists())) return issue('file', `${name} missing`)
       const [s, d] = await Promise.all([src.text(), dst.text()])
-      if (s !== d) return { detail: `${name} out of sync`, type: 'file' } as Issue
+      if (s !== d) return issue('file', `${name} out of sync`)
     })
   )
   return results.filter((r): r is Issue => r !== undefined)
@@ -78,8 +79,8 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   const pkg = await readPkg(join(projectPath, 'package.json'))
   if (!pkg) return issues
   if (!pkg.private) issues.push(drift('root package.json should be private'))
-  if (!pkg.packageManager) issues.push({ detail: 'packageManager field missing', type: 'missing' })
-  if (!pkg['simple-git-hooks']) issues.push({ detail: 'simple-git-hooks in package.json', type: 'missing' })
+  if (!pkg.packageManager) issues.push(issue('missing', 'packageManager field missing'))
+  if (!pkg['simple-git-hooks']) issues.push(issue('missing', 'simple-git-hooks in package.json'))
   else if (pkg['simple-git-hooks']['pre-commit'] !== EXPECTED.preCommit)
     issues.push(drift(`pre-commit should be "${EXPECTED.preCommit}"`))
   if (pkg.scripts?.prepare !== DEFAULT_SCRIPTS.prepare)
@@ -95,18 +96,19 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const isGitHub = Boolean(await getGhRepo(projectPath))
   for (const entry of MUST_EXIST_FILES)
     if (!((entry.includes('.github/') && !isGitHub) || existsSync(join(projectPath, entry))))
-      issues.push({ detail: entry, type: 'missing' })
+      issues.push(issue('missing', entry))
   const pkg = await readPkg(join(projectPath, 'package.json'))
-  if (pkg && !pkg.scripts?.action) issues.push({ detail: '"action" script missing', type: 'missing' })
-  const ts = (await readJson(join(projectPath, 'tsconfig.json'))) as null | Record<string, unknown>
+  if (pkg && !pkg.scripts?.action) issues.push(issue('missing', '"action" script missing'))
+  const ts = await readJson(join(projectPath, 'tsconfig.json'))
   if (ts) {
     if (ts.extends && ts.extends !== EXPECTED.tsconfigExtends)
       issues.push(drift('tsconfig.json should extend lintmax/tsconfig'))
     if (ts.include) issues.push(drift('root tsconfig.json should not have "include"'))
-    const types = (ts.compilerOptions as Record<string, unknown> | undefined)?.types as string[] | undefined
-    if (!types?.includes('bun-types')) issues.push({ detail: 'root tsconfig.json missing "bun-types"', type: 'missing' })
+    const co = ts.compilerOptions as Record<string, unknown> | undefined
+    const types = co?.types as string[] | undefined
+    if (!types?.includes('bun-types')) issues.push(issue('missing', 'root tsconfig.json missing "bun-types"'))
   }
-  const v = (await readJson(join(projectPath, 'vercel.json'))) as null | Record<string, unknown>
+  const v = await readJson(join(projectPath, 'vercel.json'))
   if (v?.installCommand && v.installCommand !== EXPECTED.vercelInstall)
     issues.push(drift('vercel.json installCommand should be "bun i"'))
   return issues
@@ -267,7 +269,7 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
     .trim()
     .split('\n')
     .find(l => l.includes('●'))
-  if (latestLine?.includes('● Error')) return [{ detail: 'vercel deployment failed', type: 'deploy' }]
+  if (latestLine?.includes('● Error')) return [issue('deploy', 'vercel deployment failed')]
   return []
 }
 export {
