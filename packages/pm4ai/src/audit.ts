@@ -2,7 +2,13 @@ import { $ } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
-import { FORBIDDEN_PM_PREFIXES, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS, TURBO_FLAG } from './constants.js'
+import {
+  FORBIDDEN_PM_PREFIXES,
+  LINTMAX_PKG,
+  REQUIRED_ROOT_DEVDEPS,
+  REQUIRED_TRUSTED_DEPS,
+  TURBO_FLAG
+} from './constants.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
@@ -134,9 +140,9 @@ const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
   const issues: Issue[] = []
   const scripts = rootPkg.scripts ?? {}
   if (!scripts.build?.includes('turbo')) issues.push({ detail: 'root "build" should use turbo', type: 'drift' })
-  if (scripts.check && !scripts.check.includes('lintmax') && !scripts.check.includes('cli.js check'))
+  if (scripts.check && !scripts.check.includes(LINTMAX_PKG) && !scripts.check.includes('cli.js check'))
     issues.push({ detail: 'root "check" should include "lintmax check"', type: 'drift' })
-  if (scripts.fix && !scripts.fix.includes('lintmax') && !scripts.fix.includes('cli.js fix'))
+  if (scripts.fix && !scripts.fix.includes(LINTMAX_PKG) && !scripts.fix.includes('cli.js fix'))
     issues.push({ detail: 'root "fix" should include "lintmax fix"', type: 'drift' })
   return issues
 }
@@ -204,14 +210,14 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     if (latest && bunVersion !== latest) issues.push({ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' })
   }
   const rootDeps = getDepsFromPkg(rootPkg ?? {})
-  const lintmaxVersion = rootDeps.get('lintmax')
+  const lintmaxVersion = rootDeps.get(LINTMAX_PKG)
   if (lintmaxVersion && !lintmaxVersion.startsWith('workspace:')) {
-    const lintmaxLatest = await getLatestNpmVersion('lintmax')
+    const lintmaxLatest = await getLatestNpmVersion(LINTMAX_PKG)
     if (lintmaxLatest) {
-      const result = await $`bun why lintmax`.cwd(projectPath).quiet().nothrow()
+      const result = await $`bun why ${LINTMAX_PKG}`.cwd(projectPath).quiet().nothrow()
       const resolved = result.stdout.toString().trim()
       if (resolved && !resolved.includes(lintmaxLatest))
-        issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: 'lintmax' })
+        issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: LINTMAX_PKG })
     }
   }
   if (rootPkg) {

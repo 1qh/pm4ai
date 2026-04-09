@@ -5,6 +5,7 @@ import { $, file, Glob, write } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
+import { LINTMAX_PKG } from './constants.js'
 const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
   const f = file(path)
   if (!(await f.exists())) return
@@ -70,7 +71,7 @@ const isInsideProject = async (): Promise<string | undefined> => {
   const allPkgs = await collectWorkspacePackages(root)
   const hasLintmax = allPkgs.some(({ pkg }) => {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies }
-    return 'lintmax' in deps
+    return LINTMAX_PKG in deps
   })
   if (hasLintmax) return root
 }
