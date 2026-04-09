@@ -72,11 +72,11 @@ const ProjectRow = ({
   const padded = name.padEnd(pad)
   const cursor = focused ? '›' : ' '
   const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
-  const colorMap = {
-    done: 'green' as const,
-    failed: 'red' as const,
-    idle: state.cachedPass ? ('green' as const) : state.cachedPass ? undefined : ('red' as const),
-    running: 'yellow' as const
+  const colorMap: Record<string, 'green' | 'red' | 'yellow' | undefined> = {
+    done: 'green',
+    failed: 'red',
+    idle: state.cachedPass ? 'green' : state.cachedPass ? undefined : 'red',
+    running: 'yellow'
   }
   const icon = iconMap[state.status]
   const color = colorMap[state.status]
@@ -277,7 +277,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const keymap: KeyAction[] = useMemo(
     () => [
       {
-        arrow: 'up' as const,
+        arrow: 'up',
         handler: () => {
           const p = sorted[Math.max(0, focusedIdx - 1)]
           if (p) focus(p.name)
@@ -285,7 +285,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         match: (i: string) => i === 'k'
       },
       {
-        arrow: 'down' as const,
+        arrow: 'down',
         handler: () => {
           const p = sorted[Math.min(sorted.length - 1, focusedIdx + 1)]
           if (p) focus(p.name)
