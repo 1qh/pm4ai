@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
 /* oxlint-disable no-empty */
 /* eslint-disable no-empty */
-import { $, file, Glob } from 'bun'
+import { $, file, Glob, write } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
@@ -74,6 +74,7 @@ const isInsideProject = async (): Promise<string | undefined> => {
   })
   if (hasLintmax) return root
 }
+const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
 export {
   collectWorkspacePackages,
   debug,
@@ -83,5 +84,6 @@ export {
   projectName,
   readJson,
   readPkg,
-  setVerbose
+  setVerbose,
+  writeJson
 }

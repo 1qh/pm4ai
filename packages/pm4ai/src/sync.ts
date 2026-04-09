@@ -21,7 +21,7 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
-import { collectWorkspacePackages, getGhRepo, readJson, readPkg } from './utils.js'
+import { collectWorkspacePackages, getGhRepo, readJson, readPkg, writeJson } from './utils.js'
 const sortKeys = (obj: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {
@@ -165,7 +165,7 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
   }
   if (changed) {
     pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})
-    await write(file(pkgPath), `${JSON.stringify(pkg, null, 2)}\n`)
+    await writeJson(pkgPath, pkg)
   }
   return issues
 }
@@ -194,7 +194,7 @@ const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
     changed = true
     issues.push({ detail: 'added "bun-types" to tsconfig compilerOptions.types', type: 'synced' })
   }
-  if (changed) await write(file(tsconfigPath), `${JSON.stringify(tsconfig, null, 2)}\n`)
+  if (changed) await writeJson(tsconfigPath, tsconfig)
   return issues
 }
 interface FixPublishedPkgArgs {
@@ -453,7 +453,7 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   const writes: Promise<number>[] = []
   for (const entry of subEntries) {
     const changed = fixSubEntry({ entry, issues, projectPath, repo, selfPath })
-    if (changed) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
+    if (changed) writes.push(writeJson(entry.path, entry.pkg))
   }
   const pkgDepsByName = new Map<string, Set<string>>()
   for (const entry of entries) {
@@ -494,7 +494,7 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
           /* No deps */
         }
       }
-      if (dedupChanged) writes.push(write(file(entry.path), `${JSON.stringify(entry.pkg, null, 2)}\n`))
+      if (dedupChanged) writes.push(writeJson(entry.path, entry.pkg))
     }
   }
   await Promise.all(writes)
@@ -507,12 +507,12 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   for (const entry of nonSkipped) {
     const result = hoistSubEntry({ entry, issues, projectPath, rootDevDeps })
     if (result.hoisted) rootChanged = true
-    if (result.changed) subWrites.push(write(file(result.pkgPath), `${JSON.stringify(result.pkg, null, 2)}\n`))
+    if (result.changed) subWrites.push(writeJson(result.pkgPath, result.pkg))
   }
   await Promise.all(subWrites)
   if (rootChanged) {
     rootPkg.devDependencies = sortKeys(rootDevDeps)
-    await write(file(rootPkgPath), `${JSON.stringify(rootPkg, null, 2)}\n`)
+    await writeJson(rootPkgPath, rootPkg)
   }
   return issues
 }
