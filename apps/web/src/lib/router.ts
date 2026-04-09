@@ -9,16 +9,10 @@ import { os } from '@orpc/server'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
 import { z } from 'zod/v4'
 import { validateSession } from './auth'
 import { isConnected, subscribe } from './socket'
-const checkResultSchema = z.object({
-  at: z.string(),
-  commit: z.string().optional(),
-  pass: z.boolean(),
-  summary: z.string().optional(),
-  violations: z.number()
-})
 type CheckResult = z.infer<typeof checkResultSchema>
 const checksDir = join(homedir(), '.pm4ai', 'checks')
 const leadingSepRe = /^--/u
@@ -26,11 +20,7 @@ const readCheckResult = (projectPath: string): CheckResult | null => {
   const safeName = projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
   const p = join(checksDir, `${safeName}.json`)
   if (!existsSync(p)) return null
-  try {
-    return checkResultSchema.parse(JSON.parse(readFileSync(p, 'utf8')))
-  } catch {
-    return null
-  }
+  return safeParseJson(checkResultSchema, readFileSync(p, 'utf8')) ?? null
 }
 const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string; path: string }[] => {
   if (!existsSync(checksDir)) return []
