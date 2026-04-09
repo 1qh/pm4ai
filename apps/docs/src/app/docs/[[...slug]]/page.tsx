@@ -4,7 +4,7 @@ import { createRelativeLink } from 'fumadocs-ui/mdx'
 import { notFound } from 'next/navigation'
 import { getMDXComponents } from '@/components/mdx'
 import { source } from '@/lib/source'
-export default async function Page({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>) {
+const Page = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>) => {
   const params = await paramsPromise
   const page = source.getPage(params.slug)
   if (!page) notFound()
@@ -23,6 +23,7 @@ export default async function Page({ params: paramsPromise }: PageProps<'/docs/[
     </DocsPage>
   )
 }
+export default Page
 export const generateStaticParams = () => source.generateParams()
 export const generateMetadata = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>): Promise<Metadata> => {
   const params = await paramsPromise
