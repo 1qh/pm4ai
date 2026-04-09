@@ -1,5 +1,5 @@
 /* eslint-disable complexity */
-import { $, file } from 'bun'
+import { $, file, Glob } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
@@ -14,20 +14,18 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { debug, getGhRepo, readJson, readPkg } from './utils.js'
-const findFiles = async (pattern: string, projectPath: string, extra = ''): Promise<string[]> => {
-  const cmd = extra ? `find ${projectPath} ${pattern} ${extra}` : `find ${projectPath} ${pattern}`
-  const result = await $`sh -c ${cmd}`.quiet().nothrow()
-  return result.stdout.toString().trim().split('\n').filter(Boolean)
+const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
+const glob = async (pattern: string, cwd: string): Promise<string[]> => {
+  const results: string[] = []
+  for await (const f of new Glob(pattern).scan({ cwd, onlyFiles: true }))
+    if (!f.split('/').some(seg => SCAN_EXCLUDE.has(seg))) results.push(join(cwd, f))
+  return results
 }
-const rgFiles = async (
-  pattern: string,
-  projectPath: string,
-  globs: string[] = ['-g', '*.ts', '-g', '*.tsx']
-): Promise<string> => {
-  const result = await $`rg ${pattern} ${projectPath} ${globs} ${RG_EXCLUDE} -l`.quiet().nothrow()
+const rg = async (pattern: string, projectPath: string): Promise<string> => {
+  const result = await $`rg ${pattern} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   return result.stdout.toString().trim()
 }
-const rel = (fullPath: string, projectPath: string) => fullPath.replace(`${projectPath}/`, '')
+const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
 const providerJsxRe = /<\w+Provider/gu
 const serverProviderRe = /<\w*Server\w*Provider/u
 const providerImportRe = /from\s+['"].*providers/u
@@ -113,34 +111,37 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
+const checkFile = (
+  content: string,
+  r: string,
+  issues: Issue[],
+  required: [string, string][],
+  forbidden: [string, string][]
+) => {
+  for (const [check, msg] of required) if (!content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
+  for (const [check, msg] of forbidden) if (content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
+}
+const LAYOUT_REQUIRED: [string, string][] = [
+  ['suppressHydrationWarning', 'missing suppressHydrationWarning on <html>'],
+  ['antialiased', 'missing antialiased on <body>'],
+  ['tracking-[-0.02em]', 'missing tracking-[-0.02em] on <html>'],
+  ['min-h-screen', 'missing min-h-screen on <body>'],
+  ['font-sans', 'missing font-sans on <html>'],
+  ['Metadata', 'missing metadata export']
+]
+const LAYOUT_FORBIDDEN: [string, string][] = [
+  ['RootLayout', 'use Layout not RootLayout'],
+  ['export default function', 'use arrow function + export default Layout']
+]
 const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const files = await findFiles(
-    "-name 'layout.tsx' -path '*/app/layout.tsx'",
-    projectPath,
-    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'"
-  )
+  const files = await glob('**/app/layout.tsx', projectPath)
   await Promise.all(
     files.map(async layoutFile => {
       const content = await file(layoutFile).text()
       const r = rel(layoutFile, projectPath)
       if (!content.includes('<html')) return
-      const required: [string, string][] = [
-        ['suppressHydrationWarning', 'missing suppressHydrationWarning on <html>'],
-        ['antialiased', 'missing antialiased on <body>'],
-        ['tracking-[-0.02em]', 'missing tracking-[-0.02em] on <html>'],
-        ['min-h-screen', 'missing min-h-screen on <body>'],
-        ['font-sans', 'missing font-sans on <html>'],
-        ['Metadata', 'missing metadata export']
-      ]
-      for (const [check, msg] of required)
-        if (!content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
-      const forbidden: [string, string][] = [
-        ['RootLayout', 'use Layout not RootLayout'],
-        ['export default function', 'use arrow function + export default Layout']
-      ]
-      for (const [check, msg] of forbidden)
-        if (content.includes(check)) issues.push({ detail: `${msg}: ${r}`, type: 'drift' })
+      checkFile(content, r, issues, LAYOUT_REQUIRED, LAYOUT_FORBIDDEN)
       if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
         issues.push({ detail: `use global.css not globals.css: ${r}`, type: 'drift' })
       const dir = layoutFile.replace('/layout.tsx', '')
@@ -149,8 +150,7 @@ const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
       if (content.includes('Providers') && !existsSync(join(dir, 'providers.tsx')))
         issues.push({ detail: `providers.tsx should be next to layout: ${r}`, type: 'drift' })
       const providerMatches = content.match(providerJsxRe) ?? []
-      const hasClientProvider = providerMatches.some(m => !serverProviderRe.test(m))
-      if (hasClientProvider && !providerImportRe.test(content))
+      if (providerMatches.some(m => !serverProviderRe.test(m)) && !providerImportRe.test(content))
         issues.push({ detail: `Provider in layout, move to providers.tsx: ${r}`, type: 'drift' })
     })
   )
@@ -158,11 +158,7 @@ const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkPages = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const files = await findFiles(
-    "-name 'page.tsx' -path '*/app/*'",
-    projectPath,
-    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*' -not -path '*/templates/*'"
-  )
+  const files = await glob('**/app/**/page.tsx', projectPath)
   await Promise.all(
     files.map(async pageFile => {
       const content = await file(pageFile).text()
@@ -174,11 +170,7 @@ const checkPages = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const configs = await findFiles(
-    "-name 'next.config.ts'",
-    projectPath,
-    "-not -path '*/node_modules/*' -not -path '*/readonly/*' -not -path '*/.next/*'"
-  )
+  const configs = await glob('**/next.config.ts', projectPath)
   await Promise.all(
     configs.map(async configFile => {
       const content = await file(configFile).text()
@@ -186,17 +178,13 @@ const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
         issues.push({ detail: `missing reactStrictMode in ${rel(configFile, projectPath)}`, type: 'drift' })
     })
   )
-  const redundant = await findFiles(
-    "-name 'postcss.config.*' -path '*/apps/*'",
-    projectPath,
-    "-not -path '*/node_modules/*' -not -path '*/readonly/*'"
-  )
-  for (const f of redundant) issues.push({ detail: `redundant ${rel(f, projectPath)}, remove it`, type: 'drift' })
+  for (const f of await glob('**/apps/*/postcss.config.*', projectPath))
+    issues.push({ detail: `redundant ${rel(f, projectPath)}, remove it`, type: 'drift' })
   return issues
 }
 const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const files = await findFiles("-path '*/apps/*/tsconfig.json'", projectPath, "-not -path '*/node_modules/*'")
+  const files = await glob('**/apps/*/tsconfig.json', projectPath)
   await Promise.all(
     files.map(async tsconfigFile => {
       const content = await file(tsconfigFile).text()
@@ -246,25 +234,21 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
 const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const isLintmax = projectPath.includes('/lintmax')
-  const bannedImports = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
+  const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const banResults = await Promise.all(
-    bannedImports.map(async ({ ban, fix }) => {
-      const files = await rgFiles(ban, projectPath)
+    banned.map(async ({ ban, fix }) => {
+      const files = await rg(ban, projectPath)
       if (files) return { ban, files, fix }
     })
   )
-  const pkgJsonFiles = await findFiles(
-    "-name 'package.json'",
-    projectPath,
-    "-not -path '*/node_modules/*' -not -path '*/readonly/*'"
-  )
+  const pkgJsonFiles = await glob('**/package.json', projectPath)
   const pkgBanResults = await Promise.all(
     pkgJsonFiles.map(async pkgPath => {
       const raw = await readPkg(pkgPath)
       if (!raw) return []
       const depNames = Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies })
       const matches: { ban: string; files: string; fix: string }[] = []
-      for (const { ban, fix } of bannedImports) {
+      for (const { ban, fix } of banned) {
         const cleanBan = ban.replaceAll(/^"|"$/gu, '')
         const isPrefix = !ban.endsWith('"')
         if (depNames.some(d => (isPrefix ? d.startsWith(cleanBan) : d === cleanBan)))
@@ -296,7 +280,7 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
         type: 'forbidden'
       })
   }
-  const deepUiFiles = await rgFiles(`${UI_PACKAGE_NAME}/lib/`, projectPath)
+  const deepUiFiles = await rg(`${UI_PACKAGE_NAME}/lib/`, projectPath)
   if (deepUiFiles)
     issues.push({
       detail: `use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${deepUiFiles
