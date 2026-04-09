@@ -124,7 +124,13 @@ const LAYOUT_FORBIDDEN: [string, string][] = [
   ['RootLayout', 'use Layout not RootLayout'],
   ['export default function', 'use arrow function + export default Layout']
 ]
-const checkContent = (content: string, r: string, must: [string, string][], mustNot: [string, string][]): Issue[] => {
+interface ContentRules {
+  content: string
+  must: [string, string][]
+  mustNot: [string, string][]
+  r: string
+}
+const checkContent = ({ content, must, mustNot, r }: ContentRules): Issue[] => {
   const issues: Issue[] = []
   for (const [check, msg] of must) if (!content.includes(check)) issues.push(drift(`${msg}: ${r}`))
   for (const [check, msg] of mustNot) if (content.includes(check)) issues.push(drift(`${msg}: ${r}`))
@@ -138,7 +144,7 @@ const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
       const content = await file(layoutFile).text()
       const r = rel(layoutFile, projectPath)
       if (!content.includes('<html')) return
-      issues.push(...checkContent(content, r, LAYOUT_REQUIRED, LAYOUT_FORBIDDEN))
+      issues.push(...checkContent({ content, must: LAYOUT_REQUIRED, mustNot: LAYOUT_FORBIDDEN, r }))
       if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
         issues.push(drift(`use global.css not globals.css: ${r}`))
       const dir = layoutFile.replace('/layout.tsx', '')
@@ -213,27 +219,26 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const isLintmax = projectPath.includes('/lintmax')
   const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
-  const [sourceResults, pkgResults] = await Promise.all([
-    Promise.all(
-      banned.map(async ({ ban, fix }) => {
-        const files = await shell(projectPath, ban)
-        if (files) return { ban, files, fix }
-      })
-    ),
-    Promise.all(
-      (await glob('**/package.json', projectPath)).map(async pkgPath => {
-        const raw = await readPkg(pkgPath)
-        if (!raw) return []
-        const depNames = Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies })
-        return banned
-          .filter(({ ban }) => {
-            const clean = ban.replaceAll(/^"|"$/gu, '')
-            return ban.endsWith('"') ? depNames.includes(clean) : depNames.some(d => d.startsWith(clean))
-          })
-          .map(({ ban, fix }) => ({ ban, files: pkgPath, fix }))
-      })
-    )
-  ])
+  const sourceResults = await Promise.all(
+    banned.map(async ({ ban, fix }) => {
+      const files = await shell(projectPath, ban)
+      if (files) return { ban, files, fix }
+    })
+  )
+  const pkgJsonFiles = await glob('**/package.json', projectPath)
+  const pkgResults = await Promise.all(
+    pkgJsonFiles.map(async pkgPath => {
+      const raw = await readPkg(pkgPath)
+      if (!raw) return []
+      const depNames = Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies })
+      return banned
+        .filter(({ ban }) => {
+          const clean = ban.replaceAll(/^"|"$/gu, '')
+          return ban.endsWith('"') ? depNames.includes(clean) : depNames.some(d => d.startsWith(clean))
+        })
+        .map(({ ban, fix }) => ({ ban, files: pkgPath, fix }))
+    })
+  )
   for (const r of [...sourceResults, ...pkgResults.flat()])
     if (r) issues.push(forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`))
   const bunGlobalResult =
