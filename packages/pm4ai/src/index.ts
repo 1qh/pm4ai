@@ -16,6 +16,7 @@ export {
   IDLE_FALLBACK,
   nextProjectState,
   progressDots,
+  RESET_DELAY,
   runReducer,
   smoothBar,
   sortByStatus,

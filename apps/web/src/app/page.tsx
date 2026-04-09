@@ -19,6 +19,7 @@ import {
   formatTime,
   IDLE_FALLBACK,
   progressDots,
+  RESET_DELAY,
   runReducer,
   sparkline,
   STEP_COUNT,
@@ -39,7 +40,6 @@ const mkIdleFromApi = (_p: ProjectInfo, apiData?: ApiProject): ProjectState => {
   const label = `${cr.pass ? 'clean' : `${cr.violations} issues`} ${timeAgo(cr.at)}`
   return { cachedPass: cr.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
-const RESET_DELAY = 5000
 const statusColor = (s: ProjectState['status'], pass?: boolean) => {
   if (s === 'running') return 'text-yellow-400'
   if (s === 'failed') return 'text-destructive'

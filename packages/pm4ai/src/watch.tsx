@@ -19,6 +19,7 @@ import {
   formatTime,
   IDLE_FALLBACK,
   progressDots,
+  RESET_DELAY,
   runReducer,
   smoothBar,
   sparkline,
@@ -27,7 +28,6 @@ import {
   timeAgo
 } from './watch-state.js'
 const VERSION = pkg.version ?? '0.0.0'
-const RESET_DELAY = 5000
 const safeReadCheck = (path: string) => {
   try {
     return readCheckResult(path)

@@ -44,6 +44,7 @@ interface RunState {
   sortSnapshot: string[]
   startTime?: number
 }
+const RESET_DELAY = 5000
 const DISPLAY_STEPS = ['sync', 'audit', 'maintain', 'check'] as const
 const STEP_COUNT = DISPLAY_STEPS.length
 const STEP_LABELS = {
@@ -301,6 +302,7 @@ export {
   MAX_HISTORY,
   nextProjectState,
   progressDots,
+  RESET_DELAY,
   runReducer,
   smoothBar,
   sortByStatus,
