@@ -165,6 +165,11 @@ const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Is
       issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
     if (pkg.scripts?.build && pkg.scripts.build !== 'tsdown')
       issues.push({ detail: `${shortPath} build must be exactly "tsdown"`, type: 'drift' })
+    if (pkg.scripts?.build && pkg.scripts.prepublishOnly !== 'bun run build')
+      issues.push({
+        detail: `${shortPath} missing "prepublishOnly": "bun run build" — stale dist will ship`,
+        type: 'drift'
+      })
     if (!existsSync(join(dirname(pkgPath), 'tsdown.config.ts')))
       issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
   }

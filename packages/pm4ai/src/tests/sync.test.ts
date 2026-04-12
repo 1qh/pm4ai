@@ -177,6 +177,20 @@ describe('syncSubPackages', () => {
     expect(pkg.scripts?.postpublish).toBe('bunx pm4ai@latest cleanup')
     rmSync(tmp, { recursive: true })
   })
+  test('adds prepublishOnly to packages with build script', async () => {
+    const tmp = makeProject(
+      { private: true, workspaces: ['packages/*'] },
+      { 'packages/lib/package.json': { bin: './cli.js', name: 'my-lib', scripts: { build: 'tsdown' } } }
+    )
+    const issues = await syncSubPackages(selfPath, tmp)
+    expect(issues.some(i => i.detail.includes('prepublishOnly'))).toBe(true)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'packages/lib/package.json'), 'utf8')) as Record<
+      string,
+      Record<string, string>
+    >
+    expect(pkg.scripts?.prepublishOnly).toBe('bun run build')
+    rmSync(tmp, { recursive: true })
+  })
   test('sets type module and license on published packages', async () => {
     const tmp = makeProject(
       { private: true, workspaces: ['packages/*'] },

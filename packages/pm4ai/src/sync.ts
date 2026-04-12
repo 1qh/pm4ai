@@ -346,6 +346,12 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
     changed = true
     issues.push({ detail: `${rel} set postpublish to pm4ai cleanup`, type: 'synced' })
   }
+  if (pubScripts.build && pubScripts.prepublishOnly !== 'bun run build') {
+    pubScripts.prepublishOnly = 'bun run build'
+    pkg.scripts = pubScripts
+    changed = true
+    issues.push({ detail: `${rel} set prepublishOnly to always build before publish`, type: 'synced' })
+  }
   return changed
 }
 const fixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
