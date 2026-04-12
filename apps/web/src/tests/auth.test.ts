@@ -1,4 +1,4 @@
-/* oxlint-disable eslint-plugin-node(global-require), eslint-plugin-unicorn(prefer-module) */
+/* oxlint-disable eslint-plugin-unicorn(prefer-module) */
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'

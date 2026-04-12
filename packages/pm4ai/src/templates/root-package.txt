@@ -30,6 +30,8 @@
   "trustedDependencies": [
     "esbuild",
     "lintmax",
+    "msw",
+    "sharp",
     "simple-git-hooks"
   ]
 }

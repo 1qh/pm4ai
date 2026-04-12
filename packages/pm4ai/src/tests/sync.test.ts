@@ -51,7 +51,7 @@ describe('syncPackageJson', () => {
     const issues = await syncPackageJson(tmp)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'simple-git-hooks'])
+    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
     rmSync(tmp, { recursive: true })
   })
   test('preserves existing trustedDependencies', async () => {
@@ -63,7 +63,7 @@ describe('syncPackageJson', () => {
     const issues = await syncPackageJson(tmp)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'sharp', 'simple-git-hooks'])
+    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
     rmSync(tmp, { recursive: true })
   })
   test('no-op when all required already trusted', async () => {
@@ -76,7 +76,7 @@ describe('syncPackageJson', () => {
         private: true,
         scripts: { clean: 'sh clean.sh', postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
         'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' },
-        trustedDependencies: ['esbuild', 'lintmax', 'simple-git-hooks']
+        trustedDependencies: ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
       })
     )
     const issues = await syncPackageJson(tmp)
