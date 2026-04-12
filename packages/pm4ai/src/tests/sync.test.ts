@@ -174,8 +174,7 @@ describe('syncSubPackages', () => {
       string,
       Record<string, string>
     >
-    expect(pkg.scripts?.postpublish).toBe('bun run cleanup-old-versions')
-    expect(existsSync(join(tmp, 'packages/lib/script/cleanup-old-versions.ts'))).toBe(true)
+    expect(pkg.scripts?.postpublish).toBe('bunx pm4ai@latest cleanup')
     rmSync(tmp, { recursive: true })
   })
   test('sets type module and license on published packages', async () => {

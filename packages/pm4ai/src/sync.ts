@@ -2,19 +2,17 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
   CLAUDE_MD,
-  CLEANUP_SCRIPT,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
-  PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   VERBATIM_FILES
@@ -207,7 +205,6 @@ interface FixPublishedPkgArgs {
   pkgPath: string
   rel: string
   repo: string | undefined
-  selfPath: string
 }
 const distPrefixRe = /^\.?\/?dist\//u
 const dotSlashRe = /^\.\//u
@@ -295,7 +292,7 @@ const syncReadmeSymlink = ({
     return false
   }
 }
-const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPublishedPkgArgs): boolean => {
+const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): boolean => {
   let changed = false
   if (pkg.type !== 'module') {
     pkg.type = 'module'
@@ -318,18 +315,6 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
     issues.push({ detail: `${rel} added repository`, type: 'synced' })
   }
   const pubScripts = pkg.scripts ?? {}
-  const directSrc = join(selfPath, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
-  const nestedSrc = join(selfPath, 'packages', PKG_NAME, CLEANUP_SCRIPT.dir, CLEANUP_SCRIPT.name)
-  const srcScript = existsSync(directSrc) ? directSrc : nestedSrc
-  const scriptDir = join(dirname(pkgPath), CLEANUP_SCRIPT.dir)
-  const scriptFile = join(scriptDir, CLEANUP_SCRIPT.name)
-  if (!existsSync(scriptFile) && existsSync(srcScript)) {
-    mkdirSync(scriptDir, { recursive: true })
-    cpSync(srcScript, scriptFile)
-    if (existsSync(scriptFile))
-      issues.push({ detail: `${rel} created ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'synced' })
-    else issues.push({ detail: `${rel} failed to copy ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`, type: 'error' })
-  }
   if (pubScripts.build && pubScripts.build !== 'tsdown') {
     pubScripts.build = 'tsdown'
     pkg.scripts = pubScripts
@@ -353,12 +338,13 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo, selfPath }: FixPubli
   }
   const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
   syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
-  if (!pubScripts.postpublish) {
-    pubScripts[CLEANUP_SCRIPT.task] = `bun ${CLEANUP_SCRIPT.dir}/${CLEANUP_SCRIPT.name}`
-    pubScripts.postpublish = CLEANUP_SCRIPT.postpublish
+  const expectedPostpublish = 'bunx pm4ai@latest cleanup'
+  if (pubScripts.postpublish !== expectedPostpublish) {
+    pubScripts.postpublish = expectedPostpublish
+    delete pubScripts['cleanup-old-versions']
     pkg.scripts = pubScripts
     changed = true
-    issues.push({ detail: `${rel} added postpublish cleanup`, type: 'synced' })
+    issues.push({ detail: `${rel} set postpublish to pm4ai cleanup`, type: 'synced' })
   }
   return changed
 }
@@ -406,9 +392,8 @@ interface FixSubEntryArgs {
   issues: Issue[]
   projectPath: string
   repo: string | undefined
-  selfPath: string
 }
-const fixSubEntry = ({ entry, issues, projectPath, repo, selfPath }: FixSubEntryArgs): boolean => {
+const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boolean => {
   const rel = entry.path.replace(`${projectPath}/`, '')
   let changed = false
   if (rel.startsWith('apps/') && !entry.pkg.private) {
@@ -417,8 +402,7 @@ const fixSubEntry = ({ entry, issues, projectPath, repo, selfPath }: FixSubEntry
     issues.push({ detail: `${rel} set to private`, type: 'synced' })
   }
   const isPublished = isPublishedPkg(entry.pkg)
-  if (isPublished)
-    changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo, selfPath }) || changed
+  if (isPublished) changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo }) || changed
   if (entry.pkg.scripts?.clean) {
     delete entry.pkg.scripts.clean
     if (Object.keys(entry.pkg.scripts).length === 0) delete entry.pkg.scripts
@@ -446,7 +430,7 @@ const hoistSubEntry = ({
   if (changed) entry.pkg.devDependencies = remaining
   return { changed, hoisted, pkg: entry.pkg, pkgPath: entry.path }
 }
-const syncSubPackages = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
+const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
   const rootPkgPath = join(projectPath, 'package.json')
@@ -454,7 +438,7 @@ const syncSubPackages = async (selfPath: string, projectPath: string): Promise<I
   const subEntries = entries.filter(e => e.path !== rootPkgPath)
   const writes: Promise<number>[] = []
   for (const entry of subEntries) {
-    const changed = fixSubEntry({ entry, issues, projectPath, repo, selfPath })
+    const changed = fixSubEntry({ entry, issues, projectPath, repo })
     if (changed) writes.push(writeJson(entry.path, entry.pkg))
   }
   const pkgDepsByName = buildPkgDepMap(entries)

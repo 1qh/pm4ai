@@ -37,5 +37,8 @@ else if (command === 'init') {
   } else if (command === 'ignores') {
     const { ignores } = await import('./ignores.js')
     await ignores(flags.has('--all'))
+  } else if (command === 'cleanup') {
+    const { cleanup } = await import('./cleanup.js')
+    cleanup()
   } else console.log(guide)
 }

@@ -32,17 +32,10 @@ const DEFAULT_SCRIPTS = {
   postinstall: 'sherif',
   prepare: 'bunx simple-git-hooks'
 }
-const CLEANUP_SCRIPT = {
-  dir: 'script',
-  name: 'cleanup-old-versions.ts',
-  postpublish: 'bun run cleanup-old-versions',
-  task: 'cleanup-old-versions'
-}
 const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore', 'postcss.config.ts']
 export {
   CLAUDE_MD,
-  CLEANUP_SCRIPT,
   CONFIG_DIR,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
