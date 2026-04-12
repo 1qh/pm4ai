@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS, REQUIRED_TRUSTED_DEPS } from '../constants.js'
+import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
 const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
@@ -113,8 +113,13 @@ describe('init scaffold', () => {
     expect(hooks['pre-commit']).toBe(EXPECTED.preCommit)
     const devDeps = Object.keys(tplPkg.devDependencies as Record<string, string>)
     for (const dep of REQUIRED_ROOT_DEVDEPS) expect(devDeps).toContain(dep)
+    const rootPkg = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', '..', '..', '..', 'package.json'), 'utf8')
+    ) as {
+      trustedDependencies?: string[]
+    }
     const trusted = tplPkg.trustedDependencies as string[]
-    for (const dep of REQUIRED_TRUSTED_DEPS) expect(trusted).toContain(dep)
+    for (const dep of rootPkg.trustedDependencies ?? []) expect(trusted).toContain(dep)
     expect(tplPkg.private).toBe(true)
     expect(tplPkg.name).toBeUndefined()
   })

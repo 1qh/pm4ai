@@ -212,16 +212,17 @@ describe('checkRootWorkspacesAndDevDeps', () => {
   })
 })
 describe('checkTrustedDeps', () => {
+  const required = ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
   test('missing trustedDependencies is flagged', () => {
-    const issues = checkTrustedDeps({})
+    const issues = checkTrustedDeps({}, required)
     expect(issues.some(i => i.detail.includes('lintmax'))).toBe(true)
   })
   test('trustedDependencies with all required is clean', () => {
-    const issues = checkTrustedDeps({ trustedDependencies: ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'] })
+    const issues = checkTrustedDeps({ trustedDependencies: required }, required)
     expect(issues).toHaveLength(0)
   })
   test('trustedDependencies without lintmax is flagged', () => {
-    const issues = checkTrustedDeps({ trustedDependencies: ['esbuild'] })
+    const issues = checkTrustedDeps({ trustedDependencies: ['esbuild'] }, required)
     expect(issues.some(i => i.detail.includes('lintmax'))).toBe(true)
   })
 })

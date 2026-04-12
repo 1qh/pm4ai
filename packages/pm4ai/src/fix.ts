@@ -146,7 +146,7 @@ export const fix = async (all = false) => {
       const [configIssues, claudeIssues, pkgIssues, tsconfigIssues] = await Promise.all([
         syncConfigs(self.path, project.path),
         syncClaudeMd(self.path, project.path),
-        syncPackageJson(project.path),
+        syncPackageJson(project.path, self.path),
         syncTsconfig(project.path)
       ])
       const subPkgIssues = await syncSubPackages(self.path, project.path)

@@ -21,7 +21,6 @@ const RG_EXCLUDE_FILES = ['banned.ts']
 const RG_EXCLUDE = [...RG_EXCLUDE_DIRS.flatMap(d => ['-g', `!${d}`]), ...RG_EXCLUDE_FILES.flatMap(f => ['-g', `!**/${f}`])]
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const REQUIRED_ROOT_DEVDEPS = ['lintmax', 'sherif', 'simple-git-hooks', 'tsdown', 'turbo', 'typescript']
-const REQUIRED_TRUSTED_DEPS = ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
 const DEFAULT_DEP_VERSION = 'latest'
 const DEFAULT_FILES = ['dist']
 const DEFAULT_LICENSE = 'MIT'
@@ -59,7 +58,6 @@ export {
   PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
-  REQUIRED_TRUSTED_DEPS,
   RG_EXCLUDE,
   SKIP_PATTERNS,
   SWIFTBAR_FONT,

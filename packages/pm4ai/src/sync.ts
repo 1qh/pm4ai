@@ -17,7 +17,6 @@ import {
   PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
-  REQUIRED_TRUSTED_DEPS,
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
@@ -103,7 +102,7 @@ const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issu
     }
   return changed
 }
-const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
+const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const pkgPath = join(projectPath, 'package.json')
   const pkg = await readPkg(pkgPath)
@@ -153,7 +152,13 @@ const syncPackageJson = async (projectPath: string): Promise<Issue[]> => {
     }
   }
   const trusted = pkg.trustedDependencies ?? []
-  const missingTrusted = REQUIRED_TRUSTED_DEPS.filter(d => !trusted.includes(d))
+  let requiredTrusted: string[] = []
+  if (selfPath) {
+    const selfPkgPath = join(selfPath, 'package.json')
+    const selfPkg = JSON.parse(await file(selfPkgPath).text()) as PackageJson
+    requiredTrusted = selfPkg.trustedDependencies ?? []
+  }
+  const missingTrusted = requiredTrusted.filter(d => !trusted.includes(d))
   if (missingTrusted.length > 0) {
     pkg.trustedDependencies = [...trusted, ...missingTrusted].toSorted()
     changed = true

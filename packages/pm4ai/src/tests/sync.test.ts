@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from '../sync.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
+const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
     const src = makeTmp()
@@ -33,7 +34,7 @@ describe('syncPackageJson', () => {
   test('adds sherif and hooks to minimal package.json', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    const issues = await syncPackageJson(tmp)
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
     const details = issues.map(i => i.detail)
     expect(details).toContain('added sherif to postinstall')
     expect(details).toContain('added simple-git-hooks')
@@ -48,7 +49,7 @@ describe('syncPackageJson', () => {
   test('adds lintmax to trustedDependencies', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    const issues = await syncPackageJson(tmp)
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
     expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
@@ -60,7 +61,7 @@ describe('syncPackageJson', () => {
       join(tmp, 'package.json'),
       JSON.stringify({ name: 'test', private: true, trustedDependencies: ['sharp'] })
     )
-    const issues = await syncPackageJson(tmp)
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
     expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, unknown>
     expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
@@ -79,14 +80,14 @@ describe('syncPackageJson', () => {
         trustedDependencies: ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
       })
     )
-    const issues = await syncPackageJson(tmp)
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
     expect(issues.filter(i => i.detail.includes('trustedDependencies'))).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
   test('adds required root devDeps', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
     expect(pkg.devDependencies?.turbo).toBe('latest')
     expect(pkg.devDependencies?.typescript).toBe('latest')
@@ -96,7 +97,7 @@ describe('syncPackageJson', () => {
   test('adds build/check/fix scripts', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
     expect(pkg.scripts?.build).toContain('turbo')
     expect(pkg.scripts?.check).toBe('lintmax check')
@@ -113,7 +114,7 @@ describe('syncPackageJson', () => {
         scripts: { build: 'custom build', check: 'custom check', fix: 'custom fix' }
       })
     )
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
     expect(pkg.scripts?.build).toBe('custom build')
     expect(pkg.scripts?.check).toBe('custom check')
@@ -123,7 +124,7 @@ describe('syncPackageJson', () => {
   test('adds packageManager if missing', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, string>
     expect(pkg.packageManager?.startsWith('bun@')).toBe(true)
     rmSync(tmp, { recursive: true })
@@ -416,7 +417,7 @@ describe('syncSubPackages edge cases', () => {
 describe('syncPackageJson edge cases', () => {
   test('returns empty for missing package.json', async () => {
     const tmp = makeTmp()
-    const issues = await syncPackageJson(tmp)
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
     expect(issues).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
@@ -426,7 +427,7 @@ describe('syncPackageJson edge cases', () => {
       join(tmp, 'package.json'),
       JSON.stringify({ devDependencies: { axios: 'latest', zod: 'latest' }, name: 'test', private: true })
     )
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const raw = readFileSync(join(tmp, 'package.json'), 'utf8')
     const parsed = JSON.parse(raw) as Record<string, Record<string, string>>
     const keys = Object.keys(parsed.devDependencies ?? {})
@@ -437,7 +438,7 @@ describe('syncPackageJson edge cases', () => {
   test('does not overwrite existing packageManager', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', packageManager: 'bun@1.0.0', private: true }))
-    await syncPackageJson(tmp)
+    await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, string>
     expect(pkg.packageManager).toBe('bun@1.0.0')
     rmSync(tmp, { recursive: true })

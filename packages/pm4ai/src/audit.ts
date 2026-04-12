@@ -1,14 +1,8 @@
 import { $ } from 'bun'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
-import {
-  FORBIDDEN_PM_PREFIXES,
-  LINTMAX_PKG,
-  REQUIRED_ROOT_DEVDEPS,
-  REQUIRED_TRUSTED_DEPS,
-  TURBO_FLAG
-} from './constants.js'
+import { FORBIDDEN_PM_PREFIXES, LINTMAX_PKG, REQUIRED_ROOT_DEVDEPS, TURBO_FLAG } from './constants.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
@@ -155,10 +149,10 @@ const checkRootWorkspacesAndDevDeps = (rootPkg: PackageJson): Issue[] => {
     if (!allDeps[dep]) issues.push({ detail: `root missing "${dep}" in devDependencies`, type: 'missing' })
   return issues
 }
-const checkTrustedDeps = (rootPkg: PackageJson): Issue[] => {
+const checkTrustedDeps = (rootPkg: PackageJson, requiredTrusted?: string[]): Issue[] => {
   const issues: Issue[] = []
   const trusted = rootPkg.trustedDependencies ?? []
-  for (const dep of REQUIRED_TRUSTED_DEPS)
+  for (const dep of requiredTrusted ?? [])
     if (!trusted.includes(dep)) issues.push({ detail: `root missing "${dep}" in trustedDependencies`, type: 'missing' })
   return issues
 }
@@ -223,7 +217,11 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   if (rootPkg) {
     issues.push(...checkRootScripts(rootPkg))
     issues.push(...checkRootWorkspacesAndDevDeps(rootPkg))
-    issues.push(...checkTrustedDeps(rootPkg))
+    const selfPkgPath = join(import.meta.dirname, '..', '..', '..', 'package.json')
+    const selfPkg = existsSync(selfPkgPath)
+      ? (JSON.parse(readFileSync(selfPkgPath, 'utf8')) as PackageJson)
+      : ({} as PackageJson)
+    issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
   issues.push(...checkPackageConventions(pkgs, projectPath))
   issues.push(...checkNotLatest(pkgs, projectPath))
