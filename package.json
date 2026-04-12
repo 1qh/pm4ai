@@ -33,9 +33,11 @@
   },
   "packageManager": "bun@1.3.12",
   "trustedDependencies": [
+    "docs",
     "esbuild",
     "lintmax",
-    "simple-git-hooks",
-    "docs"
+    "msw",
+    "sharp",
+    "simple-git-hooks"
   ]
 }
