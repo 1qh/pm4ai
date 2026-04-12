@@ -1,3 +1,4 @@
+/* oxlint-disable eslint-plugin-react-perf(jsx-no-new-array-as-prop) */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'

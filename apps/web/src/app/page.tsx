@@ -1,3 +1,4 @@
+/* oxlint-disable eslint-plugin-promise(prefer-await-to-then), eslint-plugin-react-perf(jsx-no-new-object-as-prop) */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: SSE handler */
 /** biome-ignore-all lint/nursery/noContinue: SSE parsing */
 /** biome-ignore-all lint/nursery/useNamedCaptureGroup: regex */

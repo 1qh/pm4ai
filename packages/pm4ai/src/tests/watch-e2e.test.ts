@@ -1,3 +1,4 @@
+/* oxlint-disable eslint-plugin-promise(param-names) */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
 /** biome-ignore-all lint/performance/noAwaitInLoops: polling */

@@ -1,3 +1,4 @@
+/* oxlint-disable eslint-plugin-promise(param-names) */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/nursery/noPlaywrightElementHandle: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
