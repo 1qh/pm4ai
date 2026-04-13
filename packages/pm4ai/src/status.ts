@@ -57,11 +57,11 @@ const status = async (swiftbar = false, all = false) => {
       checkNextConfigs(project.path),
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
-      audit(project.path),
-      checkCi(project.path),
-      checkVercel(project.path)
+      audit(project.path)
     ])
     for (const r of results) issues.push(...r)
+    issues.push(...(await checkCi(project.path)))
+    issues.push(...(await checkVercel(project.path)))
     allIssues.set(project.path, issues)
     const hasFails = issues.length > 0
     emitToSocket(
