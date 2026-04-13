@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth, no-continue */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
-import { $, file, write } from 'bun'
+import { $, file, Glob, write } from 'bun'
 import { cpSync, existsSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
@@ -13,6 +13,7 @@ import {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  FUMADOCS_DARK_CSS,
   PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
@@ -506,4 +507,38 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }
-export { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi }
+const collectGlobFiles = async (pattern: string, cwd: string): Promise<string[]> => {
+  const results: string[] = []
+  for await (const f of new Glob(pattern).scan({ cwd, onlyFiles: true })) results.push(join(cwd, f))
+  return results
+}
+const syncFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
+  const entries = await collectWorkspacePackages(projectPath)
+  const fumadocsApps = entries.filter(e => {
+    const allDeps = { ...e.pkg.dependencies, ...e.pkg.devDependencies }
+    return Boolean(allDeps['fumadocs-ui'])
+  })
+  const results = await Promise.all(
+    fumadocsApps.map(async app => {
+      const appDir = dirname(app.path)
+      const cssFiles = await collectGlobFiles('**/app/global.css', appDir)
+      const appIssues: Issue[] = []
+      for (const cssPath of cssFiles) {
+        const content = readFileSync(cssPath, 'utf8')
+        if (content.includes(FUMADOCS_DARK_CSS)) continue
+        const lines = content.split('\n')
+        const lastImportIdx = lines.findLastIndex(l => l.startsWith('@import'))
+        const insertIdx = lastImportIdx === -1 ? 0 : lastImportIdx + 1
+        const before = lines.slice(0, insertIdx).join('\n')
+        const after = lines.slice(insertIdx).join('\n').trim()
+        const newContent = after ? `${before}\n${FUMADOCS_DARK_CSS}\n${after}\n` : `${before}\n${FUMADOCS_DARK_CSS}\n`
+        writeFileSync(cssPath, newContent)
+        const rel = cssPath.replace(`${projectPath}/`, '')
+        appIssues.push({ detail: `${rel} synced true-black dark mode CSS`, type: 'synced' })
+      }
+      return appIssues
+    })
+  )
+  return results.flat()
+}
+export { syncClaudeMd, syncConfigs, syncFumadocsCss, syncPackageJson, syncSubPackages, syncTsconfig, syncUi }

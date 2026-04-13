@@ -10,7 +10,15 @@ import { CONFIG_DIR, READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { lockSchema, safeParseJson } from './schemas.js'
-import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from './sync.js'
+import {
+  syncClaudeMd,
+  syncConfigs,
+  syncFumadocsCss,
+  syncPackageJson,
+  syncSubPackages,
+  syncTsconfig,
+  syncUi
+} from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
@@ -145,14 +153,15 @@ export const fix = async (all = false) => {
       const name = projectName(project.path)
       const issues: Issue[] = []
       emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
-      const [configIssues, claudeIssues, pkgIssues, tsconfigIssues] = await Promise.all([
+      const [configIssues, claudeIssues, pkgIssues, tsconfigIssues, fumadocsIssues] = await Promise.all([
         syncConfigs(self.path, project.path),
         syncClaudeMd(self.path, project.path),
         syncPackageJson(project.path, self.path),
-        syncTsconfig(project.path)
+        syncTsconfig(project.path),
+        syncFumadocsCss(project.path)
       ])
       const subPkgIssues = await syncSubPackages(self.path, project.path)
-      issues.push(...configIssues, ...claudeIssues, ...pkgIssues, ...tsconfigIssues, ...subPkgIssues)
+      issues.push(...configIssues, ...claudeIssues, ...pkgIssues, ...tsconfigIssues, ...fumadocsIssues, ...subPkgIssues)
       if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
       const syncCount = issues.filter(i => i.type === 'synced').length
       emitToSocket(

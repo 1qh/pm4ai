@@ -7,6 +7,7 @@ import {
   DEFAULT_SCRIPTS,
   EXPECTED,
   FORBIDDEN_LOCKFILES,
+  FUMADOCS_DARK_CSS,
   MUST_EXIST_FILES,
   RG_EXCLUDE,
   UI_PACKAGE_NAME,
@@ -271,6 +272,34 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   if (latestLine?.includes('● Error')) return [issue('deploy', 'vercel deployment failed')]
   return []
 }
+const checkFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const pkgFiles = await glob('**/package.json', projectPath)
+  const pkgResults = await Promise.all(
+    pkgFiles.map(async pkgPath => {
+      const pkg = await readPkg(pkgPath)
+      if (!pkg) return
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+      if (allDeps['fumadocs-ui']) return pkgPath
+    })
+  )
+  const fumadocsApps = pkgResults.filter((p): p is string => p !== undefined)
+  const cssResults = await Promise.all(
+    fumadocsApps.map(async pkgPath => {
+      const appDir = pkgPath.replace('/package.json', '')
+      const cssFiles = await glob('**/app/global.css', appDir)
+      return Promise.all(
+        cssFiles.map(async cssFile => {
+          const content = await file(cssFile).text()
+          if (!content.includes(FUMADOCS_DARK_CSS))
+            return drift(`missing true-black dark mode CSS: ${rel(cssFile, projectPath)}`)
+        })
+      )
+    })
+  )
+  for (const results of cssResults) for (const r of results) if (r) issues.push(r)
+  return issues
+}
 export {
   checkAppTsconfigs,
   checkBannedImports,
@@ -278,6 +307,7 @@ export {
   checkConfigs,
   checkDrift,
   checkForbidden,
+  checkFumadocsCss,
   checkGit,
   checkLayouts,
   checkNextConfigs,

@@ -10,6 +10,7 @@ import {
   checkConfigs,
   checkDrift,
   checkForbidden,
+  checkFumadocsCss,
   checkGit,
   checkLayouts,
   checkNextConfigs,
@@ -57,6 +58,7 @@ const status = async (swiftbar = false, all = false) => {
       checkNextConfigs(project.path),
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
+      checkFumadocsCss(project.path),
       audit(project.path)
     ])
     for (const r of results) issues.push(...r)

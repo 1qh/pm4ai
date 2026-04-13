@@ -46,6 +46,25 @@ const UI_PACKAGE_NAME = '@a/ui'
 const RG_EXCLUDE_DIRS = ['node_modules', 'readonly', '.next', 'dist', '_generated', 'generated']
 const RG_EXCLUDE_FILES = ['banned.ts']
 const RG_EXCLUDE = [...RG_EXCLUDE_DIRS.flatMap(d => ['-g', `!${d}`]), ...RG_EXCLUDE_FILES.flatMap(f => ['-g', `!**/${f}`])]
+const FUMADOCS_DARK_CSS = `.dark {
+  --color-fd-background: hsl(0, 0%, 0%);
+  --color-fd-card: hsl(0, 0%, 5%);
+  --color-fd-popover: hsl(0, 0%, 5%);
+  --color-fd-muted: hsl(0, 0%, 8%);
+  --color-fd-secondary: hsl(0, 0%, 8%);
+  --color-fd-border: hsla(0, 0%, 30%, 30%);
+}
+.font-mono,
+pre,
+code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+html {
+  scrollbar-gutter: stable;
+}
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+}`
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore', 'postcss.config.ts']
@@ -59,6 +78,7 @@ export {
   EXPECTED,
   FORBIDDEN_LOCKFILES,
   FORBIDDEN_PM_PREFIXES,
+  FUMADOCS_DARK_CSS,
   GH_ORG,
   LINTMAX_PKG,
   MONOREPO_NAME,
