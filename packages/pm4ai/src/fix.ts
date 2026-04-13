@@ -138,6 +138,8 @@ export const fix = async (all = false) => {
         console.log(`${repo.name}: pulled`)
       })
     )
+    const selfSubPkgIssues = await syncSubPackages(self.path, self.path)
+    if (selfSubPkgIssues.length > 0) for (const i of selfSubPkgIssues) console.log(`  ${i.type} ${i.detail}`)
     const allTargets = [cnsync, ...consumers]
     const tasks = allTargets.map(async project => {
       const name = projectName(project.path)
