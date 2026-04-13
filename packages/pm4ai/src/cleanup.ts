@@ -24,9 +24,8 @@ const cleanup = () => {
     return
   }
   for (const v of old) {
-    const r = spawnSync('npm', ['unpublish', `${pkg.name}@${v}`], { encoding: 'utf8', stdio: 'pipe' })
+    const r = spawnSync('npm', ['unpublish', `${pkg.name}@${v}`], { encoding: 'utf8', stdio: 'inherit' })
     if (r.status === 0) console.log(`${pkg.name}@${v} unpublished`)
-    else console.log(`${pkg.name}@${v} skip: ${r.stderr.trim().split('\n')[0]}`)
   }
 }
 export { cleanup }
