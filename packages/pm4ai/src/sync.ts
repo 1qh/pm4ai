@@ -13,8 +13,10 @@ import {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  PKG_NAME,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
+  TSDOWN_BASE,
   VERBATIM_FILES
 } from './constants.js'
 import { inferRules } from './infer.js'
@@ -216,12 +218,8 @@ const resolveExportSource = (key: string, importPath: string, pkgDir: string): s
   for (const ext of ['.ts', '.tsx']) if (existsSync(join(pkgDir, `${srcBase}${ext}`))) return `${srcBase}${ext}`
 }
 interface TsdownConfig {
-  clean: true
   copy?: string[]
-  dts: true
   entry: string[]
-  format: 'esm'
-  outDir: 'dist'
 }
 const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | undefined => {
   const entry: string[] = []
@@ -250,19 +248,21 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
     if (existsSync(join(pkgDir, 'src/index.ts'))) entry.push('src/index.ts')
     else if (existsSync(join(pkgDir, 'src/index.tsx'))) entry.push('src/index.tsx')
   if (entry.length === 0) return
-  const config: TsdownConfig = { clean: true, dts: true, entry, format: 'esm', outDir: 'dist' }
+  const config: TsdownConfig = { entry }
   if (copy.length > 0) config.copy = copy
   return config
 }
 const serializeTsdownConfig = (config: TsdownConfig): string => {
-  const lines = ["import { defineConfig } from 'tsdown'", 'export default defineConfig({', '  clean: true,']
-  if (config.copy) lines.push(`  copy: [${config.copy.map(c => `'${c}'`).join(', ')}],`)
-  lines.push('  dts: true,')
-  lines.push(`  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`)
-  lines.push("  format: 'esm',")
-  lines.push("  outDir: 'dist'")
-  lines.push('})')
-  return `${lines.join('\n')}\n`
+  const fields = [
+    `  clean: ${TSDOWN_BASE.clean},`,
+    `  deps: { neverBundle: [${TSDOWN_BASE.deps.neverBundle.map(d => `'${d}'`).join(', ')}] },`,
+    `  dts: ${TSDOWN_BASE.dts},`
+  ]
+  if (config.copy) fields.push(`  copy: [${config.copy.map(c => `'${c}'`).join(', ')}],`)
+  fields.push(`  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`)
+  fields.push(`  format: '${TSDOWN_BASE.format}',`)
+  fields.push(`  outDir: '${TSDOWN_BASE.outDir}'`)
+  return `import { defineConfig } from 'tsdown'\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
 }
 const syncReadmeSymlink = ({
   issues,
@@ -338,7 +338,7 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
   }
   const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
   syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
-  const expectedPostpublish = 'bunx pm4ai@latest cleanup'
+  const expectedPostpublish = `bunx ${PKG_NAME}@latest cleanup`
   if (pubScripts.postpublish !== expectedPostpublish) {
     pubScripts.postpublish = expectedPostpublish
     delete pubScripts['cleanup-old-versions']

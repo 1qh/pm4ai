@@ -1,6 +1,7 @@
 export { audit } from './audit.js'
 export { readCheckResult } from './check-cache.js'
 export type { CheckResult } from './check-cache.js'
+export { TSDOWN_BASE as tsdownBase } from './constants.js'
 export { discover } from './discover.js'
 export { fix } from './fix.js'
 export { guide } from './guide.js'

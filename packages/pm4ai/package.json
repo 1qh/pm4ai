@@ -52,5 +52,13 @@
     "ink-spinner": "latest",
     "react": "latest",
     "zod": "latest"
-  }
+  },
+  "requiredDevDeps": [
+    "lintmax",
+    "sherif",
+    "simple-git-hooks",
+    "tsdown",
+    "turbo",
+    "typescript"
+  ]
 }
