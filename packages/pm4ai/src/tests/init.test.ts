@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
 import { $ } from 'bun'
 import { afterAll, describe, expect, test } from 'bun:test'
@@ -145,7 +146,13 @@ describe('init scaffold', () => {
       const result = await $`bun run fix`.cwd(TEST_DIR).quiet().nothrow()
       expect(result.exitCode).toBe(0)
       const status = await $`git status --porcelain`.cwd(TEST_DIR).quiet().nothrow()
-      expect(status.stdout.toString().trim()).toBe('')
+      const statusStr = status.stdout.toString().trim()
+      if (statusStr) {
+        const diff = await $`git diff`.cwd(TEST_DIR).quiet().nothrow()
+        console.log('dirty files:', statusStr)
+        console.log('diff:', diff.stdout.toString().slice(0, 500))
+      }
+      expect(statusStr).toBe('')
     },
     120_000
   )
