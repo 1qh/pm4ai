@@ -19,6 +19,7 @@ lintmax combines biome, oxlint, eslint, prettier, and sort-package-json into one
 On failure, lintmax outputs diagnostics **already optimized for agents** — grouped by file → linter → rule, with compressed line numbers, deduplicated across all 5 linters. Read the output directly. Do not reformat, grep, or filter it.
 
 **NEVER:**
+
 - Run `bun run check` — use `bun run fix` instead
 - Add `| tail` or `| head` to any lintmax command — empty output IS success, failure output is already agent-formatted
 - Run `lintmax check --human` to "see violations" — run `bun run fix` and read its output on failure
