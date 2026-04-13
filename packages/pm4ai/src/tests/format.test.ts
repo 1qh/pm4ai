@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import type { Issue } from '../types.js'
 import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
 describe('formatIssues', () => {
-  test('empty issues returns empty string', () => {
-    expect(formatIssues('/tmp/test', [])).toBe('')
+  test('empty issues returns project path only', () => {
+    expect(formatIssues('/tmp/test', [])).toBe('/tmp/test')
   })
   test('with issues returns formatted output', () => {
     const issues: Issue[] = [

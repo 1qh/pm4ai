@@ -9,7 +9,7 @@ const shellEscape = (s: string): string => s.replaceAll(shellMetaRe, String.raw`
 const isInfoOnly = (i: Issue) => i.type === 'info' || (i.type === 'check' && !i.detail.startsWith('failed'))
 const hasRealIssues = (issues: Issue[]) => issues.some(i => !isInfoOnly(i))
 const formatIssues = (projectPath: string, issues: Issue[]): string => {
-  if (issues.length === 0) return ''
+  if (issues.length === 0) return projectPath
   const lines = [projectPath, ...issues.map(issue => `  ${issue.type} ${issue.detail}`)]
   return lines.join('\n')
 }

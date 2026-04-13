@@ -86,11 +86,8 @@ const status = async (swiftbar = false, all = false) => {
   if (swiftbar) console.log(await formatSwiftBar(allIssues))
   else {
     for (const [path, issues] of allIssues) {
-      const output = formatIssues(path, issues)
-      if (output) {
-        console.log(output)
-        console.log()
-      }
+      console.log(formatIssues(path, issues))
+      console.log()
     }
     if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   }
