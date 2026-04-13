@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "cleanup-old-versions": "bun script/cleanup-old-versions.ts",
-    "postpublish": "bun run cleanup-old-versions"
+    "prepublishOnly": "bun run build",
+    "postpublish": "bunx pm4ai@latest cleanup"
   }
 }
