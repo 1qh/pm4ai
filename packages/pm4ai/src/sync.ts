@@ -326,8 +326,8 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
   const tsdownConfig = inferTsdownConfig(pkg, pkgDir)
   if (tsdownConfig) {
     const existingContent = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
-    if (existingContent.includes('dts: false')) {
-      /* Skip — existing config has dts disabled intentionally */
+    if (existingContent.includes('dts: false') || existingContent.includes('onSuccess')) {
+      /* Skip — existing config has custom overrides */
     } else {
       const generatedContent = serializeTsdownConfig(tsdownConfig)
       if (existingContent !== generatedContent) {
