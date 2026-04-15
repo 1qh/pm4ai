@@ -28,7 +28,6 @@ describe('init scaffold', () => {
       'up.sh',
       '.gitignore',
       '.github/workflows/ci.yml',
-      'lintmax.config.ts',
       'apps/web/package.json',
       'apps/web/src/app/page.tsx',
       'apps/web/src/app/layout.tsx',
