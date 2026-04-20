@@ -71,6 +71,8 @@ describe('discover', () => {
     const projectB = join(root, 'project-b')
     mkdirSync(projectA, { recursive: true })
     mkdirSync(projectB, { recursive: true })
+    writeFileSync(join(projectA, 'turbo.json'), '{}')
+    writeFileSync(join(projectB, 'turbo.json'), '{}')
     writeFileSync(
       join(projectA, 'package.json'),
       JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'project-a', private: true })
@@ -115,6 +117,7 @@ describe('discover', () => {
     const root = makeTmp()
     makeFakeRepos(root)
     mkdirSync(join(root, 'node_modules', 'some-pkg'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'some-pkg', 'turbo.json'), '{}')
     writeFileSync(
       join(root, 'node_modules', 'some-pkg', 'package.json'),
       JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'hidden' })
@@ -128,6 +131,8 @@ describe('discover', () => {
     makeFakeRepos(root)
     const mono = join(root, 'my-mono')
     mkdirSync(join(mono, 'packages', 'lib'), { recursive: true })
+    writeFileSync(join(mono, 'turbo.json'), '{}')
+    writeFileSync(join(mono, 'packages', 'lib', 'turbo.json'), JSON.stringify({ extends: ['//'] }))
     writeFileSync(
       join(mono, 'package.json'),
       JSON.stringify({
@@ -152,9 +157,37 @@ describe('discover', () => {
     makeFakeRepos(root)
     const noLintmax = join(root, 'no-lintmax')
     mkdirSync(noLintmax, { recursive: true })
+    writeFileSync(join(noLintmax, 'turbo.json'), '{}')
     writeFileSync(join(noLintmax, 'package.json'), JSON.stringify({ name: 'no-lintmax', private: true }))
     const result = await discover(root)
     expect(result.consumers.every(c => c.name !== 'no-lintmax')).toBe(true)
+    rmSync(root, { recursive: true })
+  })
+  test('project without turbo.json is not discovered', async () => {
+    const root = makeTmp()
+    makeFakeRepos(root)
+    const noTurbo = join(root, 'no-turbo')
+    mkdirSync(noTurbo, { recursive: true })
+    writeFileSync(
+      join(noTurbo, 'package.json'),
+      JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'no-turbo' })
+    )
+    const result = await discover(root)
+    expect(result.consumers.every(c => c.name !== 'no-turbo')).toBe(true)
+    rmSync(root, { recursive: true })
+  })
+  test('turbo.jsonc is also recognized', async () => {
+    const root = makeTmp()
+    makeFakeRepos(root)
+    const proj = join(root, 'jsonc-proj')
+    mkdirSync(proj, { recursive: true })
+    writeFileSync(join(proj, 'turbo.jsonc'), '{}')
+    writeFileSync(
+      join(proj, 'package.json'),
+      JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'jsonc-proj' })
+    )
+    const result = await discover(root)
+    expect(result.consumers.some(c => c.name === 'jsonc-proj')).toBe(true)
     rmSync(root, { recursive: true })
   })
   test('lintmax in dependencies (not devDeps) is still discovered', async () => {
@@ -162,6 +195,7 @@ describe('discover', () => {
     makeFakeRepos(root)
     const proj = join(root, 'uses-lintmax')
     mkdirSync(proj, { recursive: true })
+    writeFileSync(join(proj, 'turbo.json'), '{}')
     writeFileSync(
       join(proj, 'package.json'),
       JSON.stringify({ dependencies: { lintmax: 'latest' }, name: 'uses-lintmax' })

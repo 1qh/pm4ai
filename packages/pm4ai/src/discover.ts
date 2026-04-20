@@ -1,8 +1,8 @@
-import { $ } from 'bun'
+import { $, file } from 'bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { CONFIG_DIR, GH_ORG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { CONFIG_DIR, GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { debug, projectName } from './utils.js'
 interface Project {
   isCnsync: boolean
@@ -11,6 +11,22 @@ interface Project {
   path: string
 }
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
+const hasLintmaxDep = async (dir: string): Promise<boolean> => {
+  const pkgFile = file(join(dir, 'package.json'))
+  if (!(await pkgFile.exists())) return false
+  try {
+    const pkg = (await pkgFile.json()) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+    return Boolean(
+      pkg.dependencies?.[LINTMAX_PKG] ?? pkg.devDependencies?.[LINTMAX_PKG] ?? pkg.peerDependencies?.[LINTMAX_PKG]
+    )
+  } catch {
+    return false
+  }
+}
 const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   if (!hasDirInside(dir, READONLY_UI)) return false
   const r = await $`git remote get-url origin`.cwd(dir).quiet().nothrow()
@@ -56,14 +72,15 @@ const discover = async (
   self: Project
 }> => {
   const home = searchRoot ?? homedir()
-  const result = await $`rg -l '"lintmax"' ${home} -g package.json ${rgExcludes}`.quiet().nothrow()
+  const result = await $`rg --files ${home} -g turbo.json -g turbo.jsonc ${rgExcludes}`.quiet().nothrow()
   const stdout = result.stdout.toString().trim()
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
   const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted()
-  const projectDirs = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
-  const projects: Project[] = await Promise.all(
-    projectDirs.map(async dir => {
+  const turboRoots = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
+  const candidates = await Promise.all(
+    turboRoots.map(async dir => {
+      if (!(await hasLintmaxDep(dir))) return null
       const name = projectName(dir)
       return {
         isCnsync: await isCnsyncRepo(dir),
@@ -73,6 +90,7 @@ const discover = async (
       }
     })
   )
+  const projects: Project[] = candidates.filter((p): p is Project => p !== null)
   let self = projects.find(p => p.isSelf)
   let cnsync = projects.find(p => p.isCnsync)
   const reposDir = join(home, CONFIG_DIR, 'repos')
