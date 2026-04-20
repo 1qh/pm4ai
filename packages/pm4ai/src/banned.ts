@@ -348,13 +348,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     '@dnd-kit': ['"react-beautiful-dnd"', '"react-dnd"', '"react-draggable"', '"react-sortable-hoc"']
   },
   e2e: {
-    'bun:test + playwright': [
-      '"@testing-library/react"',
-      '"@testing-library/user-event"',
-      '"enzyme"',
-      '"react-test-renderer"',
-      '"testing-library"'
-    ],
+    'bun:test + playwright': ['"enzyme"', '"react-test-renderer"'],
     playwright: ['"cheerio"', '"cypress"', '"nightwatch"', '"puppeteer"', '"selenium"', '"webdriver"']
   },
   email: {
@@ -635,7 +629,6 @@ const BANNED: Record<string, Record<string, string[]>> = {
     'native loading=lazy or React.lazy': ['"react-lazy-load"', '"react-lazyload"'],
     'navigator.clipboard API': ['"react-copy-to-clipboard"'],
     'next.js': ['"craco"', '"react-app-rewired"', '"react-dev-utils"', '"react-hot-loader"', '"react-scripts"'],
-    'next.js error.tsx': ['"react-error-boundary"'],
     'next.js metadata': ['"react-document-title"', '"react-helmet"'],
     'next.js routing': ['"@reach/router"', '"@tanstack/react-router"', '"history"', '"react-router"', '"wouter"'],
     'shadcn calendar': ['"react-day-picker"'],
