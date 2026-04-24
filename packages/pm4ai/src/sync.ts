@@ -402,6 +402,7 @@ interface FixSubEntryArgs {
 }
 const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boolean => {
   const rel = entry.path.replace(`${projectPath}/`, '')
+  if (isSkippedPath(rel)) return false
   let changed = false
   if (rel.startsWith('apps/') && !entry.pkg.private) {
     entry.pkg.private = true
