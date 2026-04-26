@@ -4,6 +4,7 @@
 /** biome-ignore-all lint/nursery/noShadow: intentional */
 /** biome-ignore-all lint/nursery/noUnnecessaryConditions: queue check */
 /** biome-ignore-all lint/suspicious/useAwait: async generator */
+/** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
@@ -37,7 +38,7 @@ const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string
     .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 }
 const authed = os.middleware(async ({ context, next }) => {
-  const headers = (context as Record<string, unknown>).headers as Headers
+  const { headers } = context as { headers: Headers }
   if (!validateSession(headers.get('cookie'))) throw new Error('Unauthorized')
   return next({})
 })

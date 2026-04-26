@@ -8,7 +8,7 @@
 /** biome-ignore-all lint/performance/useTopLevelRegex: test */
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
 /* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then), eslint-plugin-promise(param-names), no-await-in-loop */
-/* eslint-disable @typescript-eslint/strict-void-return, no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-assignment, no-await-in-loop */
+/* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-assignment */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'

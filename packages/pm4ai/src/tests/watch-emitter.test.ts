@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential by design */
 /* oxlint-disable no-empty-function, eslint-plugin-promise(param-names) */
-/* eslint-disable @typescript-eslint/strict-void-return, no-await-in-loop, no-promise-executor-return */
+/* eslint-disable no-promise-executor-return */
 import type { Socket } from 'node:net'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'

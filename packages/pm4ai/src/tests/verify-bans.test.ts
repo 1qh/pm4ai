@@ -1,4 +1,3 @@
-/* eslint-disable no-await-in-loop */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential batches */
 import { expect, test } from 'bun:test'
 import { ALL_BANNED } from '../banned.js'

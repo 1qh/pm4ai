@@ -300,16 +300,83 @@ const checkFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
   for (const results of cssResults) for (const r of results) if (r) issues.push(r)
   return issues
 }
+const checkMergeMarkers = async (projectPath: string): Promise<Issue[]> => {
+  const result = await $`rg -l --multiline-dotall -n '^(<{7}|={7}|>{7})' ${projectPath} ${RG_EXCLUDE}`.quiet().nothrow()
+  const out = result.stdout.toString().trim()
+  if (!out) return []
+  return [forbidden(`unresolved merge markers in: ${relList(out, projectPath)}`)]
+}
+const ENV_LINE_RE = /^\s*(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*=/u
+const GENERATED_API_RE = /\/_generated\/api\.d\.ts$/u
+const ENV_CANDIDATES = ['apps/backend/.env', '.env', 'apps/convex/.env']
+const parseEnvKeys = (text: string): Set<string> => {
+  const keys = new Set<string>()
+  for (const line of text.split('\n')) {
+    const m = ENV_LINE_RE.exec(line)
+    const key = m?.groups?.key
+    if (key && !line.trim().startsWith('#')) keys.add(key)
+  }
+  return keys
+}
+const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const generated = await glob('**/convex/_generated/api.d.ts', projectPath)
+  if (generated.length === 0) return issues
+  const envFiles = await Promise.all(
+    ENV_CANDIDATES.map(async cand => {
+      const p = join(projectPath, cand)
+      if (!existsSync(p)) return null
+      const text = await file(p).text()
+      return text.includes('CONVEX_SELF_HOSTED_URL') ? { p, text } : null
+    })
+  )
+  const envHit = envFiles.find((e): e is { p: string; text: string } => e !== null)
+  if (!envHit) return issues
+  const envKeys = parseEnvKeys(envHit.text)
+  const convexDirs = generated.map(g => g.replace(GENERATED_API_RE, ''))
+  const [nodeEnvHits, setHits, pkgFiles] = await Promise.all([
+    Promise.all(
+      convexDirs.map(async d =>
+        $`rg -l 'process\.env\.NODE_ENV' ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
+          .quiet()
+          .nothrow()
+      )
+    ),
+    $`rg -l 'convex env set' ${projectPath} -g '*.ts' -g '*.tsx' -g '!**/sync.ts' ${RG_EXCLUDE}`.quiet().nothrow(),
+    glob('**/package.json', projectPath)
+  ])
+  for (const r of nodeEnvHits) {
+    const out = r.stdout.toString().trim()
+    if (out)
+      issues.push(
+        forbidden(`process.env.NODE_ENV in convex/ (always 'production' on self-hosted): ${relList(out, projectPath)}`)
+      )
+  }
+  const setOut = setHits.stdout.toString().trim()
+  if (setOut)
+    issues.push(forbidden(`'convex env set' outside sync.ts (.env is source of truth): ${relList(setOut, projectPath)}`))
+  const pkgs = await Promise.all(pkgFiles.map(async p => readPkg(p)))
+  const usesAuth = pkgs.some(pkg => Boolean({ ...pkg?.dependencies, ...pkg?.devDependencies }['@convex-dev/auth']))
+  if (usesAuth)
+    for (const k of ['JWT_PRIVATE_KEY', 'JWKS'])
+      if (!envKeys.has(k))
+        issues.push(issue('missing', `${k} required by @convex-dev/auth in ${rel(envHit.p, projectPath)}`))
+  if (!envKeys.has('SITE_URL'))
+    issues.push(issue('missing', `SITE_URL required for Convex auth callbacks in ${rel(envHit.p, projectPath)}`))
+  return issues
+}
 export {
   checkAppTsconfigs,
   checkBannedImports,
   checkCi,
   checkConfigs,
+  checkConvexSelfHosted,
   checkDrift,
   checkForbidden,
   checkFumadocsCss,
   checkGit,
   checkLayouts,
+  checkMergeMarkers,
   checkNextConfigs,
   checkPages,
   checkRootPkg,

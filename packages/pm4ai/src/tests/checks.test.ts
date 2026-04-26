@@ -3,7 +3,17 @@ import { execSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkCi, checkConfigs, checkDrift, checkForbidden, checkGit, checkRootPkg, checkVercel } from '../checks.js'
+import {
+  checkCi,
+  checkConfigs,
+  checkConvexSelfHosted,
+  checkDrift,
+  checkForbidden,
+  checkGit,
+  checkMergeMarkers,
+  checkRootPkg,
+  checkVercel
+} from '../checks.js'
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {
@@ -321,6 +331,91 @@ describe('checkConfigs edge cases', () => {
     writeFileSync(join(tmp, 'vercel.json'), JSON.stringify({ installCommand: 'bun i' }))
     const issues = await checkConfigs(tmp)
     expect(issues.filter(i => i.detail.includes('installCommand'))).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkMergeMarkers', () => {
+  test('no issues on clean tree', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'a.ts'), 'export const x = 1\n')
+    const issues = await checkMergeMarkers(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags conflict markers', async () => {
+    const tmp = makeTmp()
+    writeFileSync(join(tmp, 'a.ts'), '<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> branch\n')
+    const issues = await checkMergeMarkers(tmp)
+    expect(issues).toHaveLength(1)
+    expect(issues[0].detail).toContain('a.ts')
+    rmSync(tmp, { recursive: true })
+  })
+})
+describe('checkConvexSelfHosted', () => {
+  test('skips non-convex projects', async () => {
+    const tmp = makeTmp()
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('skips when convex but no self-hosted env', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues).toHaveLength(0)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags missing JWT_PRIVATE_KEY when @convex-dev/auth used', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    writeFileSync(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@convex-dev/auth': 'latest' } }))
+    const issues = await checkConvexSelfHosted(tmp)
+    const details = issues.map(i => i.detail)
+    expect(details.some(d => d.includes('JWT_PRIVATE_KEY'))).toBe(true)
+    expect(details.some(d => d.includes('JWKS'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags missing SITE_URL', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    writeFileSync(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\n')
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues.some(i => i.detail.includes('SITE_URL'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags process.env.NODE_ENV inside convex/', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    writeFileSync(join(tmp, 'convex', 'foo.ts'), 'export const x = process.env.NODE_ENV\n')
+    writeFileSync(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues.some(i => i.detail.includes('NODE_ENV'))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('flags convex env set outside sync.ts', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    mkdirSync(join(tmp, 'scripts'), { recursive: true })
+    writeFileSync(join(tmp, 'scripts', 'bad.ts'), 'await $`convex env set FOO bar`\n')
+    writeFileSync(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues.some(i => i.detail.includes("'convex env set'"))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('clean self-hosted convex passes', async () => {
+    const tmp = makeTmp()
+    mkdirSync(join(tmp, 'convex', '_generated'), { recursive: true })
+    writeFileSync(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
+    writeFileSync(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\nJWT_PRIVATE_KEY=k\nJWKS=j\n')
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@convex-dev/auth': 'latest' } }))
+    const issues = await checkConvexSelfHosted(tmp)
+    expect(issues).toHaveLength(0)
     rmSync(tmp, { recursive: true })
   })
 })

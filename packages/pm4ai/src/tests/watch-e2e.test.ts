@@ -3,7 +3,7 @@
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
 /** biome-ignore-all lint/performance/noAwaitInLoops: polling */
 /* oxlint-disable no-empty-function, eslint-plugin-promise(param-names), no-await-in-loop */
-/* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return, no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, no-await-in-loop */
+/* eslint-disable @typescript-eslint/no-empty-function, no-promise-executor-return, @typescript-eslint/no-unnecessary-condition */
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'

@@ -16,7 +16,7 @@ const readJson = async (path: string): Promise<Record<string, unknown> | undefin
 }
 const readPkg = async (path: string): Promise<PackageJson | undefined> => {
   const raw = await readJson(path)
-  return raw as PackageJson | undefined
+  return raw
 }
 const projectName = (path: string): string => path.split('/').pop() ?? ''
 const getBunVersion = async (): Promise<string> => {

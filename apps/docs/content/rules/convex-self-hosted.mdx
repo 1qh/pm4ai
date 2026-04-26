@@ -1,0 +1,26 @@
+---
+title: Convex self-hosted
+description: Conventions for Convex projects running on self-hosted backends
+infer: convex
+---
+
+Applies when a project has `**/convex/_generated/` and `CONVEX_SELF_HOSTED_URL` in any `.env`.
+
+## .env is the source of truth
+
+All Convex env vars live in `apps/backend/.env` (or `.env`). A single `sync.ts` script reads `.env` and pushes to the Convex backend via `bunx convex env set`. Direct `convex env set` calls anywhere else cause drift — `sync` will overwrite manual edits silently.
+
+- `convex env set` literals are forbidden outside `**/sync.ts`
+- Manual `bunx convex env set FOO=...` from the shell is also forbidden — edit `.env`, then run `bun run sync`
+
+## NODE_ENV is always "production" on self-hosted
+
+The Convex self-hosted runtime exposes `process.env.NODE_ENV === 'production'` regardless of whether you are pointing at a dev or prod backend. Branching on it inside `**/convex/**/*.ts` is a bug — gate on a custom env var (e.g. `ALLOW_OVERRIDES`) or `process.env.CONVEX_SELF_HOSTED_URL` instead.
+
+## @convex-dev/auth
+
+Projects depending on `@convex-dev/auth` must define `JWT_PRIVATE_KEY` and `JWKS` in `.env`. `sync.ts` may auto-generate these on first run, but they must be persisted to `.env` so the backend and source of truth stay aligned.
+
+## SITE_URL
+
+`SITE_URL` is required for Convex auth callbacks. For multi-origin deployments (prod + localhost + 127.0.0.1) use a comma-separated list — the auth callback parses each origin and matches `redirectTo` against the full set.

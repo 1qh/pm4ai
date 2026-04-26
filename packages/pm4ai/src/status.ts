@@ -8,11 +8,13 @@ import {
   checkBannedImports,
   checkCi,
   checkConfigs,
+  checkConvexSelfHosted,
   checkDrift,
   checkForbidden,
   checkFumadocsCss,
   checkGit,
   checkLayouts,
+  checkMergeMarkers,
   checkNextConfigs,
   checkPages,
   checkRootPkg,
@@ -59,6 +61,8 @@ const status = async (swiftbar = false, all = false) => {
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
       checkFumadocsCss(project.path),
+      checkMergeMarkers(project.path),
+      checkConvexSelfHosted(project.path),
       audit(project.path)
     ])
     for (const r of results) issues.push(...r)
