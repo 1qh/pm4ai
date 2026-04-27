@@ -337,7 +337,7 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   const [nodeEnvHits, setHits, pkgFiles] = await Promise.all([
     Promise.all(
       convexDirs.map(async d =>
-        $`rg -l "process\.env(\.NODE_ENV|\['NODE_ENV'\]|\[\"NODE_ENV\"\])" ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
+        $`rg -l "process\.env(\.NODE_ENV|\['NODE_ENV'\]|\[\"NODE_ENV\"\]).*['\"]production['\"]" ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
           .quiet()
           .nothrow()
       )
@@ -351,7 +351,9 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
     const out = r.stdout.toString().trim()
     if (out)
       issues.push(
-        forbidden(`process.env.NODE_ENV in convex/ (always 'production' on self-hosted): ${relList(out, projectPath)}`)
+        forbidden(
+          `NODE_ENV === 'production' branch in convex/ (always true on self-hosted; gate on explicit env flag instead): ${relList(out, projectPath)}`
+        )
       )
   }
   const setOut = setHits.stdout.toString().trim()
