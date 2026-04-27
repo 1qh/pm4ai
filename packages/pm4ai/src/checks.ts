@@ -342,7 +342,9 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
           .nothrow()
       )
     ),
-    $`rg -l 'convex env set' ${projectPath} -g '*.ts' -g '*.tsx' -g '!**/sync.ts' ${RG_EXCLUDE}`.quiet().nothrow(),
+    $`rg -l 'convex env set' ${projectPath} -g '*.ts' -g '*.tsx' -g '!**/sync*.ts' -g '!**/scripts/test-*.ts' ${RG_EXCLUDE}`
+      .quiet()
+      .nothrow(),
     glob('**/package.json', projectPath)
   ])
   for (const r of nodeEnvHits) {
