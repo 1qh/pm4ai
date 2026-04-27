@@ -337,7 +337,7 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   const [nodeEnvHits, setHits, pkgFiles] = await Promise.all([
     Promise.all(
       convexDirs.map(async d =>
-        $`rg -l 'process\.env\.NODE_ENV' ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
+        $`rg -l "process\.env(\.NODE_ENV|\['NODE_ENV'\]|\[\"NODE_ENV\"\])" ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
           .quiet()
           .nothrow()
       )
