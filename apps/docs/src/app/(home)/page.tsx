@@ -1,3 +1,4 @@
+/* oxlint-disable eslint-plugin-react(forbid-component-props) */
 import Link from 'next/link'
 const Page = () => (
   <div className='flex flex-col items-center justify-center flex-1 gap-8 px-4 overflow-hidden'>
