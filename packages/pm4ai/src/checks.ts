@@ -113,11 +113,13 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
     issues.push(drift('vercel.json installCommand should be "bun i"'))
   return issues
 }
-const LAYOUT_REQUIRED: [string, string][] = [
+const MIN_H_RE = /min-h-(?<size>screen|dvh)/u
+const NESTED_GITIGNORE_ALLOW_RE = /^(?<dir>data|fixtures|seeds|snapshots)\/\.gitignore$/u
+const LAYOUT_REQUIRED: [RegExp | string, string][] = [
   ['suppressHydrationWarning', 'missing suppressHydrationWarning on <html>'],
   ['antialiased', 'missing antialiased on <body>'],
   ['tracking-[-0.02em]', 'missing tracking-[-0.02em] on <html>'],
-  ['min-h-screen', 'missing min-h-screen on <body>'],
+  [MIN_H_RE, 'missing min-h-screen or min-h-dvh on <body>'],
   ['font-sans', 'missing font-sans on <html>'],
   ['Metadata', 'missing metadata export']
 ]
@@ -127,13 +129,15 @@ const LAYOUT_FORBIDDEN: [string, string][] = [
 ]
 interface ContentRules {
   content: string
-  must: [string, string][]
+  must: [RegExp | string, string][]
   mustNot: [string, string][]
   r: string
 }
+const has = (content: string, check: RegExp | string) =>
+  typeof check === 'string' ? content.includes(check) : check.test(content)
 const checkContent = ({ content, must, mustNot, r }: ContentRules): Issue[] => {
   const issues: Issue[] = []
-  for (const [check, msg] of must) if (!content.includes(check)) issues.push(drift(`${msg}: ${r}`))
+  for (const [check, msg] of must) if (!has(content, check)) issues.push(drift(`${msg}: ${r}`))
   for (const [check, msg] of mustNot) if (content.includes(check)) issues.push(drift(`${msg}: ${r}`))
   return issues
 }
@@ -208,7 +212,9 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   ])
   if (bunLockTracked.stdout.toString().trim()) issues.push(forbidden('bun.lock tracked in git, should be gitignored'))
   const gitignores = await glob('**/.gitignore', projectPath)
-  const nested = gitignores.filter(f => f !== join(projectPath, '.gitignore'))
+  const nested = gitignores
+    .filter(f => f !== join(projectPath, '.gitignore'))
+    .filter(f => !NESTED_GITIGNORE_ALLOW_RE.test(rel(f, projectPath)))
   if (nested.length > 0) issues.push(drift(`nested .gitignore: ${nested.map(f => rel(f, projectPath)).join(', ')}`))
   const mjsConfigs = await glob('**/postcss.config.mjs', projectPath)
   if (mjsConfigs.length > 0) issues.push(drift('postcss.config.mjs should be .ts'))
