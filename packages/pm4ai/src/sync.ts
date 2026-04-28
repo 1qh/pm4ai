@@ -2,8 +2,8 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, Glob, write } from 'bun'
-import { cpSync, existsSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { cpSync, existsSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
@@ -279,19 +279,21 @@ const syncReadmeSymlink = ({
   const readmeSrc = join(monorepoRoot, 'README.md')
   const readmeDst = join(pkgDir, 'README.md')
   if (!existsSync(readmeSrc)) return false
-  if (existsSync(readmeDst))
+  const srcContent = readFileSync(readmeSrc, 'utf8')
+  if (existsSync(readmeDst)) {
+    let isSymlink: boolean
     try {
-      if (readlinkSync(readmeDst) === relative(pkgDir, readmeSrc)) return false
+      readlinkSync(readmeDst)
+      isSymlink = true
     } catch {
-      return false
+      isSymlink = false
     }
-  try {
-    symlinkSync(relative(pkgDir, readmeSrc), readmeDst)
-    issues.push({ detail: `${rel} symlinked README.md`, type: 'synced' })
-    return true
-  } catch {
-    return false
+    if (!isSymlink && readFileSync(readmeDst, 'utf8') === srcContent) return false
+    if (isSymlink) rmSync(readmeDst)
   }
+  writeFileSync(readmeDst, srcContent)
+  issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
+  return true
 }
 const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): boolean => {
   let changed = false
