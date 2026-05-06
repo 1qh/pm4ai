@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential by design */
-/* oxlint-disable no-empty-function, eslint-plugin-promise(param-names) */
+/* oxlint-disable no-empty-function, promise/param-names */
 /* eslint-disable no-promise-executor-return */
 import type { Socket } from 'node:net'
 import { afterEach, describe, expect, test } from 'bun:test'

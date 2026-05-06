@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
-/* oxlint-disable no-empty-function, eslint-plugin-promise(param-names) */
+/* oxlint-disable no-empty-function, promise/param-names */
 /* eslint-disable @typescript-eslint/no-empty-function, no-promise-executor-return */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createConnection } from 'node:net'

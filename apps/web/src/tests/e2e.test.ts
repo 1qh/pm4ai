@@ -1,4 +1,4 @@
-/* oxlint-disable eslint-plugin-promise(param-names) */
+/* oxlint-disable promise/param-names */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/nursery/noPlaywrightElementHandle: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
@@ -7,7 +7,7 @@
 /** biome-ignore-all lint/performance/noAwaitInLoops: polling */
 /** biome-ignore-all lint/performance/useTopLevelRegex: test */
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
-/* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then), eslint-plugin-promise(param-names), no-await-in-loop */
+/* oxlint-disable no-empty-function, promise/prefer-await-to-then, promise/param-names, no-await-in-loop */
 /* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-assignment */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'

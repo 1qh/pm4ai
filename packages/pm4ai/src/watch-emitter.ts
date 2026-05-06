@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/* oxlint-disable no-empty-function, eslint-plugin-promise(prefer-await-to-then) */
+/* oxlint-disable no-empty-function, promise/prefer-await-to-then */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { Server, Socket } from 'node:net'
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs'

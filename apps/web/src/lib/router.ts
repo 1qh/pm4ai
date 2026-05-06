@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop, @typescript-eslint/no-loop-func, @typescript-eslint/require-await */
-/* oxlint-disable eslint-plugin-promise(param-names) */
+/* oxlint-disable promise/param-names */
 /** biome-ignore-all lint/performance/noAwaitInLoops: streaming by design */
 /** biome-ignore-all lint/nursery/noShadow: intentional */
 /** biome-ignore-all lint/nursery/noUnnecessaryConditions: queue check */
@@ -53,8 +53,8 @@ const events = os.handler(async function* generateEvents() {
   try {
     while (true) {
       if (queue.length === 0)
-        await new Promise<void>(r => {
-          waiting = r
+        await new Promise<void>(resolve => {
+          waiting = resolve
         })
       while (queue.length > 0) {
         const event = queue.shift()
