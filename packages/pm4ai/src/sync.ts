@@ -544,4 +544,43 @@ const syncFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
   )
   return results.flat()
 }
-export { syncClaudeMd, syncConfigs, syncFumadocsCss, syncPackageJson, syncSubPackages, syncTsconfig, syncUi }
+const NEXT_BUILD_RE = /(?<!bunx --bun )\bnext build\b/gu
+const FUMADOCS_MDX_RE = /(?<!bunx --bun )\bfumadocs-mdx\b/gu
+const patchFumadocsScript = (script: string): string =>
+  script.replace(NEXT_BUILD_RE, 'bunx --bun next build').replace(FUMADOCS_MDX_RE, 'bunx --bun fumadocs-mdx')
+const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
+  const entries = await collectWorkspacePackages(projectPath)
+  const fumadocsApps = entries.filter(e => {
+    const allDeps = { ...e.pkg.dependencies, ...e.pkg.devDependencies }
+    return Boolean(allDeps['fumadocs-ui'])
+  })
+  const issues: Issue[] = []
+  for (const app of fumadocsApps) {
+    const scripts = app.pkg.scripts ?? {}
+    let changed = false
+    const next = { ...scripts }
+    for (const [k, v] of Object.entries(scripts)) {
+      const patched = patchFumadocsScript(v)
+      if (patched !== v) {
+        next[k] = patched
+        changed = true
+      }
+    }
+    if (changed) {
+      writeFileSync(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)
+      const rel = app.path.replace(`${projectPath}/`, '')
+      issues.push({ detail: `${rel} prefixed fumadocs/next build with bunx --bun`, type: 'synced' })
+    }
+  }
+  return issues
+}
+export {
+  syncClaudeMd,
+  syncConfigs,
+  syncFumadocsBuild,
+  syncFumadocsCss,
+  syncPackageJson,
+  syncSubPackages,
+  syncTsconfig,
+  syncUi
+}

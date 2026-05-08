@@ -306,6 +306,25 @@ const checkFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
   for (const results of cssResults) for (const r of results) if (r) issues.push(r)
   return issues
 }
+const FUMADOCS_NEXT_BUILD_RE = /(?<!bunx --bun )\bnext build\b/u
+const FUMADOCS_MDX_BARE_RE = /(?<!bunx --bun )\bfumadocs-mdx\b/u
+const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const pkgFiles = await glob('**/package.json', projectPath)
+  const pkgResults = await Promise.all(
+    pkgFiles.map(async pkgPath => {
+      const pkg = await readPkg(pkgPath)
+      if (!pkg) return
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+      if (allDeps['fumadocs-ui']) return { path: pkgPath, scripts: pkg.scripts ?? {} }
+    })
+  )
+  for (const entry of pkgResults.filter((e): e is { path: string; scripts: Record<string, string> } => e !== undefined))
+    for (const [name, script] of Object.entries(entry.scripts))
+      if (FUMADOCS_NEXT_BUILD_RE.test(script) || FUMADOCS_MDX_BARE_RE.test(script))
+        issues.push(drift(`${rel(entry.path, projectPath)} script "${name}" missing bunx --bun prefix`))
+  return issues
+}
 const checkMergeMarkers = async (projectPath: string): Promise<Issue[]> => {
   const result = await $`rg -l --multiline-dotall -n '^(<{7}|={7}|>{7})' ${projectPath} ${RG_EXCLUDE}`.quiet().nothrow()
   const out = result.stdout.toString().trim()
@@ -383,6 +402,7 @@ export {
   checkConvexSelfHosted,
   checkDrift,
   checkForbidden,
+  checkFumadocsBuild,
   checkFumadocsCss,
   checkGit,
   checkLayouts,

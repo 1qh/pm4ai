@@ -11,6 +11,7 @@ import {
   checkConvexSelfHosted,
   checkDrift,
   checkForbidden,
+  checkFumadocsBuild,
   checkFumadocsCss,
   checkGit,
   checkLayouts,
@@ -61,6 +62,7 @@ const status = async (swiftbar = false, all = false) => {
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
       checkFumadocsCss(project.path),
+      checkFumadocsBuild(project.path),
       checkMergeMarkers(project.path),
       checkConvexSelfHosted(project.path),
       audit(project.path)
