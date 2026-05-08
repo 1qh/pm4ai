@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, Glob, write } from 'bun'
-import { cpSync, existsSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
@@ -574,11 +574,77 @@ const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
+const getProjectGithubUrl = async (projectPath: string): Promise<string | undefined> => {
+  const r = await $`gh repo view --json url -q .url`.cwd(projectPath).quiet().nothrow()
+  if (r.exitCode !== 0) return
+  const url = r.stdout.toString().trim()
+  return url || undefined
+}
+const LAYOUT_SHARED_REL = 'src/lib/layout.shared.tsx'
+const layoutSharedTemplate = (title: string, githubUrl: string): string =>
+  `import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared'
+export const baseOptions = (): BaseLayoutProps => ({
+  githubUrl: '${githubUrl}',
+  nav: {
+    title: '${title}'
+  }
+})
+`
+const SCOPED_PREFIX_RE = /^@[^/]+\//u
+const GITHUB_URL_LITERAL_RE = /githubUrl:\s*'(?<old>[^']*)'/u
+const BASEOPTIONS_OPEN_RE = /(?<open>\(\)\s*=>\s*\(\{\s*\n)/u
+const stripScopedPrefix = (name: string): string => name.replace(SCOPED_PREFIX_RE, '')
+interface PatchArgs {
+  githubUrl: string
+  projectPath: string
+  sharedPath: string
+  title: string
+}
+const patchSharedFile = ({ githubUrl, projectPath, sharedPath, title }: PatchArgs): Issue | undefined => {
+  const relShared = sharedPath.replace(`${projectPath}/`, '')
+  if (!existsSync(sharedPath)) {
+    mkdirSync(dirname(sharedPath), { recursive: true })
+    writeFileSync(sharedPath, layoutSharedTemplate(title, githubUrl))
+    return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
+  }
+  const content = readFileSync(sharedPath, 'utf8')
+  if (content.includes(`githubUrl: '${githubUrl}'`)) return
+  if (GITHUB_URL_LITERAL_RE.test(content)) {
+    const next = content.replace(GITHUB_URL_LITERAL_RE, `githubUrl: '${githubUrl}'`)
+    if (next === content) return
+    writeFileSync(sharedPath, next)
+    return { detail: `${relShared} updated githubUrl`, type: 'synced' }
+  }
+  const next = content.replace(BASEOPTIONS_OPEN_RE, `$<open>  githubUrl: '${githubUrl}',\n`)
+  if (next === content) return
+  writeFileSync(sharedPath, next)
+  return { detail: `${relShared} added githubUrl`, type: 'synced' }
+}
+const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
+  const entries = await collectWorkspacePackages(projectPath)
+  const fumadocsApps = entries.filter(e => {
+    const allDeps = { ...e.pkg.dependencies, ...e.pkg.devDependencies }
+    return Boolean(allDeps['fumadocs-ui'])
+  })
+  if (fumadocsApps.length === 0) return []
+  const githubUrl = await getProjectGithubUrl(projectPath)
+  if (!githubUrl) return []
+  const results = fumadocsApps.map(app =>
+    patchSharedFile({
+      githubUrl,
+      projectPath,
+      sharedPath: join(dirname(app.path), LAYOUT_SHARED_REL),
+      title: stripScopedPrefix(app.pkg.name ?? 'docs')
+    })
+  )
+  return results.filter((r): r is Issue => r !== undefined)
+}
 export {
   syncClaudeMd,
   syncConfigs,
   syncFumadocsBuild,
   syncFumadocsCss,
+  syncFumadocsGithubUrl,
   syncPackageJson,
   syncSubPackages,
   syncTsconfig,

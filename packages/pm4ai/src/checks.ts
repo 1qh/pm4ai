@@ -325,6 +325,43 @@ const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
         issues.push(drift(`${rel(entry.path, projectPath)} script "${name}" missing bunx --bun prefix`))
   return issues
 }
+const FUMADOCS_INLINE_NAV_RE = /<(?:DocsLayout|HomeLayout)[^>]*\bnav=\{/u
+const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
+  const pkgFiles = await glob('**/package.json', projectPath)
+  const fumadocsDirs = (
+    await Promise.all(
+      pkgFiles.map(async pkgPath => {
+        const pkg = await readPkg(pkgPath)
+        if (!pkg) return
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+        return deps['fumadocs-ui'] ? join(pkgPath, '..') : undefined
+      })
+    )
+  ).filter((d): d is string => d !== undefined)
+  const perDir = await Promise.all(
+    fumadocsDirs.map(async appDir => {
+      const dirIssues: Issue[] = []
+      const sharedPath = join(appDir, 'src/lib/layout.shared.tsx')
+      if (existsSync(sharedPath)) {
+        const content = await file(sharedPath).text()
+        if (!content.includes('githubUrl:'))
+          dirIssues.push(drift(`${rel(sharedPath, projectPath)} missing githubUrl in baseOptions`))
+      } else dirIssues.push(drift(`${rel(sharedPath, projectPath)} missing (fumadocs SSOT)`))
+      const tsxFiles = await glob('**/*.tsx', appDir)
+      const tsxIssues = await Promise.all(
+        tsxFiles.map(async tsxPath => {
+          const content = await file(tsxPath).text()
+          if (!content.includes('fumadocs-ui/layouts')) return
+          if (FUMADOCS_INLINE_NAV_RE.test(content) && !content.includes('baseOptions'))
+            return drift(`${rel(tsxPath, projectPath)} uses inline nav={...}; spread {...baseOptions()} instead`)
+        })
+      )
+      for (const t of tsxIssues) if (t) dirIssues.push(t)
+      return dirIssues
+    })
+  )
+  return perDir.flat()
+}
 const checkMergeMarkers = async (projectPath: string): Promise<Issue[]> => {
   const result = await $`rg -l --multiline-dotall -n '^(<{7}|={7}|>{7})' ${projectPath} ${RG_EXCLUDE}`.quiet().nothrow()
   const out = result.stdout.toString().trim()
@@ -404,6 +441,7 @@ export {
   checkForbidden,
   checkFumadocsBuild,
   checkFumadocsCss,
+  checkFumadocsGithubUrl,
   checkGit,
   checkLayouts,
   checkMergeMarkers,

@@ -13,6 +13,7 @@ import {
   checkForbidden,
   checkFumadocsBuild,
   checkFumadocsCss,
+  checkFumadocsGithubUrl,
   checkGit,
   checkLayouts,
   checkMergeMarkers,
@@ -63,6 +64,7 @@ const status = async (swiftbar = false, all = false) => {
       checkBannedImports(project.path),
       checkFumadocsCss(project.path),
       checkFumadocsBuild(project.path),
+      checkFumadocsGithubUrl(project.path),
       checkMergeMarkers(project.path),
       checkConvexSelfHosted(project.path),
       audit(project.path)
