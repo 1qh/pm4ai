@@ -591,7 +591,7 @@ export const baseOptions = (): BaseLayoutProps => ({
 })
 `
 const SCOPED_PREFIX_RE = /^@[^/]+\//u
-const GITHUB_URL_LITERAL_RE = /githubUrl:\s*'(?<old>[^']*)'/u
+const GITHUB_URL_KEY_RE = /\bgithubUrl\s*:/u
 const BASEOPTIONS_OPEN_RE = /(?<open>\(\)[^=]*=>\s*\(\{\s*\n)/u
 const stripScopedPrefix = (name: string): string => name.replace(SCOPED_PREFIX_RE, '')
 interface PatchArgs {
@@ -608,13 +608,7 @@ const patchSharedFile = ({ githubUrl, projectPath, sharedPath, title }: PatchArg
     return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
   }
   const content = readFileSync(sharedPath, 'utf8')
-  if (content.includes(`githubUrl: '${githubUrl}'`)) return
-  if (GITHUB_URL_LITERAL_RE.test(content)) {
-    const next = content.replace(GITHUB_URL_LITERAL_RE, `githubUrl: '${githubUrl}'`)
-    if (next === content) return
-    writeFileSync(sharedPath, next)
-    return { detail: `${relShared} updated githubUrl`, type: 'synced' }
-  }
+  if (GITHUB_URL_KEY_RE.test(content)) return
   const next = content.replace(BASEOPTIONS_OPEN_RE, `$<open>  githubUrl: '${githubUrl}',\n`)
   if (next === content) return
   writeFileSync(sharedPath, next)
