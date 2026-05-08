@@ -259,7 +259,7 @@ Review checklist: Can I delete this node? → delete. Can `gap/space/divide` rep
 
 ---
 
-## NEXT*PUBLIC*\* env vars are shipped to the browser
+## `NEXT_PUBLIC_*` env vars are shipped to the browser
 
 Anything prefixed `NEXT_PUBLIC_` is **inlined into the client bundle** at build time and visible to anyone who views page source. The prefix exists to opt into client exposure — never use it for credentials.
 
