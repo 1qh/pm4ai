@@ -580,7 +580,17 @@ const getProjectGithubUrl = async (projectPath: string): Promise<string | undefi
   const url = r.stdout.toString().trim()
   return url || undefined
 }
-const LAYOUT_SHARED_REL = 'src/lib/layout.shared.tsx'
+const ALIAS_TRIM_RE = /\/\*$/u
+const ALIAS_DOT_SLASH_RE = /^\.\//u
+const resolveLibBase = async (appDir: string): Promise<string> => {
+  const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
+  const paths = (tsconfig?.compilerOptions as undefined | { paths?: Record<string, string[]> })?.paths
+  const aliasTarget = paths?.['@/*']?.[0]
+  if (!aliasTarget) return 'src'
+  return aliasTarget.replace(ALIAS_TRIM_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'
+}
+const layoutSharedRel = (libBase: string): string =>
+  libBase === '.' ? 'lib/layout.shared.tsx' : `${libBase}/lib/layout.shared.tsx`
 const layoutSharedTemplate = (title: string, githubUrl: string): string =>
   `import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared'
 export const baseOptions = (): BaseLayoutProps => ({
@@ -623,12 +633,16 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   if (fumadocsApps.length === 0) return []
   const githubUrl = await getProjectGithubUrl(projectPath)
   if (!githubUrl) return []
-  const results = fumadocsApps.map(app =>
-    patchSharedFile({
-      githubUrl,
-      projectPath,
-      sharedPath: join(dirname(app.path), LAYOUT_SHARED_REL),
-      title: stripScopedPrefix(app.pkg.name ?? 'docs')
+  const results = await Promise.all(
+    fumadocsApps.map(async app => {
+      const appDir = dirname(app.path)
+      const libBase = await resolveLibBase(appDir)
+      return patchSharedFile({
+        githubUrl,
+        projectPath,
+        sharedPath: join(appDir, layoutSharedRel(libBase)),
+        title: stripScopedPrefix(app.pkg.name ?? 'docs')
+      })
     })
   )
   return results.filter((r): r is Issue => r !== undefined)

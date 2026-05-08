@@ -326,6 +326,8 @@ const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const FUMADOCS_INLINE_NAV_RE = /<(?:DocsLayout|HomeLayout)[^>]*\bnav=\{/u
+const ALIAS_TRIM_TAIL_RE = /\/\*$/u
+const ALIAS_DOT_SLASH_RE = /^\.\//u
 const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   const pkgFiles = await glob('**/package.json', projectPath)
   const fumadocsDirs = (
@@ -341,7 +343,15 @@ const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => 
   const perDir = await Promise.all(
     fumadocsDirs.map(async appDir => {
       const dirIssues: Issue[] = []
-      const sharedPath = join(appDir, 'src/lib/layout.shared.tsx')
+      const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
+      const aliasTarget = (tsconfig?.compilerOptions as undefined | { paths?: Record<string, string[]> })?.paths?.[
+        '@/*'
+      ]?.[0]
+      const libBase = aliasTarget
+        ? aliasTarget.replace(ALIAS_TRIM_TAIL_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'
+        : 'src'
+      const sharedRel = libBase === '.' ? 'lib/layout.shared.tsx' : `${libBase}/lib/layout.shared.tsx`
+      const sharedPath = join(appDir, sharedRel)
       if (existsSync(sharedPath)) {
         const content = await file(sharedPath).text()
         if (!content.includes('githubUrl:'))
