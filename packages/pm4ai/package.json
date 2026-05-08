@@ -59,6 +59,7 @@
     "simple-git-hooks",
     "tsdown",
     "turbo",
-    "typescript"
+    "typescript",
+    "unrun"
   ]
 }
