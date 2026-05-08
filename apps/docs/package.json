@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "fumadocs-mdx && next build",
+    "build": "bunx --bun fumadocs-mdx && bunx --bun next build",
     "dev": "next dev",
-    "postinstall": "fumadocs-mdx",
+    "postinstall": "bunx --bun fumadocs-mdx",
     "start": "next start"
   },
   "dependencies": {
