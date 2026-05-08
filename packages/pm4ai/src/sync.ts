@@ -592,7 +592,7 @@ export const baseOptions = (): BaseLayoutProps => ({
 `
 const SCOPED_PREFIX_RE = /^@[^/]+\//u
 const GITHUB_URL_LITERAL_RE = /githubUrl:\s*'(?<old>[^']*)'/u
-const BASEOPTIONS_OPEN_RE = /(?<open>\(\)\s*=>\s*\(\{\s*\n)/u
+const BASEOPTIONS_OPEN_RE = /(?<open>\(\)[^=]*=>\s*\(\{\s*\n)/u
 const stripScopedPrefix = (name: string): string => name.replace(SCOPED_PREFIX_RE, '')
 interface PatchArgs {
   githubUrl: string
