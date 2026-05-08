@@ -190,7 +190,8 @@ describe('checkRootWorkspacesAndDevDeps', () => {
         'simple-git-hooks': 'latest',
         tsdown: 'latest',
         turbo: 'latest',
-        typescript: 'latest'
+        typescript: 'latest',
+        unrun: 'latest'
       },
       workspaces: ['packages/*']
     })

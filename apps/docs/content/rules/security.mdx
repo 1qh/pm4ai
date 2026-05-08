@@ -4,7 +4,7 @@ description: Security constraints — credential handling, env var scoping, serv
 infer: always
 ---
 
-## NEXT_PUBLIC_* env vars are shipped to the browser
+## `NEXT_PUBLIC_*` env vars are shipped to the browser
 
 Anything prefixed `NEXT_PUBLIC_` is **inlined into the client bundle** at build time and visible to anyone who views page source. The prefix exists to opt into client exposure — never use it for credentials.
 
@@ -48,7 +48,7 @@ Never read server-only env vars from a `'use client'` component.
 
 Before merging a PR that touches env vars:
 
-- [ ] No `NEXT_PUBLIC_*` name contains "key", "secret", "token", "password", "private"
+- [ ] No `NEXT_PUBLIC_*` name contains “key”, “secret”, “token”, “password”, “private”
 - [ ] Any new client-side data fetch goes through a server boundary
 - [ ] Server actions reading credentials check test-mode and short-circuit with stub data
 - [ ] `.env.example` (if present) marks server-only vars without `NEXT_PUBLIC_` prefix
