@@ -81,6 +81,28 @@ const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined
 const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
 const isSkippedPath = (path: string) => path.includes('readonly/') || path.includes('.next/')
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
+interface Capabilities {
+  fumadocs: boolean
+  github: boolean
+  publishable: boolean
+  tailwind: boolean
+}
+const detectCapabilities = async (projectPath: string): Promise<Capabilities> => {
+  const entries = await collectWorkspacePackages(projectPath)
+  const allDeps = new Set<string>()
+  for (const { pkg } of entries) {
+    for (const k of Object.keys(pkg.dependencies ?? {})) allDeps.add(k)
+    for (const k of Object.keys(pkg.devDependencies ?? {})) allDeps.add(k)
+  }
+  const github = Boolean(await getGhRepo(projectPath))
+  const tailwind =
+    allDeps.has('tailwindcss') ||
+    allDeps.has('@tailwindcss/postcss') ||
+    [...allDeps].some(d => d.startsWith('@tailwindcss/'))
+  const fumadocs = allDeps.has('fumadocs-ui')
+  const publishable = entries.some(({ pkg }) => pkg.name && !pkg.private)
+  return { fumadocs, github, publishable, tailwind }
+}
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {
   const result = new Map<string, Set<string>>()
   for (const { pkg } of entries)
@@ -98,6 +120,7 @@ export {
   buildPkgDepMap,
   collectWorkspacePackages,
   debug,
+  detectCapabilities,
   getBunVersion,
   getGhRepo,
   getTsconfigTypes,
@@ -111,3 +134,4 @@ export {
   setVerbose,
   writeJson
 }
+export type { Capabilities }

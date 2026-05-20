@@ -40,5 +40,8 @@ else if (command === 'init') {
   } else if (command === 'cleanup') {
     const { cleanup } = await import('./cleanup.js')
     cleanup()
+  } else if (command === 'list') {
+    const { list } = await import('./list.js')
+    await list()
   } else console.log(guide)
 }

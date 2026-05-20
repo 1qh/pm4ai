@@ -4,16 +4,17 @@ import { join } from 'node:path'
 import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
 import {
+  CONDITIONAL_MUST_EXIST_FILES,
+  CONDITIONAL_VERBATIM_FILES,
   DEFAULT_SCRIPTS,
   EXPECTED,
   FORBIDDEN_LOCKFILES,
-  FUMADOCS_DARK_CSS,
   MUST_EXIST_FILES,
   RG_EXCLUDE,
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 } from './constants.js'
-import { debug, getGhRepo, getTsconfigTypes, readJson, readPkg, rel } from './utils.js'
+import { debug, detectCapabilities, getGhRepo, getTsconfigTypes, readJson, readPkg, rel } from './utils.js'
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
@@ -63,8 +64,11 @@ const checkGit = async (projectPath: string): Promise<Issue[]> => {
   return [issue('git', `${out.split('\n').length} uncommitted changes`)]
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
+  const caps = await detectCapabilities(projectPath)
+  const conditional = CONDITIONAL_VERBATIM_FILES.filter(c => caps[c.when]).map(c => c.path)
+  const required = [...VERBATIM_FILES, ...conditional]
   const results = await Promise.all(
-    VERBATIM_FILES.map(async name => {
+    required.map(async name => {
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return
@@ -94,10 +98,10 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  const isGitHub = Boolean(await getGhRepo(projectPath))
-  for (const entry of MUST_EXIST_FILES)
-    if (!((entry.includes('.github/') && !isGitHub) || existsSync(join(projectPath, entry))))
-      issues.push(issue('missing', entry))
+  const caps = await detectCapabilities(projectPath)
+  for (const entry of MUST_EXIST_FILES) if (!existsSync(join(projectPath, entry))) issues.push(issue('missing', entry))
+  for (const c of CONDITIONAL_MUST_EXIST_FILES)
+    if (caps[c.when] && !existsSync(join(projectPath, c.path))) issues.push(issue('missing', c.path))
   const pkg = await readPkg(join(projectPath, 'package.json'))
   if (pkg && !pkg.scripts?.action) issues.push(issue('missing', '"action" script missing'))
   const ts = await readJson(join(projectPath, 'tsconfig.json'))
@@ -278,34 +282,6 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
   if (latestLine?.includes('● Error')) return [issue('deploy', 'vercel deployment failed')]
   return []
 }
-const checkFumadocsCss = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
-  const pkgFiles = await glob('**/package.json', projectPath)
-  const pkgResults = await Promise.all(
-    pkgFiles.map(async pkgPath => {
-      const pkg = await readPkg(pkgPath)
-      if (!pkg) return
-      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
-      if (allDeps['fumadocs-ui']) return pkgPath
-    })
-  )
-  const fumadocsApps = pkgResults.filter((p): p is string => p !== undefined)
-  const cssResults = await Promise.all(
-    fumadocsApps.map(async pkgPath => {
-      const appDir = pkgPath.replace('/package.json', '')
-      const cssFiles = await glob('**/app/global.css', appDir)
-      return Promise.all(
-        cssFiles.map(async cssFile => {
-          const content = await file(cssFile).text()
-          if (!content.includes(FUMADOCS_DARK_CSS))
-            return drift(`missing true-black dark mode CSS: ${rel(cssFile, projectPath)}`)
-        })
-      )
-    })
-  )
-  for (const results of cssResults) for (const r of results) if (r) issues.push(r)
-  return issues
-}
 const FUMADOCS_NEXT_BUILD_RE = /(?<!bunx --bun )\bnext build\b/u
 const FUMADOCS_MDX_BARE_RE = /(?<!bunx --bun )\bfumadocs-mdx\b/u
 const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
@@ -450,7 +426,6 @@ export {
   checkDrift,
   checkForbidden,
   checkFumadocsBuild,
-  checkFumadocsCss,
   checkFumadocsGithubUrl,
   checkGit,
   checkLayouts,

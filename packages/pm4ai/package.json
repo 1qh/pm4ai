@@ -1,6 +1,6 @@
 {
   "name": "pm4ai",
-  "version": "0.0.46",
+  "version": "0.0.47",
   "description": "Agent-first anti-slop project management for TypeScript monorepos",
   "keywords": [
     "bun",
@@ -44,7 +44,7 @@
   "scripts": {
     "build": "tsdown",
     "prepublishOnly": "bun run build",
-    "postpublish": "bunx pm4ai@latest cleanup",
+    "postpublish": "bun ../../tools/prune-versions.ts",
     "test": "bun test"
   },
   "dependencies": {

@@ -39,7 +39,7 @@ const FORBIDDEN_LOCKFILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
 const FORBIDDEN_PM_PREFIXES = ['npm ', 'npx ', 'yarn ', 'pnpm ']
 const GH_ORG = '1qh'
 const MONOREPO_NAME = 'pm4ai-monorepo'
-const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json', 'postcss.config.ts', '.github/workflows/ci.yml']
+const MUST_EXIST_FILES = ['turbo.json', 'tsconfig.json']
 const SWIFTBAR_FONT = '| font=Menlo size=13'
 const READONLY_UI = 'readonly/ui'
 const UI_PACKAGE_NAME = '@a/ui'
@@ -67,9 +67,25 @@ html > body[data-scroll-locked] {
 }`
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const TURBO_FLAG = '--output-logs=errors-only'
-const VERBATIM_FILES = ['.github/workflows/ci.yml', 'clean.sh', 'up.sh', 'bunfig.toml', '.gitignore', 'postcss.config.ts']
+const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+interface ConditionalFile {
+  path: string
+  when: 'fumadocs' | 'github' | 'publishable' | 'tailwind'
+}
+const CONDITIONAL_VERBATIM_FILES: ConditionalFile[] = [
+  { path: '.github/workflows/ci.yml', when: 'github' },
+  { path: 'postcss.config.ts', when: 'tailwind' },
+  { path: 'apps/docs/src/app/global.css', when: 'fumadocs' },
+  { path: 'tools/prune-versions.ts', when: 'publishable' }
+]
+const CONDITIONAL_MUST_EXIST_FILES: ConditionalFile[] = [
+  { path: 'postcss.config.ts', when: 'tailwind' },
+  { path: '.github/workflows/ci.yml', when: 'github' }
+]
 export {
   CLAUDE_MD,
+  CONDITIONAL_MUST_EXIST_FILES,
+  CONDITIONAL_VERBATIM_FILES,
   CONFIG_DIR,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
@@ -94,3 +110,4 @@ export {
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 }
+export type { ConditionalFile }

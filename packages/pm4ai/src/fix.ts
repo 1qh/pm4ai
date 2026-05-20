@@ -14,7 +14,6 @@ import {
   syncClaudeMd,
   syncConfigs,
   syncFumadocsBuild,
-  syncFumadocsCss,
   syncFumadocsGithubUrl,
   syncPackageJson,
   syncSubPackages,
@@ -155,30 +154,21 @@ export const fix = async (all = false) => {
       const name = projectName(project.path)
       const issues: Issue[] = []
       emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
-      const [
-        configIssues,
-        claudeIssues,
-        pkgIssues,
-        tsconfigIssues,
-        fumadocsIssues,
-        fumadocsBuildIssues,
-        fumadocsGithubIssues
-      ] = await Promise.all([
-        syncConfigs(self.path, project.path),
-        syncClaudeMd(self.path, project.path),
-        syncPackageJson(project.path, self.path),
-        syncTsconfig(project.path),
-        syncFumadocsCss(project.path),
-        syncFumadocsBuild(project.path),
-        syncFumadocsGithubUrl(project.path)
-      ])
+      const [configIssues, claudeIssues, pkgIssues, tsconfigIssues, fumadocsBuildIssues, fumadocsGithubIssues] =
+        await Promise.all([
+          syncConfigs(self.path, project.path),
+          syncClaudeMd(self.path, project.path),
+          syncPackageJson(project.path, self.path),
+          syncTsconfig(project.path),
+          syncFumadocsBuild(project.path),
+          syncFumadocsGithubUrl(project.path)
+        ])
       const subPkgIssues = await syncSubPackages(self.path, project.path)
       issues.push(
         ...configIssues,
         ...claudeIssues,
         ...pkgIssues,
         ...tsconfigIssues,
-        ...fumadocsIssues,
         ...fumadocsBuildIssues,
         ...fumadocsGithubIssues,
         ...subPkgIssues
