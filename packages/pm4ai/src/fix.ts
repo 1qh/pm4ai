@@ -33,7 +33,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   }
   const result = await $`sh up.sh`.cwd(projectPath).quiet().nothrow()
   const { exitCode } = result
-  const stderr = result.stderr.toString().trim()
+  const stderr = [result.stdout.toString(), result.stderr.toString()].join('\n').trim()
   if (exitCode === 0) {
     const snapshotDir = join(homedir(), CONFIG_DIR, 'snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
