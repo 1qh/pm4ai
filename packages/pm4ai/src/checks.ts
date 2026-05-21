@@ -194,6 +194,24 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
   )
   return issues
 }
+const PINNED_VERSION_RE = /\d+\.\d+/u
+const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
+const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await glob('**/package.json', projectPath)
+  await Promise.all(
+    files.map(async pkgFile => {
+      const pkg = await readPkg(pkgFile)
+      if (!pkg) return
+      const r = rel(pkgFile, projectPath)
+      for (const field of ['dependencies', 'devDependencies'] as const)
+        for (const [name, version] of Object.entries(pkg[field] ?? {}))
+          if (typeof version === 'string' && PINNED_VERSION_RE.test(version) && !ALLOWED_VERSION_RE.test(version))
+            issues.push(drift(`${name}@${version} pinned, use "latest" (or bare major): ${r}`))
+    })
+  )
+  return issues
+}
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const configs = await glob('**/next.config.ts', projectPath)
@@ -438,6 +456,7 @@ export {
   checkCi,
   checkConfigs,
   checkConvexSelfHosted,
+  checkDepsLatest,
   checkDrift,
   checkForbidden,
   checkFumadocsBuild,
