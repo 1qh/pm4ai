@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightWaitForSelector: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightWaitForTimeout: timing */
-/* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
@@ -152,7 +152,8 @@ describe('dashboard API via browser', () => {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST'
       })
-      return { data: await res.json(), status: res.status }
+      const json: unknown = await res.json()
+      return { data: json, status: res.status }
     })
     expect(result.status).toBe(200)
     const data = result.data as { json: unknown[] }
