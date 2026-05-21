@@ -6,7 +6,7 @@
 /** biome-ignore-all lint/performance/useTopLevelRegex: effect */
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effects */
 'use client'
-/* oxlint-disable no-empty-function, promise/prefer-await-to-then, max-depth, no-await-in-loop, no-unmodified-loop-condition, complexity, no-use-before-define, react-perf/jsx-no-new-object-as-prop */
+/* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
 /* eslint-disable @typescript-eslint/strict-void-return, @typescript-eslint/no-unnecessary-condition, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, max-depth, no-await-in-loop, no-unmodified-loop-condition, no-continue, prefer-named-capture-group, complexity, @eslint-react/jsx-no-iife, @typescript-eslint/no-use-before-define */
 import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'

@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noAwaitInLoops: sequential by design */
 /* eslint-disable no-promise-executor-return */
 import type { Socket } from 'node:net'
 import { afterEach, describe, expect, test } from 'bun:test'

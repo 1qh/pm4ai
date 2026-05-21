@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
-/* oxlint-disable no-empty-function, promise/prefer-await-to-then */
+/* oxlint-disable promise/prefer-await-to-then */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { WatchEvent } from 'pm4ai'
 import { safeParseJson, watchEventSchema } from 'pm4ai/schemas'

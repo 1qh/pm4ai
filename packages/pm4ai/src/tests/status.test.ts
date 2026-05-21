@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/noProcessEnv: test config */
 import { describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'

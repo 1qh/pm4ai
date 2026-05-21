@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/noProcessEnv: CI detection */
 import { $ } from 'bun'
 import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync, rmSync } from 'node:fs'

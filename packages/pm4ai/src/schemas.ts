@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { z } from 'zod/v4'
 

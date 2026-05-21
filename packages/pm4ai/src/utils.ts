@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { $, file, Glob, write } from 'bun'
 import { existsSync } from 'node:fs'

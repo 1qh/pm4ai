@@ -2,8 +2,6 @@
 /** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightWaitForSelector: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightWaitForTimeout: timing */
-/** biome-ignore-all lint/performance/noAwaitInLoops: polling */
-/** biome-ignore-all lint/performance/useTopLevelRegex: test */
 /* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-assignment */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'

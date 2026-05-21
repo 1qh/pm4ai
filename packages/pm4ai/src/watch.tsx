@@ -1,4 +1,3 @@
-/* oxlint-disable react-perf/jsx-no-new-array-as-prop */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function */
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
@@ -7,7 +6,6 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-/* oxlint-disable no-empty-function, react-perf/jsx-no-new-array-as-prop */
 import type { ProjectInfo, ProjectState } from './watch-state.js'
 import pkg from '../package.json' with { type: 'json' }
 import { readCheckResult } from './check-cache.js'

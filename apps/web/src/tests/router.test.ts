@@ -1,5 +1,3 @@
-/** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
-/* oxlint-disable no-empty-function */
 /* eslint-disable @typescript-eslint/no-empty-function */
 import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'

@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
-/* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { spawn } from 'bun'
 import { execFileSync } from 'node:child_process'

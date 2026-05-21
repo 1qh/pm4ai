@@ -3,7 +3,6 @@ interface BannedPackage {
   ban: string
   fix: string
 }
-/* oxlint-disable typescript-eslint/consistent-type-imports */
 type BunExport = keyof typeof import('bun')
 const b = (...names: BunExport[]) => `import { ${names.join(', ')} } from bun`
 type NodeModule =

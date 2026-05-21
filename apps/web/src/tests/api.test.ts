@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noAwaitInLoops: sequential test */
 import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'

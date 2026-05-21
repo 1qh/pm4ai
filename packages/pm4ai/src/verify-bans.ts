@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop */
-/* oxlint-disable eslint/no-await-in-loop, eslint-plugin-unicorn/no-process-exit */
+/* oxlint-disable eslint-plugin-unicorn/no-process-exit */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential batches */
 import { ALL_BANNED } from './banned.js'
 
