@@ -2,6 +2,7 @@
 /* oxlint-disable eslint/no-await-in-loop, eslint-plugin-unicorn/no-process-exit */
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential batches */
 import { ALL_BANNED } from './banned.js'
+
 const extractExactName = (ban: string): string | undefined => {
   if (!ban.endsWith('"')) return
   const clean = ban.slice(1, -1)

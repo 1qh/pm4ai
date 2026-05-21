@@ -11,6 +11,7 @@ import {
   spawnBackgroundCheck,
   writeCheckResult
 } from '../check-cache.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-cc-'))
 const leadingSepRe = /^--/u
 const toSafeName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import type { Issue } from '../types.js'
 import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
+
 describe('formatIssues', () => {
   test('empty issues returns project path only', () => {
     expect(formatIssues('/tmp/test', [])).toBe('/tmp/test')

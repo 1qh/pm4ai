@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
 import { CONFIG_DIR } from './constants.js'
 import { safeParseJson, watchEventSchema } from './schemas.js'
+
 const SOCKET_DIR = join(homedir(), CONFIG_DIR)
 const SOCKET_PATH = join(SOCKET_DIR, 'watch.sock')
 type Listener = (event: WatchEvent) => void

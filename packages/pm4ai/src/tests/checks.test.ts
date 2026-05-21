@@ -14,6 +14,7 @@ import {
   checkRootPkg,
   checkVercel
 } from '../checks.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {

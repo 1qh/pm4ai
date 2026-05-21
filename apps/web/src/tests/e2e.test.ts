@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { createEvent } from 'pm4ai'
 import { emit, startEmitter, stopEmitter } from '../../../../packages/pm4ai/src/watch-emitter.js'
+
 const PORT = 4202
 const BASE = `http://localhost:${PORT}`
 const dashboardDir = join(import.meta.dirname, '..', '..')

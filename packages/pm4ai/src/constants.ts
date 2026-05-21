@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
 interface PkgJson {
   license?: string
   name?: string

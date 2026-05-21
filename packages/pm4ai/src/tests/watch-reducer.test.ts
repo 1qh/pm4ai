@@ -14,6 +14,7 @@ import {
   timeAgo
 } from '../watch-state.js'
 import { createEvent } from '../watch-types.js'
+
 const mkProject = (name: string) => ({ name, path: `/test/${name}` })
 const mkProjects = (...names: string[]) => names.map(mkProject)
 const mkIdle = (): ProjectState => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' })

@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CLAUDE_MD, CONFIG_DIR, VERBATIM_FILES } from './constants.js'
 import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
+
 interface CheckResult {
   at: string
   commit: string

@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CONFIG_DIR } from './constants.js'
+
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')
 const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')

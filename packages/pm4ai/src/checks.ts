@@ -15,6 +15,7 @@ import {
   VERBATIM_FILES
 } from './constants.js'
 import { debug, detectCapabilities, getGhRepo, getTsconfigTypes, readJson, readPkg, rel } from './utils.js'
+
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
@@ -175,6 +176,20 @@ const checkPages = async (projectPath: string): Promise<Issue[]> => {
       const content = await file(pageFile).text()
       if (content.includes('export default function'))
         issues.push(drift(`use arrow function + export default Page: ${rel(pageFile, projectPath)}`))
+    })
+  )
+  return issues
+}
+const FD_CLASS_RE =
+  /\b(?<util>bg|text|border|ring|fill|stroke|from|to|via|outline|divide|placeholder|decoration|caret|accent|shadow)-fd-/u
+const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await glob('**/*.tsx', projectPath)
+  await Promise.all(
+    files.map(async tsxFile => {
+      const content = await file(tsxFile).text()
+      if (FD_CLASS_RE.test(content))
+        issues.push(drift(`use shadcn semantic classes, not fd-* aliases: ${rel(tsxFile, projectPath)}`))
     })
   )
   return issues
@@ -433,5 +448,6 @@ export {
   checkNextConfigs,
   checkPages,
   checkRootPkg,
+  checkShadcnClasses,
   checkVercel
 }

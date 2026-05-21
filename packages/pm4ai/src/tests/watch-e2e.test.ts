@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import type { WatchEvent } from '../watch-types.js'
 import { emitToSocket, SOCKET_PATH, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
+
 const isCI = 'CI' in process.env
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')

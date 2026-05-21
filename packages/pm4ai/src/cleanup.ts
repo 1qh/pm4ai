@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
 const cleanup = () => {
   const pkgPath = join(process.cwd(), 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { name?: string; version?: string }

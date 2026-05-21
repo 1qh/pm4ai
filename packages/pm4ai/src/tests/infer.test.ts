@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inferRules, parseFrontmatter } from '../infer.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-infer-'))
 describe('parseFrontmatter', () => {
   test('standard frontmatter', () => {

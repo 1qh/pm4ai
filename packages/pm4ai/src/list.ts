@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import { $ } from 'bun'
 import { discover } from './discover.js'
+
 const AHEAD_RE = /\+(?<n>\d+)/u
 const BEHIND_RE = /-(?<n>\d+)/u
 const gitStatus = async (path: string): Promise<{ ahead: number; behind: number; dirty: boolean }> => {

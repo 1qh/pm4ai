@@ -35,9 +35,6 @@ pre,
 code {
   font-family: var(--font-mono), ui-monospace, monospace;
 }
-html {
-  scrollbar-gutter: stable;
-}
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
 }

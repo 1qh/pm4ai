@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
+
 describe('timeAgo', () => {
   test('5 minutes ago', () => {
     const iso = new Date(Date.now() - 5 * 60_000).toISOString()

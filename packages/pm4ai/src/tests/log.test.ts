@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { readLog, updateLog } from '../log.js'
+
 describe('updateLog + readLog', () => {
   test('writes and reads back a log entry', () => {
     const entry = { at: new Date().toISOString(), pass: true, path: '/tmp/test-project', project: 'test-project' }

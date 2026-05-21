@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from '../sync.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
 describe('syncConfigs', () => {

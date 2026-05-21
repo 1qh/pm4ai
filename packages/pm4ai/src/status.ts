@@ -19,6 +19,7 @@ import {
   checkNextConfigs,
   checkPages,
   checkRootPkg,
+  checkShadcnClasses,
   checkVercel
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
@@ -26,6 +27,7 @@ import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
 import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
+
 const status = async (swiftbar = false, all = false) => {
   let allProjects: { name: string; path: string }[]
   let selfPath: string
@@ -58,6 +60,7 @@ const status = async (swiftbar = false, all = false) => {
       checkForbidden(project.path),
       checkLayouts(project.path),
       checkPages(project.path),
+      checkShadcnClasses(project.path),
       checkNextConfigs(project.path),
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),

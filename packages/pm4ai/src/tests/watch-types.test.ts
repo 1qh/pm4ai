@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { WatchStatus, WatchStep } from '../watch-types.js'
 import { createEvent, WATCH_STATUSES, WATCH_STEPS } from '../watch-types.js'
+
 describe('WATCH_STEPS', () => {
   test('contains all step values', () => {
     expect(WATCH_STEPS).toEqual(['audit', 'check', 'done', 'maintain', 'sync'])

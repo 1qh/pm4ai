@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CONFIG_DIR } from './constants.js'
 import { logEntrySchema, safeParseJson } from './schemas.js'
+
 type LogEntry = z.infer<typeof logEntrySchema>
 const logDir = join(homedir(), CONFIG_DIR, 'logs')
 const leadingSepRe = /^--/u

@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { isConnected, subscribe } from '../lib/socket'
+
 const leadingSepRe = /^--/u
 describe('check result reading', () => {
   const checksDir = join(homedir(), '.pm4ai', 'checks')

@@ -4,6 +4,7 @@ import { createRelativeLink } from 'fumadocs-ui/mdx'
 import { notFound } from 'next/navigation'
 import { getMDXComponents } from '@/components/mdx'
 import { source } from '@/lib/source'
+
 const Page = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>) => {
   const params = await paramsPromise
   const page = source.getPage(params.slug)

@@ -2,6 +2,7 @@
 /* oxlint-disable no-empty */
 /* eslint-disable no-empty */
 import { z } from 'zod/v4'
+
 const lockSchema = z.object({ at: z.string(), pid: z.number() })
 const npmVersionSchema = z.object({ version: z.string() })
 const ghReleaseSchema = z.object({ tag_name: z.string() })

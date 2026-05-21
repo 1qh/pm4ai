@@ -3,6 +3,7 @@
 import { $ } from 'bun'
 import { discover } from './discover.js'
 import { isInsideProject, projectName } from './utils.js'
+
 const ignores = async (all = false) => {
   let projects: { name: string; path: string }[]
   if (all) {

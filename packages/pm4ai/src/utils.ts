@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { LINTMAX_PKG } from './constants.js'
+
 const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
   const f = file(path)
   if (!(await f.exists())) return

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /* eslint-disable no-console */
 import pkg from '../package.json' with { type: 'json' }
+
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('-')))
 const command = args.find(a => !a.startsWith('-'))

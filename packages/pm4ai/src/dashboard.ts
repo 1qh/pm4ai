@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { discover } from './discover.js'
+
 const dashboard = async () => {
   const { self } = await discover()
   const dashboardDir = join(self.path, 'apps', 'web')

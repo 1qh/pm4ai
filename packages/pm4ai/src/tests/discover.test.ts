@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discover, discoverSources, isCnsyncRepo } from '../discover.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-discover-'))
 const initGitRepo = (dir: string, remote?: string) => {
   execSync('git init', { cwd: dir, stdio: 'pipe' })

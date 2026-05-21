@@ -13,6 +13,7 @@ import {
   checkTrustedDeps,
   usesForbidden
 } from '../audit.js'
+
 const PROJECT = '/tmp/project'
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })
 describe('usesForbidden', () => {

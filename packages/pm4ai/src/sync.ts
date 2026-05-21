@@ -33,6 +33,7 @@ import {
   readPkg,
   writeJson
 } from './utils.js'
+
 const sortKeys = (obj: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {

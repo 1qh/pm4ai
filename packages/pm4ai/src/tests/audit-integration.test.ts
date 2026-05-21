@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { audit } from '../audit.js'
+
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-audit-'))
 describe('audit integration', () => {
   test('clean project produces no critical issues', async () => {
