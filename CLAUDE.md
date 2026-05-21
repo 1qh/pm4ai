@@ -321,6 +321,7 @@ Use semantic Tailwind classes ONLY. Never hardcode hex colors in className or st
 - `text-foreground` / `text-muted-foreground` / `text-destructive` — NEVER `text-red-500`, `text-green-500`
 - `bg-primary` / `bg-muted` / `bg-destructive` — NEVER `bg-blue-500`, `bg-red-500`
 - `text-primary` for interactive links — NEVER `text-blue-500`
+- NEVER `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`) — those are fumadocs internals; use the shadcn semantic name. `global.css` aliases `--color-*` to `--color-fd-*` via `@theme inline`, so `bg-muted`, `text-primary`, `border-border` resolve to the same theme. fumadocs’ own UI (sidebar/search/TOC) keeps `fd-*` internally — that is not your code.
 
 ### Conditional classNames
 

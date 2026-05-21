@@ -175,7 +175,7 @@ describe('syncSubPackages', () => {
       string,
       Record<string, string>
     >
-    expect(pkg.scripts?.postpublish).toBe('bunx pm4ai@latest cleanup')
+    expect(pkg.scripts?.postpublish).toBe('bun ../../tools/prune-versions.ts')
     rmSync(tmp, { recursive: true })
   })
   test('adds prepublishOnly to packages with build script', async () => {
