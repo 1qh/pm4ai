@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-/* oxlint-disable complexity, no-empty-function, promise/param-names, react-perf/jsx-no-new-array-as-prop, react-perf/jsx-no-new-object-as-prop */
+/* oxlint-disable no-empty-function, react-perf/jsx-no-new-array-as-prop */
 import type { ProjectInfo, ProjectState } from './watch-state.js'
 import pkg from '../package.json' with { type: 'json' }
 import { readCheckResult } from './check-cache.js'

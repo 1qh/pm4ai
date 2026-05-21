@@ -1,4 +1,3 @@
-/* oxlint-disable no-empty-function, react-perf/jsx-no-new-array-as-prop, react-perf/jsx-no-new-object-as-prop */
 import { Box, render, Text, useApp, useInput } from 'ink'
 import Spinner from 'ink-spinner'
 import { useState } from 'react'

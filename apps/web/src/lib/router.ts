@@ -1,7 +1,5 @@
 /* eslint-disable no-await-in-loop, @typescript-eslint/no-loop-func, @typescript-eslint/require-await */
-/* oxlint-disable promise/param-names */
 /** biome-ignore-all lint/performance/noAwaitInLoops: streaming by design */
-/** biome-ignore-all lint/nursery/noShadow: intentional */
 /** biome-ignore-all lint/nursery/noUnnecessaryConditions: queue check */
 /** biome-ignore-all lint/suspicious/useAwait: async generator */
 /** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */

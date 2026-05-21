@@ -124,7 +124,6 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
     pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
     issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
   }
-  // oxlint-disable-next-line no-useless-assignment
   let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps

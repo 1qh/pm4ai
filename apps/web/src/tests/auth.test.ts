@@ -1,4 +1,3 @@
-/* oxlint-disable unicorn/prefer-module */
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'

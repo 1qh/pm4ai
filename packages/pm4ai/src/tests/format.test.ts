@@ -1,4 +1,3 @@
-/* oxlint-disable unicorn/no-immediate-mutation */
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import type { Issue } from '../types.js'

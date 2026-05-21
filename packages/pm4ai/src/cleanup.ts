@@ -1,5 +1,4 @@
 /* eslint-disable no-console */
-/** biome-ignore-all lint/performance/noAwaitInLoops: sequential npm calls */
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
