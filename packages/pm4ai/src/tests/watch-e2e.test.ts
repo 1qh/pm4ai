@@ -1,8 +1,7 @@
-/* oxlint-disable promise/param-names */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional */
 /** biome-ignore-all lint/style/noProcessEnv: CI detection */
 /** biome-ignore-all lint/performance/noAwaitInLoops: polling */
-/* oxlint-disable no-empty-function, promise/param-names, no-await-in-loop */
+/* oxlint-disable no-empty-function */
 /* eslint-disable @typescript-eslint/no-empty-function, no-promise-executor-return, @typescript-eslint/no-unnecessary-condition */
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, test } from 'bun:test'
