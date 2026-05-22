@@ -1,0 +1,30 @@
+---
+title: Philosophy
+description: Generic engineering mindset behind the concrete rules
+infer: always
+---
+
+Engineering posture — how to weigh decisions. The other rules are the concrete bans; this is the mental model behind them.
+
+## MUST
+
+- Rework freely; treat past effort as sunk cost. Why: a better outcome beats preserving a prior decision.
+- Pre-launch, choose best-shape-from-scratch over safest-incremental. Why: no real users to protect; churn is cheap, debt is not.
+- Pick the most legitimate path, never the hacky / least-disruptive one. Why: architectural honesty outlasts short-term convenience.
+- Target the latest runtime, deps, and APIs; spend zero effort on backward compatibility. Why: greenfield has no legacy floor; lock-in compounds.
+- Ship the complexity when it buys ≥1% UX. Why: a cheap-feeling app loses to a polished competitor.
+- Research the ecosystem before greenfielding a non-trivial primitive (crypto, protocol parsing, auth, persistence, orchestration); record what was considered and rejected. Why: minutes of search save days of reinvention plus every bug the library already fixed.
+- Record a stack swap/add/remove as a durable decision before the code. Why: a rationale that never reaches storage evaporates.
+- Verify every “works” / “fixed” claim by running it. Why: a code trace is not a test.
+- Add strictness on encounter; remove only with false-positive evidence. Why: the world-class endpoint has no post-launch rewrite path.
+
+## NEVER
+
+- Defer a change with real payoff on effort / size / “diminishing returns” grounds. Cost: artificial phasing; the gain rots in a backlog.
+- Pin a dep “for stability”. Cost: legacy lock-in compounds.
+- Hand-roll crypto / protocol / contract code a community already packages. Cost: reinvents every bug they fixed.
+- Keep a workaround when a different approach removes the problem outright. Cost: complexity debt that compounds.
+
+## Pairs with
+
+- `code-quality` (single source of truth, fail-fast, type precision, canonical state); `bun` (latest deps); `testing` (cheapest faithful harness).
