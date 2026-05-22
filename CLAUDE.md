@@ -27,6 +27,42 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 
 ---
 
+Execution discipline for an agent working this codebase. Engineering posture lives in `philosophy`; this is how to run a turn.
+
+## MUST
+
+- Continue to the next task while autonomous-feasible work remains; identify it and start. Why: idle and handoff are the costliest parts of the loop.
+- Self-decide reversible, config-only, or rule-settled choices; surface only a genuine fork as one question + options + recommendation. Why: most “decisions” are already settled by the rules.
+- Exhaust code, docs, git history, and memory before asking; ask only what cannot be discovered. Why: the discovery cost is already paid.
+- Run the action yourself; never ask the user to run a command the agent can run. Why: handing work upward breaks the loop.
+- State an expected outcome and deadline before any observable action (build, navigate, poll); flag stuck the moment it deviates. Why: no criterion means silent stuck loops.
+- Scan vendor issue trackers and changelogs before declaring a third-party blocker. Why: the training cutoff lags the ecosystem by months.
+- Commit the moment a bug is found and again when fixed during any verification loop. Why: a per-bug trail maps failure to fix.
+- Foreground any command under ~2 min; background only with concurrent work in flight, never background-then-poll. Why: background-then-poll is an idle pattern.
+- Dispatch concurrent subagents sliced by file/dir/rule boundary, packed in one message; restrict edit-only subagents to read/edit/write/grep/glob; verify build-green on the shared branch first; audit their self-reports before any destructive cleanup. Why: throughput without thrash, and agents misreport.
+- Keep command output terse — a single `ok` or silence on success, full detail only on failure. Why: every line spends the context budget.
+
+## NEVER
+
+- Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?”. Cost: a wasted turn seeking permission instead of progress.
+- Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
+- Treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
+- Ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
+- Idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
+- Delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
+
+## Valid stops — only these
+
+- The user says stop or pivots.
+- A hard external blocker — a credential or decision the agent cannot obtain.
+- All work done, verified, and green.
+
+## Pairs with
+
+- `philosophy` (engineering posture); `testing` (cheapest harness; verify by running).
+
+---
+
 Bun is the only runtime + package manager.
 
 ## MUST
