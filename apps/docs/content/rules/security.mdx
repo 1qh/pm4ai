@@ -52,6 +52,14 @@ A missing env var must crash immediately with a clear error, never silently reso
 - No `${VAR:-fallback}` in bash — use `${VAR:?VAR is required}`. No `${VAR:-}` in docker-compose — use `${VAR:?}`.
 - The `.env` is the single source of truth. Set every var explicitly there, even ones with conventional values, so nothing is implicit.
 
+## Invariants are mechanism-asserted, not call-site-asserted
+
+A security/isolation invariant (auth, tenant isolation, ownership) is enforced by a mechanism the caller cannot bypass — a DB/schema constraint, a Convex validator/auth check at the function boundary, a server-side challenge — not by every call site remembering to validate.
+
+- Prefer the constraint over the convention: a `v.*` validator + auth guard in the Convex function, a NOT NULL/CHECK/unique in the schema, beats "every mutation checks `ctx.auth` by hand".
+- Two independent enforcement points for any isolation/security invariant (defense in depth).
+- A regression test flips the mechanism off and asserts the invariant fails — if the test still passes with the mechanism disabled, it was asserting at the call site, not the mechanism.
+
 ## Audit checklist
 
 Before merging a PR that touches env vars:

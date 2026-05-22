@@ -23,6 +23,21 @@ The repo shows exactly one true state, authored as if fully-formed. History/evol
 - When reworking, leave zero trace of the prior shape — rename in place, delete the old, no transitional duplicate. The result must read as if it was always so.
 - Schema is one declarative present-tense definition, never a numbered migration chain (`001_*`, `002_*`) that encodes history in the repo.
 
+## Bounded waits — no unbounded await on external state
+
+Every wait on something outside the process carries a hard deadline; a silent hang is a bug.
+
+- Every `await` on network/IPC/subprocess gets `AbortSignal.timeout(ms)` (or the SDK's timeout option) — never a bare `await fetch(...)` / `await client.call(...)` on external state.
+- Every polling loop (`while`, `until`) computes a deadline once and exits with a specific stderr reason on timeout (`"api healthz timeout 60s"`), never `while (!ready) {}`.
+- On timeout, surface where to look — a named reason, not a generic "timed out".
+
+## Codegen integrity
+
+Generated code is committed source-of-truth-derived, never hand-edited.
+
+- Never hand-edit anything under a codegen-output dir (`_generated/`, `generated/`, `module_bindings/`, `.source/`, typed-query records, `*.generated.ts`). Change the source + regenerate.
+- The generator runs in the maintenance cycle (`fix`), and a regenerate-and-diff gate fails on staleness — committed output must equal a fresh regen. Don't rely on a pre-commit hook alone to catch drift.
+
 ## Type Safety & Single Source of Truth
 
 Every piece of data flows through exactly one definition:

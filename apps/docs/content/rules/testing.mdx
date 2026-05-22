@@ -10,6 +10,8 @@ infer: playwright
 - Full suite only when explicitly asked
 - Pre-test: `bun fix` passes, kill stale processes (`pkill -9 -f "next"`), clean test results (`rm -rf test-results`)
 - Verify before scaling — never run full suites blindly
+- Cheapest faithful harness first: pure unit → focused integration → headless script → service smoke → full UI/e2e. Reproduce a bug at the lowest tier that still shows it; don't loop a 40s e2e on a logic bug a unit test catches.
+- Tests that hit a paid API (Anthropic, etc.) live in dedicated files (`*.cost.test.ts`, `smoke-*`), use the cheapest model + shortest prompt, run LAST after all free checks pass (lint → unit → build), and never in a debug loop. Pass the local zero-cost gate before anything billable.
 
 ### Playwright E2E
 
