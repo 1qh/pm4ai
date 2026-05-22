@@ -4,53 +4,33 @@ description: Code quality standards and constraints
 infer: always
 ---
 
-## Must NOT Do
+Code quality bans, single-source-of-truth, canonical-state, bounded waits, codegen integrity.
 
-- NEVER write comments (lint ignores allowed)
-- NEVER touch `readonly/ui/` manually
-- NEVER use `!` (non-null assertion), `any`, `as any`, `@ts-ignore`, `@ts-expect-error`
-- NEVER duplicate types — single source of truth
-- NEVER disable lint rules globally/per-directory — fix the code
-- NEVER ignore written source code from linters — only auto-generated code (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`)
-- NEVER reduce lintmax strictness — if upstream removes rules, find replacements
+## MUST
 
-## Canonical state — code reads as the single intended design
+- One definition per piece of data — shared constant defined once, imported everywhere; extract any value appearing in 2+ files. Why: drift surface.
+- Check existing utilities/components FIRST before writing inline logic. Why: avoid duplication.
+- Name things for what they ARE, not their lineage. Why: code reads as the single intended design, authored fully-formed.
+- When reworking, rename in place + delete the old, zero transitional duplicate. Why: result reads as if always so.
+- One declarative present-tense schema definition. Why: a numbered migration chain (`001_*`) encodes history in the repo.
+- `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
+- Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
+- Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don't trust the pre-commit hook alone.
+- Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
 
-The repo shows exactly one true state, authored as if fully-formed. History/evolution is git's job, never the working tree's.
+## NEVER
 
-- No lineage in names: never `legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`. A name describes the thing, not its past.
-- No history narrative in comments, commit bodies, log strings, or doc prose: banned shapes are "previously…", "we switched from…", "used to…", "instead of X", "no longer", "as of <date>", and defining a thing by what it is NOT. State what it IS. A `Why:` may give a timeless reason, never a past-incident story.
-- When reworking, leave zero trace of the prior shape — rename in place, delete the old, no transitional duplicate. The result must read as if it was always so.
-- Schema is one declarative present-tense definition, never a numbered migration chain (`001_*`, `002_*`) that encodes history in the repo.
+- Write comments (lint-ignore directives are the only allowed comment). Cost: lintmax strips them.
+- `!` non-null assertion, `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`. Cost: type holes — see lintmax never-ignore.
+- Duplicate types. Cost: drift; single source of truth.
+- Disable lint rules globally/per-directory. Cost: hides real bugs — fix the code.
+- Ignore written source from linters — only auto-generated (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`). Cost: source escapes the gate.
+- Reduce lintmax strictness. Cost: ratchet only tightens — WHEN upstream drops a rule, find a replacement.
+- Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
+- Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
+- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", "we switched", "used to", "instead of X", "no longer", "as of <date>", defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 
-## Bounded waits — no unbounded await on external state
+## Pitfall
 
-Every wait on something outside the process carries a hard deadline; a silent hang is a bug.
-
-- Every `await` on network/IPC/subprocess gets `AbortSignal.timeout(ms)` (or the SDK's timeout option) — never a bare `await fetch(...)` / `await client.call(...)` on external state.
-- Every polling loop (`while`, `until`) computes a deadline once and exits with a specific stderr reason on timeout (`"api healthz timeout 60s"`), never `while (!ready) {}`.
-- On timeout, surface where to look — a named reason, not a generic "timed out".
-
-## Codegen integrity
-
-Generated code is committed source-of-truth-derived, never hand-edited.
-
-- Never hand-edit anything under a codegen-output dir (`_generated/`, `generated/`, `module_bindings/`, `.source/`, typed-query records, `*.generated.ts`). Change the source + regenerate.
-- The generator runs in the maintenance cycle (`fix`), and a regenerate-and-diff gate fails on staleness — committed output must equal a fresh regen. Don't rely on a pre-commit hook alone to catch drift.
-
-## Type Safety & Single Source of Truth
-
-Every piece of data flows through exactly one definition:
-
-- Shared constants → define once, import everywhere. If a value appears in 2+ files, extract it.
-- When adding new features, check existing utilities FIRST before writing inline logic.
-
-## Code Consolidation Checklist
-
-Before writing any new code, verify:
-
-1. Does this function already exist? Check existing utilities first
-2. Is this constant defined elsewhere? Check shared files
-3. Am I adding a wrapper div? Check if parent `gap-*`, `space-*` can handle it
-4. Am I adding inline styles? Only allowed for truly dynamic values. NEVER for colors or static properties.
-5. Am I copy-pasting from another file? Extract to a shared utility/component
+- Adding a wrapper div → check parent `gap-*`/`space-*` first.
+- Copy-pasting from another file → extract to a shared utility/component.

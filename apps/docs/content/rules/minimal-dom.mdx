@@ -4,48 +4,29 @@ description: Fewest DOM nodes with React and Tailwind
 infer: tailwindcss
 ---
 
-## Minimal DOM (React + Tailwind)
+Same UI, fewest DOM nodes — every element earns its place. If deleting it breaks nothing (semantics, layout, behavior, required styling), it must not exist.
 
-Same UI, fewest DOM nodes. Every element must earn its place. If you can delete it and nothing breaks (semantics, layout, behavior, required styling) → it shouldn’t exist.
+## MUST
 
-A node is allowed only if it provides:
+- Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can't pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
+- Spacing via parent `gap-*` (flex/grid) or `space-x/y-*`. Why: no wrapper for gaps.
+- Separators via parent `divide-y`/`divide-x`. Why: no separator elements.
+- Alignment via `flex`/`grid` on the existing parent. Why: no alignment wrapper.
+- Visual (padding/bg/border/shadow/radius) on the element that owns the box. Why: no decoration wrapper.
+- Group JSX with `<>...</>` fragment, not `<div>`. Why: zero DOM cost.
+- Style mapped components by passing `className` to the item; uniform direct children via `*:` or `[&>tag]:`. Why: props first, selectors second — no repeat-class wrapper.
 
-- **Semantics/a11y** — correct elements (`ul/li`, `button`, `label`, `form`, `nav`, `section`), ARIA patterns, focus behavior
-- **Layout constraint** — needs its own containing block / positioning / clipping / scroll / stacking context (`relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`)
-- **Behavior** — measurement refs, observers, portals, event boundary, virtualization
-- **Component API** — can’t pass props/classes to the real root (and you tried `as`/`asChild`/prop forwarding)
+## NEVER
 
-Before adding wrappers:
+- Add a wrapper a `gap`/`space`/`divide`/`className`/`[&>...]:` could replace. Cost: dead node, render + read budget.
 
-- Spacing → parent `gap-*` (flex/grid) or `space-x/y-*`
-- Separators → parent `divide-y / divide-x`
-- Alignment → `flex`/`grid` on existing parent
-- Visual (padding/bg/border/shadow/radius) → on the element that owns the box
-- JSX grouping → `<>...</>` (Fragment), not `<div>`
+## Examples
 
-Styling children — props first, selectors second:
+| Good (selector pushdown) | Bad (repeated classes) |
+|---|---|
+| `<div className='divide-y [&>p]:px-3 [&>p]:py-2'>` | `<div className='divide-y'>` with `px-3 py-2` on each `<p>` |
 
-- Mapped component → pass `className` to the item
-- Uniform direct children → `*:` or `[&>tag]:` to avoid repeating classes
+## Pitfall
 
-```tsx
-// bad: repeated classes
-<div className='divide-y'>
-  <p className='px-3 py-2'>A</p>
-  <p className='px-3 py-2'>B</p>
-</div>
-// good: selector pushdown
-<div className='divide-y [&>p]:px-3 [&>p]:py-2'>
-  <p>A</p>
-  <p>B</p>
-</div>
-```
-
-Tailwind selector tools:
-
-- `*:` direct children · `[&>li]:py-2` targeted · `[&_a]:underline` descendant (sparingly)
-- `group`/`peer` on existing nodes → `group-hover:*`, `peer-focus:*`
-- `data-[state=open]:*`, `aria-expanded:*`, `disabled:*`
-- `first:` `last:` `odd:` `even:` `only:` — structural variants
-
-Review checklist: Can I delete this node? → delete. Can `gap/space/divide` replace it? → do it. Can I pass `className`? → do it. Can `[&>...]:` remove repetition? → do it.
+- Selector tools: `*:` direct children · `[&>li]:py-2` targeted · `[&_a]:underline` descendant (sparingly) · `group`/`peer` on existing nodes → `group-hover:*`/`peer-focus:*` · `data-[state=open]:*`/`aria-expanded:*`/`disabled:*` · `first:`/`last:`/`odd:`/`even:`/`only:` structural.
+- Review each node: can I delete it → delete; can `gap/space/divide` replace it → do it; can I pass `className` → do it; can `[&>...]:` remove repetition → do it.

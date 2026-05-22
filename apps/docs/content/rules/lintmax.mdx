@@ -4,101 +4,78 @@ description: Lintmax lint/format orchestrator conventions
 infer: always
 ---
 
-## Lintmax
+lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command; we own it.
 
-lintmax combines biome, oxlint, eslint, prettier, and sort-package-json into one command. We own it.
+## MUST
 
-### CLI — agents MUST read this
+- Run only `bun run fix` for code maintenance. Why: it fixes then verifies internally (all 5 linters twice); silent exit 0 = fully clean.
+- Read failure output directly. Why: already grouped file→linter→rule, compressed line numbers, deduped across 5 linters.
+- Make ALL edits first, then run `fix` foreground to completion. Why: editing during a backgrounded `fix` races it — the formatter writes its pre-edit buffer back and silently reverts your change.
+- WHEN a `fix` is running, wait until `pgrep -f 'lintmax|bun.*fix'` is clear before editing. Why: same revert race.
+- Commit a checkpoint before any multi-file mutator (`fix` after stripping directives, audit/codemod, sed-all/rename-all). Why: `fix` mixes autofixes with your edits; `git reset --hard` then restores in one command.
+- Batch many edits, run `fix` once at the end. Why: `fix` is slow per run.
+- File code-lint gaps upstream against lintmax. Why: it is the only lint tool — domain-specific hand-rolled `tools/*.ts` checks (banned vocab, spec-vs-code diff) are fine; code-lint is not.
 
-`lintmax fix` fixes everything, then runs a full verification internally (all 5 linters run twice — once to fix, once to check). Silent on success. Exit 0 = fully clean.
+## NEVER
 
-**The ONLY command you run is `bun run fix`.** That’s it. If it exits silently, the code is clean. Nothing else to do.
+- Run `bun run check` / `lintmax check` (CI-only). Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
+- `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
+- `lintmax check --human` to "see violations". Cost: run `bun run fix` and read its failure output.
+- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax's curated surface, drifts.
+- Use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
 
-`bun run check` / `lintmax check` is **CI-only** — it checks without modifying files. Agents must NEVER run it. It is redundant after `fix` because `fix` already verified internally. Running `check` after `fix` wastes 2+ minutes re-running 5 linters for zero new information.
+## void replacements
 
-On failure, lintmax outputs diagnostics **already optimized for agents** — grouped by file → linter → rule, with compressed line numbers, deduplicated across all 5 linters. Read the output directly. Do not reformat, grep, or filter it.
+- Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}`.
+- Async in a `() => void` slot (`onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`.
+- Unused var: rename `_x` or remove it.
 
-**NEVER:**
+## Ignore syntax
 
-- Run `bun run check` — use `bun run fix` instead
-- Add `| tail` or `| head` to any lintmax command — empty output IS success, failure output is already agent-formatted
-- Run `lintmax check --human` to “see violations” — run `bun run fix` and read its output on failure
+| Linter | File-level | Per-line |
+| ------ | ---------- | -------- |
+| oxlint | `/* oxlint-disable rule */` | `// oxlint-disable-next-line rule` |
+| eslint | `/* eslint-disable rule */` | `// eslint-disable-next-line rule` |
+| biome  | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
 
-### Run fix on a clean tree, foreground, after edits are done
+## Ignore strategy
 
-`fix` rewrites files in place across the whole tree. Two failure modes follow:
+- Fix the code first; ignore is last resort. Why: directives teach the linter to mistrust the file.
+- File-level disable WHEN a file has many unavoidable same-rule violations (sequential DB mutations, standard React patterns, external images); per-line for an isolated one. Why: scale-appropriate.
+- File-level directive at absolute file top, above imports/code (incl `'use client'`/`'use node'`); per-line on the line ABOVE the code. Why: per-line inline trips `no-inline-comments`.
+- WHEN 2+ linters flag one line, file-level for one + per-line for the other. Why: stacking multiple per-line above one line is banned.
+- One top `eslint-disable` per file, multiple rules comma-joined; keep one canonical block, remove duplicates. Why: dedupe.
+- NEVER 5+ per-line ignores for one rule. Cost: use file-level instead.
+- Don't hand-remove dead directives or add one "just in case". Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn't fire, `fix` drops it and `check` fails on it.
 
-- **Editing while a backgrounded `fix` runs** races it — the formatter writes its pre-edit buffer back and silently reverts your change (looks like "the fix didn't take"). Make ALL edits first, then run `fix` foreground to completion. Never `run_in_background` a fix and keep editing; if one is running, wait until `pgrep -f 'lintmax|bun.*fix'` is clear before editing.
-- **Running `fix` on a dirty tree** mixes its autofixes (matcher rewrites, reformatting, directive stripping) with your in-progress edits, so a bad batch can't be cleanly reverted. Commit a checkpoint first before any multi-file mutator — `fix` after stripping directives, audit/codemod scripts, sed-all/rename-all. Then `git reset --hard` restores in one command. Batch many small edits and run `fix` once at the end, not after each edit (it is slow).
+## Cross-linter
 
-### lintmax is the only lint tool
+- Same rule in 2 linters (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, not conflict — never disable one. Why: both must pass.
+- Suppress a shared eslint/oxlint rule on eslint's side. Why: oxlint auto-picks up eslint rules and is faster.
+- oxlint `eslint/sort-keys` is disabled in lintmax. Why: conflicts with perfectionist (ASCII vs natural sort).
 
-Never add a second code-lint tool to a project: no extra eslint plugins, no stylelint, knip, depcheck, dependency-cruiser, or size-limit. lintmax orchestrates biome + oxlint + eslint with curated config; project-local additions fragment that surface and drift. If a code-lint pattern isn't covered, file it upstream against lintmax — don't add a tool to the project. (Domain-specific hand-rolled checks — banned vocab, spec-vs-code diff — are fine as `tools/*.ts` scripts; code-lint is not.)
+## Never-ignore rules
 
-### Ignore Syntax
+`lintmax check` FAILS on these suppressions, used or unused — no suppress-for-now path reaches CI. Fix the code:
 
-| Linter | File-level                                           | Per-line                                         |
-| ------ | ---------------------------------------------------- | ------------------------------------------------ |
-| oxlint | `/* oxlint-disable rule-name */`                     | `// oxlint-disable-next-line rule-name`          |
-| eslint | `/* eslint-disable rule-name */`                     | `// eslint-disable-next-line rule-name`          |
-| biome  | `/** biome-ignore-all lint/category/rule: reason */` | `/** biome-ignore lint/category/rule: reason */` |
+- `@typescript-eslint/no-unsafe-*` (assignment, call, member-access, return, argument) — use proper types.
+- `@typescript-eslint/no-explicit-any` — define the actual type.
+- `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck` — fix the type error.
+- `@typescript-eslint/no-non-null-assertion` — handle the null case.
 
-### Ignore Strategy
+Fixes, not suppressions:
 
-1. **Fix the code** — always first choice
-2. **File-level disable** — when a file has many unavoidable violations of the same rule (sequential DB mutations, standard React patterns, external images)
-3. **Per-line ignore** — isolated unavoidable violations
-4. **Consolidate** — if file-level `biome-ignore-all` exists, remove redundant per-line `biome-ignore` for the same rule
-5. NEVER 5+ per-line ignores for the same rule — use file-level
+- Test-file exception: `@ts-expect-error` + `no-explicit-any` allowed in test files only (asserting a wrong type is rejected); the rest forbidden everywhere.
+- Untyped third-party dep (types resolve to `any`: broken `exports.types`, unresolved `typeof import(...)`): cast through a typed facade at one boundary — `const get = rawGet as <T>(k: string) => Promise<T | undefined>`, or `const x: unknown = await loader.init(); return x as MonacoApi` with a minimal interface. Never `as any`.
+- Non-null (`x[i]!`): null-check (`const v = x[i]; if (v) ...`) or `const`-tuple (`[...] as const`) so fixed indices type as defined.
+- `no-unsafe-*` on a visible-shape stub: `(() => undefined) as never` (bottom type, no visible ops); `((..._: unknown[]) => ({})) as never` still trips. Tighten with `never` / branded / generic.
 
-`lintmax fix` auto-removes UNUSED file-level `oxlint-disable` and `biome-ignore-all` directives (both `/**` and `//` forms) — it strips each, re-lints in place, and drops rules that no longer fire. Don't hand-remove dead directives, and don't add a directive "just in case": if the rule doesn't fire, fix removes it and `check` fails on it.
+## Safe-to-ignore
 
-- File-level directives go at absolute file top, above any imports/code (including `'use client'`/`'use node'`).
-- Per-line directives go on the line ABOVE the code, NEVER inline on the same line (triggers `no-inline-comments`).
-- When 2+ linters flag the same line, use file-level for one and per-line for the other — don’t stack multiple per-line directives above one line.
-- Remove duplicate directives; keep one canonical directive block.
-- Use one top `eslint-disable` line per file; combine multiple rules with commas.
+- **oxlint:** `promise/prefer-await-to-then` (Promise.race, ky chaining).
+- **eslint:** `no-await-in-loop`, `max-statements`, `max-depth`, `complexity` (sequential ops) · `no-unnecessary-condition` (narrowing) · `promise-function-async` (thenable returns) · `max-params` · `@next/next/no-img-element` (external images) · `react-hooks/refs`.
+- **biome:** `style/noProcessEnv` (env files) · `performance/noAwaitInLoops` (sequential ops) · `nursery/noForIn` · `performance/noImgElement` · `suspicious/noExplicitAny` (generic boundaries).
 
-### Cross-linter Rules
+## Playbook maintenance
 
-- 2 linters with the same rule (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, NOT a conflict. Never disable one because the other covers it.
-- To suppress a shared eslint/oxlint rule: suppress eslint’s version — oxlint auto-picks up eslint rules and is faster.
-- oxlint `eslint/sort-keys` conflicts with perfectionist (ASCII vs natural sort) — disabled in lintmax.
-
-### Never use the `void` operator
-
-`fix` auto-deletes `void` (`no-void`), which silently breaks code: `void promise()` becomes a bare expression that then trips `noUnusedExpressions`; in a handler `() => { void mutate() }` it rewrites to `() => { undefined }`, dropping the call. So:
-
-- Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}` — never `void promise()`.
-- Async in a `() => void` slot (e.g. `onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`. Never `void expr`.
-- Unused var: rename `_x` or remove it — not `void x`.
-
-### Never-ignore Rules
-
-These rules exist to catch real bugs. Suppressing them is NEVER acceptable — fix the code instead. **`lintmax check` fails on these suppressions** (used or unused), so there is no "suppress for now" path — it cannot reach CI:
-
-- `@typescript-eslint/no-unsafe-*` (no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, no-unsafe-return, no-unsafe-argument) — use proper types, never suppress type safety
-- `@typescript-eslint/no-explicit-any` — define the actual type
-- `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` — fix the type error
-- `@typescript-eslint/no-non-null-assertion` — handle the null case
-
-Exception: `@ts-expect-error` and `no-explicit-any` are allowed **in test files** (asserting a wrong type is rejected). The rest are forbidden everywhere, tests included.
-
-**Untyped third-party dep** (its types resolve to `any` — broken `exports.types`, or a `typeof import(...)` that won't resolve in the lint program): do NOT suppress. Wrap it — cast the untyped binding through a typed facade at one boundary: `const get = rawGet as <T>(k: string) => Promise<T | undefined>`, or for an awaited value `const x: unknown = await loader.init(); return x as MonacoApi` with a minimal interface for the surface you use. Every call site then gets real types. Never `as any`.
-
-**Non-null assertion** (`x[i]!`): null-check (`const v = x[i]; if (v) ...`) or make the source a `const`-tuple (`[...] as const`) so fixed indices type as defined.
-
-**`no-unsafe-*` on a stub/no-op** (mock fn whose shape is visible): use the `never` bottom type, not a suppression — `(() => undefined) as never` is assignable to any slot with no visible operations to flag, whereas `((..._: unknown[]) => ({})) as never` still trips because the shape is visible. Tighten with `never`, a branded type, or a generic constraint until the rule is legitimately satisfied.
-
-### Safe-to-ignore Rules
-
-**oxlint:** `promise/prefer-await-to-then` (Promise.race, ky chaining)
-
-**eslint:** `no-await-in-loop`, `max-statements`, `max-depth`, `complexity` (sequential ops) · `@typescript-eslint/no-unnecessary-condition` (type narrowing) · `@typescript-eslint/promise-function-async` (thenable returns) · `@typescript-eslint/max-params` · `@next/next/no-img-element` (external images) · `react-hooks/refs`
-
-**biome:** `style/noProcessEnv` (env files) · `performance/noAwaitInLoops` (sequential ops) · `nursery/noForIn` · `performance/noImgElement` · `suspicious/noExplicitAny` (generic boundaries)
-
-## Playbook Maintenance
-
-- Every new lesson must be merged into the most relevant existing section immediately; do NOT create append-only “recent lessons” buckets.
-- Correct rules in place (single source of truth), then remove superseded guidance.
+- Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only "recent lessons" buckets.

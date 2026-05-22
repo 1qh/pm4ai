@@ -4,8 +4,13 @@ description: Git workflow and commit conventions
 infer: always
 ---
 
-## Commits
+Git commit + push conventions.
 
-- Commit frequently, push logical groups
-- No AI tooling in commits
-- Format: `type: description` (fix, feat, docs, chore, refactor, test)
+## MUST
+
+- Commit frequently; push logical groups. Why: small auditable units, easy revert.
+- Commit subject `type: description` — `fix|feat|docs|chore|refactor|test`. Why: conventional-commit parse.
+
+## NEVER
+
+- Mention AI / Claude / coauthor / "generated with" in commits. Cost: AI attribution unwanted in history.

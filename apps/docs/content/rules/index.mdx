@@ -4,65 +4,28 @@ description: Agent-first anti-slop project management for TypeScript monorepos
 infer: always
 ---
 
-If `README.md` exists at the repo root, read it first.
+pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAUDE.md`, enforces conventions, runs maintenance.
 
-## Ecosystem
+## MUST
 
-All projects with lintmax in deps are managed by pm4ai (`bunx pm4ai@latest`). The tool syncs configs, generates CLAUDE.md, enforces conventions, and runs maintenance.
+- Read root `README.md` first WHEN it exists. Why: project-specific entry.
+- Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; otherwise edit only companion files. Why: managed files are regenerated.
+- Put project-specific content in companion files — `LEARNING.md` (gotchas), `RULES.md` (project-only rules), `PROGRESS.md` (ongoing), `PLAN.md` (architecture). Why: managed files get overwritten.
+- Owner adds a universal rule → `.mdx` in pm4ai `apps/docs/content/rules/` with `infer` frontmatter; a new check → `packages/pm4ai/src/{audit,checks}.ts`. Why: rules generate CLAUDE.md, checks run in status.
+- Wait on `check: running...`; fix violations on `check: failed`; re-run + wait when `check` is stale (passed before N commits). Why: act only on a current green check.
 
-Key repos:
+## NEVER
 
-- **pm4ai** — the management tool. Rules in `apps/docs/content/rules/*.mdx`. Checks in `packages/pm4ai/src/`.
-- **lintmax** — max-strict lint/format orchestrator. All projects depend on it.
-- **cnsync** — canonical source for `readonly/ui` (shadcn + ai-elements components).
+- Edit a managed file directly — `CLAUDE.md`, `.github/workflows/ci.yml`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
 
-For full documentation: `curl https://pm4ai.vercel.app/llms-full.txt`
+## Key repos
 
-## Managed Files
+- **pm4ai** — manager; rules `apps/docs/content/rules/*.mdx`, checks `packages/pm4ai/src/`.
+- **lintmax** — max-strict lint/format orchestrator; every project depends on it.
+- **cnsync** — canonical `readonly/ui` (shadcn + ai-elements).
 
-These files are auto-generated and synced by pm4ai. Never edit them directly:
+## Commands
 
-- `CLAUDE.md` — generated from rules based on project dependencies
-- `.github/workflows/ci.yml` — universal CI workflow
-- `clean.sh` — universal cleanup script
-- `up.sh` — universal maintenance cycle (clean + install + build + fix + check)
-- `bunfig.toml` — bun configuration
-- `.gitignore` — universal ignore patterns
-- `readonly/ui/` — synced from cnsync
-
-## Role Detection
-
-Run `gh auth status` to determine your role:
-
-- If you are the repo owner (`1qh`): you can modify pm4ai rules and checks directly in the pm4ai repo
-- Otherwise: do not edit managed files, only use companion files
-
-## Owner Workflow
-
-- `bunx pm4ai@latest status` — check current project
-- `bunx pm4ai@latest fix` — sync + maintain (requires clean git)
-- `bunx pm4ai@latest fix --all` — all projects
-- New universal rule → add `.mdx` to pm4ai `apps/docs/content/rules/` with `infer` frontmatter
-- New check → add to pm4ai `packages/pm4ai/src/audit.ts` or `checks.ts`
-- If you discover something during this session that should apply to all projects, note it for pm4ai
-
-## Companion Files
-
-Use these for project-specific content:
-
-- `LEARNING.md` — lessons learned, gotchas, known issues
-- `RULES.md` — project-specific rules that don’t apply to other projects
-- `PROGRESS.md` — tracking ongoing work
-- `PLAN.md` — planning and architecture decisions
-
-## Health Check
-
-Run `bunx pm4ai@latest status` to see issues in this project. Run `bunx pm4ai@latest fix` to sync and maintain.
-
-Check states:
-
-- `check: passed 5m ago (current)` — safe to proceed
-- `check: passed 3h ago (before 2 commits)` — stale, run `bunx pm4ai@latest status` again and wait for refresh
-- `check: failed 5m ago (current), 15 violations` — fix violations before proceeding
-- `check: running...` — wait, do not edit files until complete
-- `check: never run` — run `bunx pm4ai@latest fix` first
+- `bunx pm4ai@latest status` — check current project (`--all` for every project).
+- `bunx pm4ai@latest fix` — sync + maintain, requires clean git (`--all` for every project).
+- `curl https://pm4ai.vercel.app/llms-full.txt` — full docs.

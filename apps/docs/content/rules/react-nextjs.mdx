@@ -4,13 +4,19 @@ description: React 19 and Next.js conventions
 infer: next
 ---
 
-## React 19 + Next.js
+React 19 + Next.js component conventions.
 
-- Server components by default — layout.tsx, loading.tsx, error.tsx are server components
-- `'use client'` only when needed — components with hooks must be client components
-- No IIFEs in JSX — extract to a named component instead
-- No raw HTML elements when shadcn has a component — use `Button` not `<button>`, `Table` not `<table>`, `Progress` not nested divs
-- `use*` hook naming enforced
-- Stable array keys — never use indices
-- `<Suspense>` around `useSearchParams()`
-- No `Date.now()` / `Math.random()` in render
+## MUST
+
+- Server components by default — `layout.tsx`, `loading.tsx`, `error.tsx` are server. Why: minimal client bundle.
+- `'use client'` ONLY when a component uses hooks/interactivity. Why: keep server-rendered by default.
+- shadcn component over raw HTML — `Button` not `<button>`, `Table` not `<table>`, `Progress` not nested divs. Why: consistency + a11y.
+- `use*` naming for hooks. Why: lint-enforced, rules-of-hooks detection.
+- Stable array keys. Why: index keys corrupt reconciliation on reorder.
+- Wrap `useSearchParams()` in `<Suspense>`. Why: else build/runtime bailout.
+
+## NEVER
+
+- IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
+- Array index as key. Cost: stale reconciliation on reorder/insert.
+- `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.

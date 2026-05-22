@@ -4,26 +4,30 @@ description: shadcn component usage conventions
 infer: tailwindcss
 ---
 
-## shadcn — Native Look, No Overrides
+shadcn components used as-is, native look, semantic classes only.
 
-Use shadcn components as-is. No custom color overrides, no inline style hacks.
+## MUST
 
-### Colors
+- Use shadcn components as-is. Why: no override drift.
+- Semantic Tailwind colors only — `text-foreground`/`text-muted-foreground`/`text-destructive`, `bg-primary`/`bg-muted`/`bg-destructive`, `text-primary` for links. Why: theme-driven, dark-mode safe.
+- `cn()` for conditional classes. Why: merge precedence + the only composition path.
 
-Use semantic Tailwind classes ONLY. Never hardcode hex colors in className or style.
+## NEVER
 
-- `text-foreground` / `text-muted-foreground` / `text-destructive` — NEVER `text-red-500`, `text-green-500`
-- `bg-primary` / `bg-muted` / `bg-destructive` — NEVER `bg-blue-500`, `bg-red-500`
-- `text-primary` for interactive links — NEVER `text-blue-500`
-- NEVER `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`) — those are fumadocs internals; use the shadcn semantic name. `global.css` aliases `--color-*` to `--color-fd-*` via `@theme inline`, so `bg-muted`, `text-primary`, `border-border` resolve to the same theme. fumadocs' own UI (sidebar/search/TOC) keeps `fd-*` internally — that is not your code.
+- Hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
+- `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
+- Template literal for conditional className. Cost: no merge precedence; use `cn()`.
+- `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
 
-### Conditional classNames
+## Examples
 
-ALWAYS use `cn()` for conditional classes:
+| Good | Bad |
+|---|---|
+| `cn('base', cond && 'on')` | `` `base ${cond ? 'on' : ''}` `` |
+| `cn('base', v === 'a' ? 'x' : 'y')` | `clsx('base', ...)` / `cva(...)` |
+| `bg-muted` `text-primary` | `bg-fd-muted` `text-blue-500` |
 
-```tsx
-className={cn('base-classes', condition && 'conditional-class')}
-className={cn('base-classes', variant === 'a' ? 'class-a' : 'class-b')}
-```
+## Pitfall
 
-NEVER use template literals for conditional classNames.
+- `global.css` aliases `--color-*` → `--color-fd-*` via `@theme inline`, so `bg-muted`/`text-primary`/`border-border` resolve to the same theme as `fd-*` — always use the shadcn name.
+- fumadocs' own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.

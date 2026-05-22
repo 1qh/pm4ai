@@ -4,67 +4,36 @@ description: Security constraints — credential handling, env var scoping, serv
 infer: always
 ---
 
-## `NEXT_PUBLIC_*` env vars are shipped to the browser
+Credential handling, env scoping, server/client boundary, mechanism-asserted invariants.
 
-Anything prefixed `NEXT_PUBLIC_` is **inlined into the client bundle** at build time and visible to anyone who views page source. The prefix exists to opt into client exposure — never use it for credentials.
+## MUST
 
-### Forbidden patterns
+- Route any credentialed client-side work through a server action / API route / Convex action reading the unprefixed var. Why: `NEXT_PUBLIC_*` is inlined into the client bundle, visible in page source.
+- Read server-only vars via `process.env.X` only inside `'use server'`, `'use node'`, `convex/`, `backend/spacetimedb/`, or `app/api/*/route.ts`. Why: server boundary.
+- Fail fast on a missing required var — validate via schema (`z.string().min(1)`, `z.url()`, NO `.default()`) or throw. Why: silent default = undebuggable wrong value.
+- Bash `${VAR:?VAR is required}`; docker-compose `${VAR:?}`. Why: crash on absence, not fallback.
+- Set every var explicitly in `.env` (sole source of truth), even conventional ones. Why: nothing implicit.
+- Enforce auth/isolation/ownership by a mechanism the caller can't bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
+- Two independent enforcement points per isolation/security invariant. Why: defense in depth.
+- A regression test flips the mechanism off and asserts the invariant fails. Why: if it passes mechanism-off, it was call-site-asserted.
 
-- API keys: `NEXT_PUBLIC_OPENAI_API_KEY`, `NEXT_PUBLIC_TMDB_API_KEY`, `NEXT_PUBLIC_STRIPE_SECRET`, etc.
-- Tokens: `NEXT_PUBLIC_AUTH_TOKEN`, `NEXT_PUBLIC_JWT_SECRET`
-- Database secrets: `NEXT_PUBLIC_DB_PASSWORD`, `NEXT_PUBLIC_ADMIN_KEY`
-- Anything named like a secret (`*_SECRET`, `*_PASSWORD`, `*_PRIVATE_KEY`)
+## NEVER
 
-If a credential is needed for client-side work, the call **must** go through a server action / API route / Convex action that reads the unprefixed env var server-side. Never the bundle.
+- `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
+- `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
+- Read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
+- Log PII unredacted. Cost: privacy + regulatory violation.
 
-### Allowed `NEXT_PUBLIC_*` use
+## Allowed `NEXT_PUBLIC_*`
 
-- Public deployment URLs (`NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_SPACETIMEDB_URI`) where auth happens via session tokens, not the URL itself
-- Feature flags / build-time constants
-- Public OAuth client IDs (paired with PKCE/redirect URI checks server-side)
+- Public deploy URLs (`NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_SPACETIMEDB_URI`) where auth is via session token, not the URL.
+- Feature flags / build-time constants.
+- Public OAuth client IDs (paired with server-side PKCE / redirect-URI checks).
 
-### Migration
+## Migration
 
-If you find a `NEXT_PUBLIC_*` API key:
+- Found a `NEXT_PUBLIC_*` API key: (1) rename to drop the prefix (`NEXT_PUBLIC_TMDB_API_KEY` → `TMDB_KEY`); (2) move the call into a server action / Convex action; (3) client invokes the server action, never sees the key; (4) add a server-side test-mode stub (`isStdbTestMode()` / `isCvxTestMode()`) so playwright stays hermetic.
 
-1. Rename the env var to drop the prefix (e.g. `NEXT_PUBLIC_TMDB_API_KEY` → `TMDB_KEY`)
-2. Move the call into a Next.js server action (`'use server'`) or a Convex action
-3. The client component imports and invokes the server action; it never sees the key
-4. Add a test-mode stub on the server side (read `isStdbTestMode()` / `isCvxTestMode()`) so playwright stays hermetic without the real key
+## Caught by
 
-## Server-only env vars
-
-Read via `process.env.X` inside files marked with one of:
-
-- `'use server'` (Next.js server actions)
-- `'use node'` (Convex actions)
-- Files under `convex/` (Convex runtime)
-- Files under `backend/spacetimedb/` (stdb reducers)
-- API routes (`app/api/*/route.ts`)
-
-Never read server-only env vars from a `'use client'` component.
-
-## Env vars fail fast — never a fallback default
-
-A missing env var must crash immediately with a clear error, never silently resolve to a wrong value. Defaults turn a config mistake into undebuggable wrong behavior.
-
-- No `process.env.X ?? 'fallback'`, no `process.env.X || 'default'` in TS — read through a validated schema (`z.string().min(1)`, `z.url()`) with NO `.default()`, or throw on absence.
-- No `${VAR:-fallback}` in bash — use `${VAR:?VAR is required}`. No `${VAR:-}` in docker-compose — use `${VAR:?}`.
-- The `.env` is the single source of truth. Set every var explicitly there, even ones with conventional values, so nothing is implicit.
-
-## Invariants are mechanism-asserted, not call-site-asserted
-
-A security/isolation invariant (auth, tenant isolation, ownership) is enforced by a mechanism the caller cannot bypass — a DB/schema constraint, a Convex validator/auth check at the function boundary, a server-side challenge — not by every call site remembering to validate.
-
-- Prefer the constraint over the convention: a `v.*` validator + auth guard in the Convex function, a NOT NULL/CHECK/unique in the schema, beats "every mutation checks `ctx.auth` by hand".
-- Two independent enforcement points for any isolation/security invariant (defense in depth).
-- A regression test flips the mechanism off and asserts the invariant fails — if the test still passes with the mechanism disabled, it was asserting at the call site, not the mechanism.
-
-## Audit checklist
-
-Before merging a PR that touches env vars:
-
-- [ ] No `NEXT_PUBLIC_*` name contains “key”, “secret”, “token”, “password”, “private”
-- [ ] Any new client-side data fetch goes through a server boundary
-- [ ] Server actions reading credentials check test-mode and short-circuit with stub data
-- [ ] `.env.example` (if present) marks server-only vars without `NEXT_PUBLIC_` prefix
+- PR env-var audit: no `NEXT_PUBLIC_*` name with key/secret/token/password/private; new client fetch goes through a server boundary; credential server actions short-circuit in test-mode; `.env.example` marks server-only vars without the prefix.

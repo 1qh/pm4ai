@@ -4,29 +4,34 @@ description: TypeScript code style conventions
 infer: always
 ---
 
-## Code Style
+TypeScript code style + formatting.
 
-- Only arrow functions — no `function` declarations
-- All exports at end of file
-- `.tsx` with single component → `export default`; utilities/backend → named exports
-- ANY file containing JSX must use `.tsx`, never `.ts` — even a context provider with `<Ctx value={...}>`. biome parses `.ts` as non-JSX, misreads `<Foo>` as comparison/regex, and the fixer infinite-loops (90-min `bun run fix` hang)
-- `for` loops instead of `reduce()` or `forEach()`
-- Exhaustive `switch` with `default: never`
-- `catch (error)` enforced by oxlint — name state vars descriptively to avoid shadow (`chatError`, `formError`)
-- Short map callback names: `t`, `m`, `i`
-- Max 3 positional args — use destructured object for 4+
-- Co-locate components with their page; only move to `~/components` when reused
-- Explicit imports from exact file paths — no barrel `index.ts` in app code (library packages use barrels for their public API)
-- Prefer existing libraries over new dependencies
+## MUST
+
+- Arrow functions only. Why: one function form.
+- All exports in a single block at end of file. Why: lint-enforced, scan-once.
+- `.tsx` single component → `export default`; utilities/backend → named exports. Why: convention.
+- ANY file with JSX uses `.tsx` — even a context provider `<Ctx value={...}>`. Why: biome parses `.ts` as non-JSX, misreads `<Foo>` as comparison/regex, fixer infinite-loops (90-min hang).
+- `for` loops over `reduce()`/`forEach()`. Why: readability + perf.
+- Exhaustive `switch` with `default: never`. Why: compile-time case coverage.
+- Descriptive `catch (error)` state-var names (`chatError`, `formError`). Why: oxlint shadow rule.
+- Short map callback names (`t`, `m`, `i`). Why: convention.
+- Destructured object for 4+ args (max 3 positional). Why: call-site clarity.
+- Co-locate components with their page; move to `~/components` only when reused. Why: locality.
+- Explicit imports from exact file paths; no barrel `index.ts` in app code (library packages use barrels for public API). Why: avoids barrel cycle + bloat.
+- Prefer existing libraries over new dependencies. Why: minimize surface.
+- `node:` prefix for Node builtins (`import { join } from 'node:path'`). Why: explicit builtin.
+- `interface` over `type` where possible; properties sorted alphabetically. Why: lint-enforced.
+- `import type` for type-only imports. Why: erased at build.
+
+## NEVER
+
+- `function` declarations. Cost: violates arrow-only.
+- Duplicate types. Cost: drift; single source of truth.
+- `import as` aliases. Cost: rename the variable instead.
+- Empty lines between statements. Cost: biome deletes them — wasted diff.
+- Trailing comma single-line (keep it multi-line). Cost: format violation.
 
 ## Formatting
 
-- Single quotes, no semicolons
-- No empty lines between statements
-- `node:` prefix for Node.js builtins (`import { join } from 'node:path'`)
-- Imports sorted alphabetically by source
-- `interface` over `type` when possible
-- Object/interface properties sorted alphabetically
-- No `import as` aliases — rename variables to avoid conflicts
-- No trailing commas in single-line, trailing commas in multi-line
-- `import type` for type-only imports
+- Single quotes, no semicolons; imports sorted alphabetically by source.

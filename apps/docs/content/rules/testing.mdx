@@ -4,24 +4,28 @@ description: Testing conventions and strategies
 infer: playwright
 ---
 
-## Testing
+Test execution strategy + Playwright e2e tuning.
 
-- Run only failing tests first, verify 2-3x, stop
-- Full suite only when explicitly asked
-- Pre-test: `bun fix` passes, kill stale processes (`pkill -9 -f "next"`), clean test results (`rm -rf test-results`)
-- Verify before scaling — never run full suites blindly
-- Cheapest faithful harness first: pure unit → focused integration → headless script → service smoke → full UI/e2e. Reproduce a bug at the lowest tier that still shows it; don't loop a 40s e2e on a logic bug a unit test catches.
-- Tests that hit a paid API (Anthropic, etc.) live in dedicated files (`*.cost.test.ts`, `smoke-*`), use the cheapest model + shortest prompt, run LAST after all free checks pass (lint → unit → build), and never in a debug loop. Pass the local zero-cost gate before anything billable.
+## MUST
 
-### Playwright E2E
+- Run only failing tests first; verify 2-3×; stop. Why: full suites are slow + noisy.
+- Pre-test: `bun fix` passes, kill stale procs (`pkill -9 -f "next"`), clear results (`rm -rf test-results`). Why: clean baseline.
+- Cheapest faithful harness first — unit → focused integration → headless script → service smoke → full UI/e2e. Why: reproduce a bug at the lowest tier that shows it; don't loop a 40s e2e on a logic bug.
+- Paid-API tests (Anthropic, etc.) in dedicated files (`*.cost.test.ts`, `smoke-*`), cheapest model + shortest prompt, run LAST after free checks (lint → unit → build). Why: pass the zero-cost gate before anything billable.
+
+## NEVER
+
+- Run the full suite unless explicitly asked. Cost: slow, noisy, masks the real failure.
+- Scale to full suites blindly before verifying. Cost: wasted wall-clock.
+- Run paid-API tests in a debug loop. Cost: real money per iteration.
+
+## Playwright E2E
 
 | Scope | Timeout | Kill |
 | ----------- | -------- | ---- |
 | Single test | 5s | 10s |
 | Single file | 8s/test | 30s |
 | Full suite | 10s/test | 180s |
-
-Troubleshooting:
 
 | Symptom | Fix |
 | --------------------------- | --------------------------------- |

@@ -4,10 +4,15 @@ description: Library publishing with tsdown
 infer: tsdown
 ---
 
-## Library Publishing
+Building + publishing library packages with tsdown.
 
-- Use `tsdown` for building and publishing packages
-- ESM format with declaration files
-- `prepublishOnly` script to build before publish
-- Never bundle dependencies that consumers should install themselves
-- Export all types used in public API — DTS generation fails on unexported internal types leaking through re-exports
+## MUST
+
+- Build/publish packages with `tsdown`. Why: standard ecosystem build.
+- Emit ESM + declaration files. Why: consumers need types.
+- `prepublishOnly` builds before publish. Why: never ship stale `dist/`.
+- Export every type used in the public API. Why: DTS generation fails on unexported internal types leaking through re-exports.
+
+## NEVER
+
+- Bundle deps consumers should install themselves. Cost: duplicate/version-conflict in consumer tree.
