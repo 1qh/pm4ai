@@ -119,7 +119,7 @@ const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const MIN_H_RE = /min-h-(?<size>screen|dvh)/u
-const NESTED_GITIGNORE_ALLOW_RE = /^(?<dir>data|fixtures|seeds|snapshots)\/\.gitignore$/u
+const NESTED_GITIGNORE_ALLOW_RE = /^(?<dir>\.convex|data|fixtures|seeds|snapshots)\/\.gitignore$/u
 const LAYOUT_REQUIRED: [RegExp | string, string][] = [
   ['suppressHydrationWarning', 'missing suppressHydrationWarning on <html>'],
   ['antialiased', 'missing antialiased on <body>'],
