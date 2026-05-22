@@ -9,6 +9,7 @@ infer: always
 - Only arrow functions — no `function` declarations
 - All exports at end of file
 - `.tsx` with single component → `export default`; utilities/backend → named exports
+- ANY file containing JSX must use `.tsx`, never `.ts` — even a context provider with `<Ctx value={...}>`. biome parses `.ts` as non-JSX, misreads `<Foo>` as comparison/regex, and the fixer infinite-loops (90-min `bun run fix` hang)
 - `for` loops instead of `reduce()` or `forEach()`
 - Exhaustive `switch` with `default: never`
 - `catch (error)` enforced by oxlint — name state vars descriptively to avoid shadow (`chatError`, `formError`)

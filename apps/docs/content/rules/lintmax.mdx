@@ -77,6 +77,8 @@ Exception: `@ts-expect-error` and `no-explicit-any` are allowed **in test files*
 
 **Non-null assertion** (`x[i]!`): null-check (`const v = x[i]; if (v) ...`) or make the source a `const`-tuple (`[...] as const`) so fixed indices type as defined.
 
+**`no-unsafe-*` on a stub/no-op** (mock fn whose shape is visible): use the `never` bottom type, not a suppression — `(() => undefined) as never` is assignable to any slot with no visible operations to flag, whereas `((..._: unknown[]) => ({})) as never` still trips because the shape is visible. Tighten with `never`, a branded type, or a generic constraint until the rule is legitimately satisfied.
+
 ### Safe-to-ignore Rules
 
 **oxlint:** `promise/prefer-await-to-then` (Promise.race, ky chaining)

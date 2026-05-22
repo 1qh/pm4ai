@@ -13,6 +13,7 @@ infer: always
 - All deps use `"latest"` tag — no pinned versions unless necessary
 - For deps that must be pinned, pin major version only (e.g. `"eslint": "9"`)
 - No lockfile committed (`bun.lock` in `.gitignore`)
+- After renaming a workspace package's `name:` field, run `bun i` immediately — dependents resolve the old name via a stale `node_modules/<scope>/` symlink until reinstall. An opaque eslint `ResolveMessage {}` crash (which masks every other lint violation) means a stale workspace symlink — suspect resolution and check the symlinks before debugging lint internals.
 
 ## Bun APIs
 
