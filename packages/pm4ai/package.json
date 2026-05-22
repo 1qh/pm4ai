@@ -1,6 +1,6 @@
 {
   "name": "pm4ai",
-  "version": "0.0.51",
+  "version": "0.0.52",
   "description": "Agent-first anti-slop project management for TypeScript monorepos",
   "keywords": [
     "bun",

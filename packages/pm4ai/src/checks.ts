@@ -196,9 +196,30 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
 }
 const PINNED_VERSION_RE = /\d+\.\d+/u
 const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
+const versionTriple = (v: string): [number, number, number] => {
+  const m = /(\d+)\.(\d+)(?:\.(\d+))?/u.exec(v)
+  return [Number(m?.[1] ?? 0), Number(m?.[2] ?? 0), Number(m?.[3] ?? 0)]
+}
+const gteVersion = (a: [number, number, number], b: [number, number, number]): boolean =>
+  a[0] === b[0] ? (a[1] === b[1] ? a[2] >= b[2] : a[1] > b[1]) : a[0] > b[0]
+const latestCache = new Map<string, Promise<string | undefined>>()
+const resolveLatest = async (name: string): Promise<string | undefined> => {
+  const hit = latestCache.get(name)
+  if (hit) return hit
+  const pending = (async (): Promise<string | undefined> => {
+    try {
+      const res = await fetch(`https://registry.npmjs.org/${name}/latest`, { signal: AbortSignal.timeout(10_000) })
+      if (!res.ok) return
+      const data = (await res.json()) as { version?: string }
+      return data.version
+    } catch {}
+  })()
+  latestCache.set(name, pending)
+  return pending
+}
 const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const files = await glob('**/package.json', projectPath)
+  const candidates: { name: string; r: string; version: string }[] = []
   await Promise.all(
     files.map(async pkgFile => {
       const pkg = await readPkg(pkgFile)
@@ -207,10 +228,18 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
       for (const field of ['dependencies', 'devDependencies'] as const)
         for (const [name, version] of Object.entries(pkg[field] ?? {}))
           if (typeof version === 'string' && PINNED_VERSION_RE.test(version) && !ALLOWED_VERSION_RE.test(version))
-            issues.push(drift(`${name}@${version} pinned, use "latest" (or bare major): ${r}`))
+            candidates.push({ name, r, version })
     })
   )
-  return issues
+  const checked = await Promise.all(
+    candidates.map(async c => {
+      const latest = await resolveLatest(c.name)
+      if (latest === undefined) return
+      if (!gteVersion(versionTriple(latest), versionTriple(c.version))) return
+      return drift(`${c.name}@${c.version} pinned, use "latest" (latest ${latest}): ${c.r}`)
+    })
+  )
+  return checked.filter((issue): issue is Issue => issue !== undefined)
 }
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
