@@ -28,6 +28,7 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 - Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}`.
 - Async in a `() => void` slot (`onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`.
+- Async inside a `useEffect` body (slot type can’t be widened): wrap in an IIFE `;(async () => { ... })()` or `.catch(noop)`.
 - Unused var: rename `_x` or remove it.
 
 ## Ignore syntax

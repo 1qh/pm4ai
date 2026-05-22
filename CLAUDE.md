@@ -66,16 +66,19 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
 - Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
 - Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don’t trust the pre-commit hook alone.
+- Carry the declared type across every boundary (persistence, wire, service, codegen, runtime); ratchet toward precise types, never widen a typed surface back. Why: type erasure is the slowest class of bug.
+- Fail fast on any missing required input — throw, return non-zero, or refuse to construct. Why: a substituted default turns missing config into a wrong-value bug.
 - Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
 
 ## NEVER
 
 - Write comments (lint-ignore directives are the only allowed comment). Cost: lintmax strips them.
 - `!` non-null assertion, `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`. Cost: type holes — see lintmax never-ignore.
+- Erase types at a boundary — `any`/`string` for JSON/array/blob, `Map<string, unknown>` for a structured payload, a closed set as `string`/`number` instead of a union, a bare id string where a typed `Id<X>`/branded id exists, an unchecked cast where the compiler warned. Cost: slowest class of bug to debug.
 - Duplicate types. Cost: drift; single source of truth.
 - Disable lint rules globally/per-directory. Cost: hides real bugs — fix the code.
 - Ignore written source from linters — only auto-generated (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`). Cost: source escapes the gate.
-- Reduce lintmax strictness. Cost: ratchet only tightens — WHEN upstream drops a rule, find a replacement.
+- Reduce lintmax strictness. Cost: removing a rule needs false-positive evidence, adding needs none — WHEN upstream drops a rule, find a replacement.
 - Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
 - Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
 - Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
@@ -84,6 +87,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 
 - Adding a wrapper div → check parent `gap-*`/`space-*` first.
 - Copy-pasting from another file → extract to a shared utility/component.
+- Call internal functions by typed reference (e.g. Convex `internal.x.y`), never a dotted-string `Record<string, unknown>` lookup. Dynamic-path traversal forces `no-unsafe-*` suppressions.
 
 ---
 
@@ -124,6 +128,7 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 - Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}`.
 - Async in a `() => void` slot (`onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`.
+- Async inside a `useEffect` body (slot type can’t be widened): wrap in an IIFE `;(async () => { ... })()` or `.catch(noop)`.
 - Unused var: rename `_x` or remove it.
 
 ## Ignore syntax
