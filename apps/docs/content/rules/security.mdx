@@ -13,7 +13,7 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 - Fail fast on a missing required var — validate via schema (`z.string().min(1)`, `z.url()`, NO `.default()`) or throw. Why: silent default = undebuggable wrong value.
 - Bash `${VAR:?VAR is required}`; docker-compose `${VAR:?}`. Why: crash on absence, not fallback.
 - Set every var explicitly in `.env` (sole source of truth), even conventional ones. Why: nothing implicit.
-- Enforce auth/isolation/ownership by a mechanism the caller can't bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
+- Enforce auth/isolation/ownership by a mechanism the caller can’t bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
 - Two independent enforcement points per isolation/security invariant. Why: defense in depth.
 - A regression test flips the mechanism off and asserts the invariant fails. Why: if it passes mechanism-off, it was call-site-asserted.
 

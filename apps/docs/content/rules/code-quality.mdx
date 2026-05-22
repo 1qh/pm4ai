@@ -15,7 +15,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - One declarative present-tense schema definition. Why: a numbered migration chain (`001_*`) encodes history in the repo.
 - `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
 - Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
-- Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don't trust the pre-commit hook alone.
+- Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don’t trust the pre-commit hook alone.
 - Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
 
 ## NEVER
@@ -28,7 +28,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Reduce lintmax strictness. Cost: ratchet only tightens — WHEN upstream drops a rule, find a replacement.
 - Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
 - Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
-- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", "we switched", "used to", "instead of X", "no longer", "as of [date]", defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
+- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 
 ## Pitfall
 

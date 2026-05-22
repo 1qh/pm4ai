@@ -21,13 +21,13 @@ shadcn components used as-is, native look, semantic classes only.
 
 ## Examples
 
-| Good | Bad |
-|---|---|
-| `cn('base', cond && 'on')` | `` `base ${cond ? 'on' : ''}` `` |
+| Good                                | Bad                              |
+| ----------------------------------- | -------------------------------- |
+| `cn('base', cond && 'on')`          | `` `base ${cond ? 'on' : ''}` `` |
 | `cn('base', v === 'a' ? 'x' : 'y')` | `clsx('base', ...)` / `cva(...)` |
-| `bg-muted` `text-primary` | `bg-fd-muted` `text-blue-500` |
+| `bg-muted` `text-primary`           | `bg-fd-muted` `text-blue-500`    |
 
 ## Pitfall
 
 - `global.css` aliases `--color-*` → `--color-fd-*` via `@theme inline`, so `bg-muted`/`text-primary`/`border-border` resolve to the same theme as `fd-*` — always use the shadcn name.
-- fumadocs' own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.
+- fumadocs’ own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.

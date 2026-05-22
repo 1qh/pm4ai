@@ -8,7 +8,7 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ## MUST
 
-- Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can't pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
+- Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can’t pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
 - Spacing via parent `gap-*` (flex/grid) or `space-x/y-*`. Why: no wrapper for gaps.
 - Separators via parent `divide-y`/`divide-x`. Why: no separator elements.
 - Alignment via `flex`/`grid` on the existing parent. Why: no alignment wrapper.
@@ -22,8 +22,8 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ## Examples
 
-| Good (selector pushdown) | Bad (repeated classes) |
-|---|---|
+| Good (selector pushdown)                           | Bad (repeated classes)                                      |
+| -------------------------------------------------- | ----------------------------------------------------------- |
 | `<div className='divide-y [&>p]:px-3 [&>p]:py-2'>` | `<div className='divide-y'>` with `px-3 py-2` on each `<p>` |
 
 ## Pitfall

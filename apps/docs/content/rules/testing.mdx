@@ -10,7 +10,7 @@ Test execution strategy + Playwright e2e tuning.
 
 - Run only failing tests first; verify 2-3×; stop. Why: full suites are slow + noisy.
 - Pre-test: `bun fix` passes, kill stale procs (`pkill -9 -f "next"`), clear results (`rm -rf test-results`). Why: clean baseline.
-- Cheapest faithful harness first — unit → focused integration → headless script → service smoke → full UI/e2e. Why: reproduce a bug at the lowest tier that shows it; don't loop a 40s e2e on a logic bug.
+- Cheapest faithful harness first — unit → focused integration → headless script → service smoke → full UI/e2e. Why: reproduce a bug at the lowest tier that shows it; don’t loop a 40s e2e on a logic bug.
 - Paid-API tests (Anthropic, etc.) in dedicated files (`*.cost.test.ts`, `smoke-*`), cheapest model + shortest prompt, run LAST after free checks (lint → unit → build). Why: pass the zero-cost gate before anything billable.
 
 ## NEVER
@@ -21,15 +21,15 @@ Test execution strategy + Playwright e2e tuning.
 
 ## Playwright E2E
 
-| Scope | Timeout | Kill |
+| Scope       | Timeout  | Kill |
 | ----------- | -------- | ---- |
-| Single test | 5s | 10s |
-| Single file | 8s/test | 30s |
-| Full suite | 10s/test | 180s |
+| Single test | 5s       | 10s  |
+| Single file | 8s/test  | 30s  |
+| Full suite  | 10s/test | 180s |
 
-| Symptom | Fix |
+| Symptom                     | Fix                               |
 | --------------------------- | --------------------------------- |
-| Hangs on `fill()`/`click()` | Check element visible/enabled |
-| `networkidle` hangs | Use `waitForSelector()` instead |
-| Element not found | Check testid on element vs parent |
-| Flaky counts | `--workers=1` |
+| Hangs on `fill()`/`click()` | Check element visible/enabled     |
+| `networkidle` hangs         | Use `waitForSelector()` instead   |
+| Element not found           | Check testid on element vs parent |
+| Flaky counts                | `--workers=1`                     |

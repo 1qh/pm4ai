@@ -64,7 +64,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - One declarative present-tense schema definition. Why: a numbered migration chain (`001_*`) encodes history in the repo.
 - `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
 - Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
-- Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don't trust the pre-commit hook alone.
+- Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don’t trust the pre-commit hook alone.
 - Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
 
 ## NEVER
@@ -77,7 +77,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Reduce lintmax strictness. Cost: ratchet only tightens — WHEN upstream drops a rule, find a replacement.
 - Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
 - Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
-- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", "we switched", "used to", "instead of X", "no longer", "as of [date]", defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
+- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 
 ## Pitfall
 
@@ -95,7 +95,7 @@ Git commit + push conventions.
 
 ## NEVER
 
-- Mention AI / Claude / coauthor / "generated with" in commits. Cost: AI attribution unwanted in history.
+- Mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
 
 ---
 
@@ -115,8 +115,8 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 - Run `bun run check` / `lintmax check` (CI-only). Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
 - `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
-- `lintmax check --human` to "see violations". Cost: run `bun run fix` and read its failure output.
-- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax's curated surface, drifts.
+- `lintmax check --human` to “see violations”. Cost: run `bun run fix` and read its failure output.
+- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax’s curated surface, drifts.
 - Use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
 
 ## void replacements
@@ -127,10 +127,10 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 ## Ignore syntax
 
-| Linter | File-level | Per-line |
-| ------ | ---------- | -------- |
-| oxlint | `/* oxlint-disable rule */` | `// oxlint-disable-next-line rule` |
-| eslint | `/* eslint-disable rule */` | `// eslint-disable-next-line rule` |
+| Linter | File-level                                      | Per-line                                    |
+| ------ | ----------------------------------------------- | ------------------------------------------- |
+| oxlint | `/* oxlint-disable rule */`                     | `// oxlint-disable-next-line rule`          |
+| eslint | `/* eslint-disable rule */`                     | `// eslint-disable-next-line rule`          |
 | biome  | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
 
 ## Ignore strategy
@@ -141,12 +141,12 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 - WHEN 2+ linters flag one line, file-level for one + per-line for the other. Why: stacking multiple per-line above one line is banned.
 - One top `eslint-disable` per file, multiple rules comma-joined; keep one canonical block, remove duplicates. Why: dedupe.
 - NEVER 5+ per-line ignores for one rule. Cost: use file-level instead.
-- Don't hand-remove dead directives or add one "just in case". Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn't fire, `fix` drops it and `check` fails on it.
+- Don’t hand-remove dead directives or add one “just in case”. Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn’t fire, `fix` drops it and `check` fails on it.
 
 ## Cross-linter
 
 - Same rule in 2 linters (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, not conflict — never disable one. Why: both must pass.
-- Suppress a shared eslint/oxlint rule on eslint's side. Why: oxlint auto-picks up eslint rules and is faster.
+- Suppress a shared eslint/oxlint rule on eslint’s side. Why: oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` is disabled in lintmax. Why: conflicts with perfectionist (ASCII vs natural sort).
 
 ## Never-ignore rules
@@ -173,7 +173,7 @@ Fixes, not suppressions:
 
 ## Playbook maintenance
 
-- Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only "recent lessons" buckets.
+- Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only “recent lessons” buckets.
 
 ---
 
@@ -181,7 +181,7 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ## MUST
 
-- Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can't pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
+- Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can’t pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
 - Spacing via parent `gap-*` (flex/grid) or `space-x/y-*`. Why: no wrapper for gaps.
 - Separators via parent `divide-y`/`divide-x`. Why: no separator elements.
 - Alignment via `flex`/`grid` on the existing parent. Why: no alignment wrapper.
@@ -195,8 +195,8 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ## Examples
 
-| Good (selector pushdown) | Bad (repeated classes) |
-|---|---|
+| Good (selector pushdown)                           | Bad (repeated classes)                                      |
+| -------------------------------------------------- | ----------------------------------------------------------- |
 | `<div className='divide-y [&>p]:px-3 [&>p]:py-2'>` | `<div className='divide-y'>` with `px-3 py-2` on each `<p>` |
 
 ## Pitfall
@@ -234,7 +234,7 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 - Fail fast on a missing required var — validate via schema (`z.string().min(1)`, `z.url()`, NO `.default()`) or throw. Why: silent default = undebuggable wrong value.
 - Bash `${VAR:?VAR is required}`; docker-compose `${VAR:?}`. Why: crash on absence, not fallback.
 - Set every var explicitly in `.env` (sole source of truth), even conventional ones. Why: nothing implicit.
-- Enforce auth/isolation/ownership by a mechanism the caller can't bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
+- Enforce auth/isolation/ownership by a mechanism the caller can’t bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
 - Two independent enforcement points per isolation/security invariant. Why: defense in depth.
 - A regression test flips the mechanism off and asserts the invariant fails. Why: if it passes mechanism-off, it was call-site-asserted.
 
@@ -278,16 +278,16 @@ shadcn components used as-is, native look, semantic classes only.
 
 ## Examples
 
-| Good | Bad |
-|---|---|
-| `cn('base', cond && 'on')` | `` `base ${cond ? 'on' : ''}` `` |
+| Good                                | Bad                              |
+| ----------------------------------- | -------------------------------- |
+| `cn('base', cond && 'on')`          | `` `base ${cond ? 'on' : ''}` `` |
 | `cn('base', v === 'a' ? 'x' : 'y')` | `clsx('base', ...)` / `cva(...)` |
-| `bg-muted` `text-primary` | `bg-fd-muted` `text-blue-500` |
+| `bg-muted` `text-primary`           | `bg-fd-muted` `text-blue-500`    |
 
 ## Pitfall
 
 - `global.css` aliases `--color-*` → `--color-fd-*` via `@theme inline`, so `bg-muted`/`text-primary`/`border-border` resolve to the same theme as `fd-*` — always use the shadcn name.
-- fumadocs' own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.
+- fumadocs’ own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.
 
 ---
 

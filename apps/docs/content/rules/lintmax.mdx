@@ -20,8 +20,8 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 - Run `bun run check` / `lintmax check` (CI-only). Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
 - `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
-- `lintmax check --human` to "see violations". Cost: run `bun run fix` and read its failure output.
-- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax's curated surface, drifts.
+- `lintmax check --human` to “see violations”. Cost: run `bun run fix` and read its failure output.
+- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax’s curated surface, drifts.
 - Use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
 
 ## void replacements
@@ -32,10 +32,10 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 
 ## Ignore syntax
 
-| Linter | File-level | Per-line |
-| ------ | ---------- | -------- |
-| oxlint | `/* oxlint-disable rule */` | `// oxlint-disable-next-line rule` |
-| eslint | `/* eslint-disable rule */` | `// eslint-disable-next-line rule` |
+| Linter | File-level                                      | Per-line                                    |
+| ------ | ----------------------------------------------- | ------------------------------------------- |
+| oxlint | `/* oxlint-disable rule */`                     | `// oxlint-disable-next-line rule`          |
+| eslint | `/* eslint-disable rule */`                     | `// eslint-disable-next-line rule`          |
 | biome  | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
 
 ## Ignore strategy
@@ -46,12 +46,12 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 - WHEN 2+ linters flag one line, file-level for one + per-line for the other. Why: stacking multiple per-line above one line is banned.
 - One top `eslint-disable` per file, multiple rules comma-joined; keep one canonical block, remove duplicates. Why: dedupe.
 - NEVER 5+ per-line ignores for one rule. Cost: use file-level instead.
-- Don't hand-remove dead directives or add one "just in case". Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn't fire, `fix` drops it and `check` fails on it.
+- Don’t hand-remove dead directives or add one “just in case”. Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn’t fire, `fix` drops it and `check` fails on it.
 
 ## Cross-linter
 
 - Same rule in 2 linters (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, not conflict — never disable one. Why: both must pass.
-- Suppress a shared eslint/oxlint rule on eslint's side. Why: oxlint auto-picks up eslint rules and is faster.
+- Suppress a shared eslint/oxlint rule on eslint’s side. Why: oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` is disabled in lintmax. Why: conflicts with perfectionist (ASCII vs natural sort).
 
 ## Never-ignore rules
@@ -78,4 +78,4 @@ Fixes, not suppressions:
 
 ## Playbook maintenance
 
-- Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only "recent lessons" buckets.
+- Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only “recent lessons” buckets.
