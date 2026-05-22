@@ -24,6 +24,17 @@ On failure, lintmax outputs diagnostics **already optimized for agents** — gro
 - Add `| tail` or `| head` to any lintmax command — empty output IS success, failure output is already agent-formatted
 - Run `lintmax check --human` to “see violations” — run `bun run fix` and read its output on failure
 
+### Run fix on a clean tree, foreground, after edits are done
+
+`fix` rewrites files in place across the whole tree. Two failure modes follow:
+
+- **Editing while a backgrounded `fix` runs** races it — the formatter writes its pre-edit buffer back and silently reverts your change (looks like "the fix didn't take"). Make ALL edits first, then run `fix` foreground to completion. Never `run_in_background` a fix and keep editing; if one is running, wait until `pgrep -f 'lintmax|bun.*fix'` is clear before editing.
+- **Running `fix` on a dirty tree** mixes its autofixes (matcher rewrites, reformatting, directive stripping) with your in-progress edits, so a bad batch can't be cleanly reverted. Commit a checkpoint first before any multi-file mutator — `fix` after stripping directives, audit/codemod scripts, sed-all/rename-all. Then `git reset --hard` restores in one command. Batch many small edits and run `fix` once at the end, not after each edit (it is slow).
+
+### lintmax is the only lint tool
+
+Never add a second code-lint tool to a project: no extra eslint plugins, no stylelint, knip, depcheck, dependency-cruiser, or size-limit. lintmax orchestrates biome + oxlint + eslint with curated config; project-local additions fragment that surface and drift. If a code-lint pattern isn't covered, file it upstream against lintmax — don't add a tool to the project. (Domain-specific hand-rolled checks — banned vocab, spec-vs-code diff — are fine as `tools/*.ts` scripts; code-lint is not.)
+
 ### Ignore Syntax
 
 | Linter | File-level                                           | Per-line                                         |

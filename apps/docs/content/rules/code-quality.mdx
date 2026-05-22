@@ -14,6 +14,15 @@ infer: always
 - NEVER ignore written source code from linters — only auto-generated code (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`)
 - NEVER reduce lintmax strictness — if upstream removes rules, find replacements
 
+## Canonical state — code reads as the single intended design
+
+The repo shows exactly one true state, authored as if fully-formed. History/evolution is git's job, never the working tree's.
+
+- No lineage in names: never `legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`. A name describes the thing, not its past.
+- No history narrative in comments, commit bodies, log strings, or doc prose: banned shapes are "previously…", "we switched from…", "used to…", "instead of X", "no longer", "as of <date>", and defining a thing by what it is NOT. State what it IS. A `Why:` may give a timeless reason, never a past-incident story.
+- When reworking, leave zero trace of the prior shape — rename in place, delete the old, no transitional duplicate. The result must read as if it was always so.
+- Schema is one declarative present-tense definition, never a numbered migration chain (`001_*`, `002_*`) that encodes history in the repo.
+
 ## Type Safety & Single Source of Truth
 
 Every piece of data flows through exactly one definition:

@@ -44,6 +44,14 @@ Read via `process.env.X` inside files marked with one of:
 
 Never read server-only env vars from a `'use client'` component.
 
+## Env vars fail fast — never a fallback default
+
+A missing env var must crash immediately with a clear error, never silently resolve to a wrong value. Defaults turn a config mistake into undebuggable wrong behavior.
+
+- No `process.env.X ?? 'fallback'`, no `process.env.X || 'default'` in TS — read through a validated schema (`z.string().min(1)`, `z.url()`) with NO `.default()`, or throw on absence.
+- No `${VAR:-fallback}` in bash — use `${VAR:?VAR is required}`. No `${VAR:-}` in docker-compose — use `${VAR:?}`.
+- The `.env` is the single source of truth. Set every var explicitly there, even ones with conventional values, so nothing is implicit.
+
 ## Audit checklist
 
 Before merging a PR that touches env vars:
