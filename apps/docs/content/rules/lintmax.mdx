@@ -40,6 +40,8 @@ On failure, lintmax outputs diagnostics **already optimized for agents** — gro
 4. **Consolidate** — if file-level `biome-ignore-all` exists, remove redundant per-line `biome-ignore` for the same rule
 5. NEVER 5+ per-line ignores for the same rule — use file-level
 
+`lintmax fix` auto-removes UNUSED file-level `oxlint-disable` and `biome-ignore-all` directives (both `/**` and `//` forms) — it strips each, re-lints in place, and drops rules that no longer fire. Don't hand-remove dead directives, and don't add a directive "just in case": if the rule doesn't fire, fix removes it and `check` fails on it.
+
 - File-level directives go at absolute file top, above any imports/code (including `'use client'`/`'use node'`).
 - Per-line directives go on the line ABOVE the code, NEVER inline on the same line (triggers `no-inline-comments`).
 - When 2+ linters flag the same line, use file-level for one and per-line for the other — don’t stack multiple per-line directives above one line.
@@ -54,14 +56,18 @@ On failure, lintmax outputs diagnostics **already optimized for agents** — gro
 
 ### Never-ignore Rules
 
-These rules exist to catch real bugs. Suppressing them is NEVER acceptable — fix the code instead:
+These rules exist to catch real bugs. Suppressing them is NEVER acceptable — fix the code instead. **`lintmax check` fails on these suppressions** (used or unused), so there is no "suppress for now" path — it cannot reach CI:
 
 - `@typescript-eslint/no-unsafe-*` (no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, no-unsafe-return, no-unsafe-argument) — use proper types, never suppress type safety
 - `@typescript-eslint/no-explicit-any` — define the actual type
 - `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` — fix the type error
 - `@typescript-eslint/no-non-null-assertion` — handle the null case
 
-If an agent suppresses any of these, the code must be rewritten to satisfy the rule.
+Exception: `@ts-expect-error` and `no-explicit-any` are allowed **in test files** (asserting a wrong type is rejected). The rest are forbidden everywhere, tests included.
+
+**Untyped third-party dep** (its types resolve to `any` — broken `exports.types`, or a `typeof import(...)` that won't resolve in the lint program): do NOT suppress. Wrap it — cast the untyped binding through a typed facade at one boundary: `const get = rawGet as <T>(k: string) => Promise<T | undefined>`, or for an awaited value `const x: unknown = await loader.init(); return x as MonacoApi` with a minimal interface for the surface you use. Every call site then gets real types. Never `as any`.
+
+**Non-null assertion** (`x[i]!`): null-check (`const v = x[i]; if (v) ...`) or make the source a `const`-tuple (`[...] as const`) so fixed indices type as defined.
 
 ### Safe-to-ignore Rules
 
