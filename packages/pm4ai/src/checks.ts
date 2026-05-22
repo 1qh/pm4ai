@@ -244,13 +244,18 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
   }
   return issues
 }
+const DEFAULT_EXPORT_RE = /export default (?<id>\w+)/u
+const delegatesConfig = (content: string): boolean => {
+  const id = DEFAULT_EXPORT_RE.exec(content)?.groups?.id
+  return id !== undefined && content.split('\n').some(line => line.trimStart().startsWith('import') && line.includes(id))
+}
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const configs = await glob('**/next.config.ts', projectPath)
   await Promise.all(
     configs.map(async configFile => {
       const content = await file(configFile).text()
-      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig')))
+      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig') || delegatesConfig(content)))
         issues.push(drift(`missing reactStrictMode in ${rel(configFile, projectPath)}`))
     })
   )
