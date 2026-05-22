@@ -45,6 +45,7 @@ lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command;
 - File-level directive at absolute file top, above imports/code (incl `'use client'`/`'use node'`); per-line on the line ABOVE the code. Why: per-line inline trips `no-inline-comments`.
 - WHEN 2+ linters flag one line, file-level for one + per-line for the other. Why: stacking multiple per-line above one line is banned.
 - One top `eslint-disable` per file, multiple rules comma-joined; keep one canonical block, remove duplicates. Why: dedupe.
+- WHEN a file-level `biome-ignore-all` exists, drop the redundant per-line `biome-ignore` for that same rule. Why: file-level already covers every line.
 - NEVER 5+ per-line ignores for one rule. Cost: use file-level instead.
 - Don’t hand-remove dead directives or add one “just in case”. Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn’t fire, `fix` drops it and `check` fails on it.
 

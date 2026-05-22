@@ -12,7 +12,8 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 - Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; otherwise edit only companion files. Why: managed files are regenerated.
 - Put project-specific content in companion files — `LEARNING.md` (gotchas), `RULES.md` (project-only rules), `PROGRESS.md` (ongoing), `PLAN.md` (architecture). Why: managed files get overwritten.
 - Owner adds a universal rule → `.mdx` in pm4ai `apps/docs/content/rules/` with `infer` frontmatter; a new check → `packages/pm4ai/src/{audit,checks}.ts`. Why: rules generate CLAUDE.md, checks run in status.
-- Wait on `check: running...`; fix violations on `check: failed`; re-run + wait when `check` is stale (passed before N commits). Why: act only on a current green check.
+- Note any cross-project discovery for pm4ai. Why: a lesson hit on many projects becomes a universal rule/check.
+- Act only on a current check: proceed on `check: passed` (current); wait on `check: running...` (don’t edit); fix violations on `check: failed`; re-run + wait when stale (passed before N commits); run `bunx pm4ai@latest fix` first on `check: never run`. Why: stale/absent checks aren’t evidence.
 
 ## NEVER
 
