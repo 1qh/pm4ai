@@ -54,6 +54,14 @@ On failure, lintmax outputs diagnostics **already optimized for agents** — gro
 - To suppress a shared eslint/oxlint rule: suppress eslint’s version — oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` conflicts with perfectionist (ASCII vs natural sort) — disabled in lintmax.
 
+### Never use the `void` operator
+
+`fix` auto-deletes `void` (`no-void`), which silently breaks code: `void promise()` becomes a bare expression that then trips `noUnusedExpressions`; in a handler `() => { void mutate() }` it rewrites to `() => { undefined }`, dropping the call. So:
+
+- Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}` — never `void promise()`.
+- Async in a `() => void` slot (e.g. `onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`. Never `void expr`.
+- Unused var: rename `_x` or remove it — not `void x`.
+
 ### Never-ignore Rules
 
 These rules exist to catch real bugs. Suppressing them is NEVER acceptable — fix the code instead. **`lintmax check` fails on these suppressions** (used or unused), so there is no "suppress for now" path — it cannot reach CI:
