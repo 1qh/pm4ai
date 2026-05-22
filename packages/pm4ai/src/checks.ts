@@ -196,27 +196,24 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
 }
 const PINNED_VERSION_RE = /\d+\.\d+/u
 const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
+const VERSION_RE = /(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?/u
 const versionTriple = (v: string): [number, number, number] => {
-  const m = /(\d+)\.(\d+)(?:\.(\d+))?/u.exec(v)
-  return [Number(m?.[1] ?? 0), Number(m?.[2] ?? 0), Number(m?.[3] ?? 0)]
+  const g = VERSION_RE.exec(v)?.groups
+  return [Number(g?.major ?? 0), Number(g?.minor ?? 0), Number(g?.patch ?? 0)]
 }
 const gteVersion = (a: [number, number, number], b: [number, number, number]): boolean =>
   a[0] === b[0] ? (a[1] === b[1] ? a[2] >= b[2] : a[1] > b[1]) : a[0] > b[0]
-const latestCache = new Map<string, Promise<string | undefined>>()
-const resolveLatest = async (name: string): Promise<string | undefined> => {
-  const hit = latestCache.get(name)
-  if (hit) return hit
-  const pending = (async (): Promise<string | undefined> => {
-    try {
-      const res = await fetch(`https://registry.npmjs.org/${name}/latest`, { signal: AbortSignal.timeout(10_000) })
-      if (!res.ok) return
-      const data = (await res.json()) as { version?: string }
-      return data.version
-    } catch {}
-  })()
-  latestCache.set(name, pending)
-  return pending
+const fetchLatest = async (name: string): Promise<string | undefined> => {
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${name}/latest`, { signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) return
+    const data = (await res.json()) as { version?: string }
+    return data.version
+  } catch {
+    debug('checkDepsLatest fetch failed:', name)
+  }
 }
+const latestCache = new Map<string, Promise<string | undefined>>()
 const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
   const files = await glob('**/package.json', projectPath)
   const candidates: { name: string; r: string; version: string }[] = []
@@ -231,15 +228,21 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
             candidates.push({ name, r, version })
     })
   )
-  const checked = await Promise.all(
-    candidates.map(async c => {
-      const latest = await resolveLatest(c.name)
-      if (latest === undefined) return
-      if (!gteVersion(versionTriple(latest), versionTriple(c.version))) return
-      return drift(`${c.name}@${c.version} pinned, use "latest" (latest ${latest}): ${c.r}`)
+  const latestByName = new Map<string, string | undefined>()
+  await Promise.all(
+    [...new Set(candidates.map(c => c.name))].map(async name => {
+      const cached = latestCache.get(name) ?? fetchLatest(name)
+      latestCache.set(name, cached)
+      latestByName.set(name, await cached)
     })
   )
-  return checked.filter((issue): issue is Issue => issue !== undefined)
+  const issues: Issue[] = []
+  for (const c of candidates) {
+    const latest = latestByName.get(c.name)
+    if (latest !== undefined && gteVersion(versionTriple(latest), versionTriple(c.version)))
+      issues.push(drift(`${c.name}@${c.version} pinned, use "latest" (latest ${latest}): ${c.r}`))
+  }
+  return issues
 }
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
