@@ -322,12 +322,22 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   )
   for (const r of [...sourceResults, ...pkgResults.flat()])
     if (r) issues.push(forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`))
+  const hasNext = (
+    await Promise.all(
+      pkgJsonFiles.map(async pkgPath => {
+        const raw = await readPkg(pkgPath)
+        return raw
+          ? Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies }).includes('next')
+          : false
+      })
+    )
+  ).some(Boolean)
   const bunGlobalResult =
     await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!*.d.ts' ${RG_EXCLUDE} -o --no-filename`
       .quiet()
       .nothrow()
   const bunGlobals = bunGlobalResult.stdout.toString().trim()
-  if (bunGlobals) {
+  if (bunGlobals && !hasNext) {
     const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
     if (fixable.length > 0)
       issues.push(forbidden(`use named imports: ${fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')}`))
