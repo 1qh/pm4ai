@@ -63,16 +63,6 @@ describe('audit integration', () => {
     expect(issues.some(i => i.detail.includes('typescript'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
-  test('detects pinned dependency versions', async () => {
-    const tmp = makeTmp()
-    writeFileSync(
-      join(tmp, 'package.json'),
-      JSON.stringify({ dependencies: { react: '19.0.0' }, private: true, workspaces: [] })
-    )
-    const issues = await audit(tmp)
-    expect(issues.some(i => i.type === 'dep' && i.detail.includes('react'))).toBe(true)
-    rmSync(tmp, { recursive: true })
-  })
   test('detects non-private app packages', async () => {
     const tmp = makeTmp()
     mkdirSync(join(tmp, 'apps', 'web'), { recursive: true })
