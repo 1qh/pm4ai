@@ -18,15 +18,19 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - Foreground any command under ~2 min; background only with concurrent work in flight, never background-then-poll. Why: background-then-poll is an idle pattern.
 - Dispatch concurrent subagents sliced by file/dir/rule boundary, packed in one message; restrict edit-only subagents to read/edit/write/grep/glob; verify build-green on the shared branch first; audit their self-reports before any destructive cleanup. Why: throughput without thrash, and agents misreport.
 - Keep command output terse — a single `ok` or silence on success, full detail only on failure. Why: every line spends the context budget.
+- Confirm the exact target with the user before any destructive or irreversible action — delete, overwrite, `git push --force`, `reset --hard`, `git clean`, `DROP`, `TRUNCATE`, prune, or mass mutation; name precisely what will be affected and wait for an explicit go. Why: irreversible loss has no undo, so the autonomy default never extends to it.
+- Scope a delete/cleanup task to the precise paths named and confirmed first; remove only the named child, never a parent directory that also holds unrelated data. Why: deleting a folder to clear its contents takes every sibling inside it, unrecoverably.
 
 ## NEVER
 
-- Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?”. Cost: a wasted turn seeking permission instead of progress.
+- Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
 - Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
 - Treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
 - Ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
 - Idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
 - Delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
+- `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
+- Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
 
 ## Valid stops — only these
 
