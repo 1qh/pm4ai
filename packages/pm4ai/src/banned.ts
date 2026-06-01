@@ -140,8 +140,6 @@ const BANNED: Record<string, Record<string, string[]>> = {
       '"@formkit/auto-animate"',
       '"anime"',
       '"gsap"',
-      '"lottie-react"',
-      '"lottie-web"',
       '"react-flip-move"',
       '"react-spring"',
       '"react-transition-group"'
