@@ -11,6 +11,7 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 - Route any credentialed client-side work through a server action / API route / Convex action reading the unprefixed var. Why: `NEXT_PUBLIC_*` is inlined into the client bundle, visible in page source.
 - Read server-only vars via `process.env.X` only inside `'use server'`, `'use node'`, `convex/`, `backend/spacetimedb/`, or `app/api/*/route.ts`. Why: server boundary.
 - Fail fast on a missing required var — validate via schema (`z.string().min(1)`, `z.url()`, NO `.default()`) or throw. Why: silent default = undebuggable wrong value.
+- Absence-as-off is allowed ONLY as a documented intentional toggle (`if (env.SENTRY_DSN) initSentry(env.SENTRY_DSN)`) — test: can a user intentionally configure absence to mean off? yes = toggle (allowed), no = fallback (banned). Why: separates a real feature toggle from a silent wrong-value default.
 - Bash `${VAR:?VAR is required}`; docker-compose `${VAR:?}`. Why: crash on absence, not fallback.
 - Set every var explicitly in `.env` (sole source of truth), even conventional ones. Why: nothing implicit.
 - Enforce auth/isolation/ownership by a mechanism the caller can’t bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.

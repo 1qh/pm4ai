@@ -10,12 +10,17 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 
 - One definition per piece of data — shared constant defined once, imported everywhere; extract any value appearing in 2+ files. Why: drift surface.
 - Check existing utilities/components FIRST before writing inline logic. Why: avoid duplication.
+- Land any reusable script/helper/harness/probe as a tracked file (`scripts/*.ts`, a test, a `package.json` script), never throwaway `/tmp` scratch. Why: a `/tmp` probe is re-discovered next session; in-repo evidence re-runs.
+- Extract a shared util/component/factory on its second use, never a speculative first. Why: a one-call abstraction guesses the wrong shape and rots as unmaintained surface.
+- Fix every known bug the moment it surfaces — lint, type error, audit, review, or your own reading — regardless of severity, blast radius, or whether it fires on current data. Why: a latent bug is one input from a live one; the discovery cost is already paid, so the same pass that found it fixes it.
 - Name things for what they ARE, not their lineage. Why: code reads as the single intended design, authored fully-formed.
 - When reworking, rename in place + delete the old, zero transitional duplicate. Why: result reads as if always so.
 - One declarative present-tense schema definition. Why: a numbered migration chain (`001_*`) encodes history in the repo.
+- Land a breaking change expand-contract — add the new shape, dual-write/backfill, drop the old in a later release; applies to DB schema, wire format, Convex tables, exported types, and public API signatures. Why: no destructive change ships in the same release as the code still depending on the old shape.
 - `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
 - Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
 - Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don’t trust the pre-commit hook alone.
+- Land the lint/check policing a class of artifact before the first artifact of that class lands. Why: phase ordering — the gate exists when the artifacts arrive, not after they drift.
 - Carry the declared type across every boundary (persistence, wire, service, codegen, runtime); ratchet toward precise types, never widen a typed surface back. Why: type erasure is the slowest class of bug.
 - Fail fast on any missing required input — throw, return non-zero, or refuse to construct. Why: a substituted default turns missing config into a wrong-value bug.
 - Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
@@ -29,7 +34,9 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Disable lint rules globally/per-directory. Cost: hides real bugs — fix the code.
 - Ignore written source from linters — only auto-generated (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`). Cost: source escapes the gate.
 - Reduce lintmax strictness. Cost: removing a rule needs false-positive evidence, adding needs none — WHEN upstream drops a rule, find a replacement.
+- Skip, defer, or “note” a known bug via severity/occurrence framing — “latent”, “won’t fire on current data”, “low-severity”, “backstopped elsewhere”, “the source already guards it”, “fix when that path ships”, “improvement not a bug”. Cost: the severity twin of effort-framing — the exact loophole that lets a found bug rot into an incident; severity sets ordering within the pass, never whether it is fixed. The only non-fix is an unobtainable credential, a shared-blast-radius irreversible op, or a fix that would corrupt correct data — and each still fixes the code path and files a tracked task, never a silent “noted”.
 - Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
+- Copy a shared-package primitive (cnsync `readonly/ui`, a lintmax or published-package export) into a consumer repo — import it. Cost: copies drift from the substrate and skip its upstream fixes.
 - Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
 - Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 

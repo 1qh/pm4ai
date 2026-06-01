@@ -12,6 +12,7 @@ Test execution strategy + Playwright e2e tuning.
 - Pre-test: `bun fix` passes, kill stale procs (`pkill -9 -f "next"`), clear results (`rm -rf test-results`). Why: clean baseline.
 - Cheapest faithful harness first — unit → focused integration → headless script → service smoke → full UI/e2e. Why: reproduce a bug at the lowest tier that shows it; don’t loop a 40s e2e on a logic bug.
 - Paid-API tests (Anthropic, etc.) in dedicated files (`*.cost.test.ts`, `smoke-*`), cheapest model + shortest prompt, run LAST after free checks (lint → unit → build). Why: pass the zero-cost gate before anything billable.
+- After a failed paid-API cycle, record actual cost (tokens × model price) before the next attempt. Why: silent retries compound the bill without tracking lesson-rate.
 
 ## NEVER
 

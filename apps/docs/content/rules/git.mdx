@@ -10,7 +10,9 @@ Git commit + push conventions.
 
 - Commit frequently; push logical groups. Why: small auditable units, easy revert.
 - Commit subject `type: description` — `fix|feat|docs|chore|refactor|test`. Why: conventional-commit parse.
+- Land on `main` directly or via a short-lived feature branch + PR. Why: trunk-based, single `main`.
 
 ## NEVER
 
 - Mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
+- Maintain long-lived `develop` / `release-*` / `feature/*` branch hierarchies. Cost: divergent long branches rot and conflict against trunk.

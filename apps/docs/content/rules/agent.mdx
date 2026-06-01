@@ -9,7 +9,9 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 ## MUST
 
 - Continue to the next task while autonomous-feasible work remains; identify it and start. Why: idle and handoff are the costliest parts of the loop.
-- Self-decide reversible, config-only, or rule-settled choices; surface only a genuine fork as one question + options + recommendation. Why: most “decisions” are already settled by the rules.
+- Lock the full surfaced scope into `PLAN.md` the moment it rounds out and ship every item in one pass; the locked set is the immovable target. Why: a “this round / next round” split is where items go to die.
+- Parallelize independent work against any known wait (build, codegen, install, network) — the parent grinds another file while a subagent runs. Why: idle wait is the costliest non-stop state in the loop.
+- Self-decide reversible, config-only, or rule-settled choices; surface only a genuine fork as one question + options (each with pros/cons) + recommendation + reasoning. Why: most “decisions” are already settled by the rules, and a stacked or unreasoned MCQ drops answer quality.
 - Exhaust code, docs, git history, and memory before asking; ask only what cannot be discovered. Why: the discovery cost is already paid.
 - Run the action yourself; never ask the user to run a command the agent can run. Why: handing work upward breaks the loop.
 - State an expected outcome and deadline before any observable action (build, navigate, poll); flag stuck the moment it deviates. Why: no criterion means silent stuck loops.
@@ -17,7 +19,13 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - Commit the moment a bug is found and again when fixed during any verification loop. Why: a per-bug trail maps failure to fix.
 - Foreground any command under ~2 min; background only with concurrent work in flight, never background-then-poll. Why: background-then-poll is an idle pattern.
 - Dispatch concurrent subagents sliced by file/dir/rule boundary, packed in one message; restrict edit-only subagents to read/edit/write/grep/glob; verify build-green on the shared branch first; audit their self-reports before any destructive cleanup. Why: throughput without thrash, and agents misreport.
+- Parent-author the shared types/signatures before dispatching an edit wave; subagents edit call sites against the stable signature. Why: divergent parallel authoring causes stuck-thrash.
+- Use a write-capable subagent type (`general-purpose` or a custom edit agent) for any wave that produces edits; never `Explore` (read-only by construction). Why: read-only agents return plans, zero edits — the whole wave is wasted.
+- Run dependent subagent waves sequentially after the sibling lands; never brief a subagent to wait on a notification. Why: the subagent runtime has no wait-for-event — it terminates without work.
 - Keep command output terse — a single `ok` or silence on success, full detail only on failure. Why: every line spends the context budget.
+- Wrap streaming-CLI chatter (`bun install`, `docker`, `gh`, `wrangler`, `convex deploy`) with redirection — `… >/dev/null 2>&1 && echo ok || cat err`. Why: progress text burns the context budget.
+- Hold at most one long-running background slot; reap it after consuming its output. Why: the runtime leaves stale “(running)” slots that mislead.
+- Check image dimensions before Read on `.png`/`.jpg`/`.heic`/`.webp`; downscale via `sips -Z 2000 "$f" --out /tmp/$(basename "$f")` when over 2000px. Why: a many-image request over 2000px locks the whole session until `/compact`.
 - Confirm the exact target with the user before any destructive or irreversible action — delete, overwrite, `git push --force`, `reset --hard`, `git clean`, `DROP`, `TRUNCATE`, prune, or mass mutation; name precisely what will be affected and wait for an explicit go. Why: irreversible loss has no undo, so the autonomy default never extends to it.
 - Scope a delete/cleanup task to the precise paths named and confirmed first; remove only the named child, never a parent directory that also holds unrelated data. Why: deleting a folder to clear its contents takes every sibling inside it, unrecoverably.
 
@@ -26,9 +34,12 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
 - Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
 - Treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
+- Propose dropping scope to simplify — deleting an enum case/type/prop, removing a UI affordance, replacing a control with a label, collapsing screens, or hiding behind a flag. Cost: ONLY MORE, NEVER LESS — a surface shipped narrower than approved makes the absence the new baseline; fix the cause, never amputate the feature.
 - Ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
+- Invent a file path, export name, config key, version pin, or API signature, or pattern-match against what similar projects “usually” do — read to confirm first, quote verbatim or do not cite. Cost: a fabricated identifier or assumed convention ships as a real bug.
 - Idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
 - Delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
+- Orchestrate other AI providers in the dev loop (GPT/Gemini juries, cross-provider supervisors). Cost: Claude-Code subagents are the parallelism primitive; multi-provider adds coordination cost without gain.
 - `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
 - Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
 
