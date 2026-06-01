@@ -3,7 +3,6 @@ import type { PkgEntry } from '../audit.js'
 import {
   checkAppPackages,
   checkDuplicates,
-  checkNotLatest,
   checkPackageConventions,
   checkPublishedPkgConventions,
   checkRootScripts,
@@ -25,29 +24,6 @@ describe('usesForbidden', () => {
   })
   test('forbidden after &&', () => {
     expect(usesForbidden('lintmax fix && npm run build')).toBe(true)
-  })
-})
-describe('checkNotLatest', () => {
-  test('caret version is not flagged', () => {
-    const pkgs = [entry('packages/a/package.json', { dependencies: { react: '^19' } })]
-    const issues = checkNotLatest(pkgs, PROJECT)
-    expect(issues).toHaveLength(0)
-  })
-  test('pinned version is flagged', () => {
-    const pkgs = [entry('packages/a/package.json', { dependencies: { react: '19.0.0' } })]
-    const issues = checkNotLatest(pkgs, PROJECT)
-    expect(issues).toHaveLength(1)
-    expect(issues[0].detail).toContain('react')
-  })
-  test('workspace: version is not flagged', () => {
-    const pkgs = [entry('packages/a/package.json', { dependencies: { utils: 'workspace:*' } })]
-    const issues = checkNotLatest(pkgs, PROJECT)
-    expect(issues).toHaveLength(0)
-  })
-  test('"latest" is not flagged', () => {
-    const pkgs = [entry('packages/a/package.json', { dependencies: { react: 'latest' } })]
-    const issues = checkNotLatest(pkgs, PROJECT)
-    expect(issues).toHaveLength(0)
   })
 })
 describe('checkDuplicates', () => {

@@ -78,17 +78,6 @@ const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[]
   }
   return issues
 }
-const checkNotLatest = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
-  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
-  for (const { path: pkgPath, pkg } of filtered) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    for (const [name, version] of getDepsFromPkg(pkg))
-      if (version !== 'latest' && !version.startsWith('workspace:') && !version.startsWith('^'))
-        issues.push({ detail: `${name} should be "latest" or "^major" (got ${version}) in ${shortPath}`, type: 'dep' })
-  }
-  return issues
-}
 const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const pkgDepsByName = buildPkgDepMap(pkgs)
@@ -227,7 +216,6 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
   issues.push(...checkPackageConventions(pkgs, projectPath))
-  issues.push(...checkNotLatest(pkgs, projectPath))
   issues.push(...checkDuplicates(pkgs, projectPath))
   issues.push(...checkScripts(pkgs, projectPath))
   issues.push(...checkPublishedPkgConventions(pkgs, projectPath))
@@ -253,7 +241,6 @@ export {
   audit,
   checkAppPackages,
   checkDuplicates,
-  checkNotLatest,
   checkPackageConventions,
   checkPublishedPkgConventions,
   checkRootScripts,
