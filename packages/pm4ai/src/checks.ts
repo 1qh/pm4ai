@@ -28,6 +28,11 @@ const shell = async (projectPath: string, ...args: string[]) => {
   const result = await $`rg ${args} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   return result.stdout.toString().trim()
 }
+const importPattern = (ban: string): string => {
+  const exact = ban.endsWith('"')
+  const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
+  return `(from|import|require)[\\s(]+['"]${name}${exact ? `['"]` : ''}`
+}
 const relList = (files: string, base: string) =>
   files
     .split('\n')
@@ -302,7 +307,7 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const sourceResults = await Promise.all(
     banned.map(async ({ ban, fix }) => {
-      const files = await shell(projectPath, ban)
+      const files = await shell(projectPath, importPattern(ban))
       if (files) return { ban, files, fix }
     })
   )
