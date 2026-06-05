@@ -994,16 +994,21 @@ const BUN_GLOBALS: Record<string, string> = Object.fromEntries(
 )
 const TEMPORARY = new Set([
   '"@t3-oss/env',
+  '"@upstash/ratelimit"',
+  '"@upstash/redis"',
   '"clsx"',
   '"dotenv-cli"',
   '"ioredis"',
   '"jose"',
+  '"pg-boss"',
+  '"pino"',
   '"postgres"',
   '"q"',
   '"react-dropzone"',
   '"react-intersection-observer"',
   '"sharp"',
   '"slugify"',
+  '"smol-toml"',
   '"tailwind-merge"'
 ])
 const flattenBanned = (dict: Record<string, Record<string, string[]>>): BannedPackage[] =>
