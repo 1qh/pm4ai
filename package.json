@@ -24,7 +24,7 @@
     "@tailwindcss/postcss": "latest",
     "@types/mdx": "latest",
     "@types/node": "latest",
-    "lintmax": "latest",
+    "lintmax": "^0.1.65",
     "sherif": "latest",
     "simple-git-hooks": "latest",
     "tsdown": "latest",
