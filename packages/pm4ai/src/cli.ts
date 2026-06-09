@@ -9,6 +9,11 @@ const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('-')))
 const positional = args.filter(a => !a.startsWith('-'))
 const command = positional[0]
+const excludes = [...flags]
+  .filter(f => f.startsWith('--exclude='))
+  .flatMap(f => f.slice('--exclude='.length).split(','))
+  .map(s => s.trim())
+  .filter(Boolean)
 if (flags.has('--verbose')) setVerbose(true)
 if (flags.has('--version') || flags.has('-v')) console.log(pkg.version)
 else if (!command) console.log(guide)
@@ -25,10 +30,10 @@ else if (command === 'init') {
   if (!(await preflight())) throw new Error('missing required tools')
   if (command === 'status') {
     const { status } = await import('./status.js')
-    await status(flags.has('--swiftbar'), flags.has('--all'))
+    await status(flags.has('--swiftbar'), flags.has('--all'), excludes)
   } else if (command === 'fix') {
     const { fix } = await import('./fix.js')
-    await fix(flags.has('--all'))
+    await fix(flags.has('--all'), excludes)
   } else if (command === 'watch') {
     const { watch } = await import('./watch.js')
     await watch(flags.has('--json'))

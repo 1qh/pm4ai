@@ -66,7 +66,8 @@ const rgExcludes = [
   '!**/.git/**'
 ]
 const discover = async (
-  searchRoot?: string
+  searchRoot?: string,
+  excludes: readonly string[] = []
 ): Promise<{
   cnsync: Project
   consumers: Project[]
@@ -83,9 +84,11 @@ const discover = async (
     turboRoots.map(async dir => {
       if (!(await hasLintmaxDep(dir))) return null
       const name = projectName(dir)
+      const isSelf = name === MONOREPO_NAME || name === PKG_NAME
+      if (!isSelf && (excludes.includes(name) || excludes.includes(dir))) return null
       return {
         isCnsync: await isCnsyncRepo(dir),
-        isSelf: name === MONOREPO_NAME || name === PKG_NAME,
+        isSelf,
         name,
         path: dir
       }

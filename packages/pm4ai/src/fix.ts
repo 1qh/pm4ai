@@ -60,7 +60,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 export { maintain }
-export const fix = async (all = false) => {
+export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = join(homedir(), CONFIG_DIR, 'fix.lock')
   mkdirSync(join(homedir(), CONFIG_DIR), { recursive: true })
   const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
@@ -101,7 +101,7 @@ export const fix = async (all = false) => {
   }
   try {
     const resolveTargets = async () => {
-      if (all) return discover()
+      if (all) return discover(undefined, excludes)
       const projectPath = await isInsideProject()
       if (projectPath) {
         const { self, cnsync } = await discoverSources()
@@ -111,7 +111,7 @@ export const fix = async (all = false) => {
           self
         }
       }
-      return discover()
+      return discover(undefined, excludes)
     }
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)

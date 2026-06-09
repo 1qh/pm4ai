@@ -29,11 +29,11 @@ import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 
-const status = async (swiftbar = false, all = false) => {
+const status = async (swiftbar = false, all = false, excludes: readonly string[] = []) => {
   let allProjects: { name: string; path: string }[]
   let selfPath: string
   if (all) {
-    const { cnsync, consumers, self } = await discover()
+    const { cnsync, consumers, self } = await discover(undefined, excludes)
     selfPath = self.path
     allProjects = [self, cnsync, ...consumers]
   } else {
@@ -43,7 +43,7 @@ const status = async (swiftbar = false, all = false) => {
       selfPath = self.path
       allProjects = [{ name: projectName(projectPath), path: projectPath }]
     } else {
-      const { cnsync, consumers, self } = await discover()
+      const { cnsync, consumers, self } = await discover(undefined, excludes)
       selfPath = self.path
       allProjects = [self, cnsync, ...consumers]
     }
