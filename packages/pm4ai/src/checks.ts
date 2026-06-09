@@ -5,16 +5,24 @@ import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
 import {
   CONDITIONAL_MUST_EXIST_FILES,
-  CONDITIONAL_VERBATIM_FILES,
   DEFAULT_SCRIPTS,
   EXPECTED,
   FORBIDDEN_LOCKFILES,
   MUST_EXIST_FILES,
   RG_EXCLUDE,
-  UI_PACKAGE_NAME,
-  VERBATIM_FILES
+  UI_PACKAGE_NAME
 } from './constants.js'
-import { debug, detectCapabilities, getGhRepo, getTsconfigTypes, readJson, readPkg, rel } from './utils.js'
+import {
+  debug,
+  detectCapabilities,
+  getGhRepo,
+  getTsconfigTypes,
+  isExtended,
+  readJson,
+  readPkg,
+  rel,
+  resolveManagedFiles
+} from './utils.js'
 
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
@@ -70,16 +78,18 @@ const checkGit = async (projectPath: string): Promise<Issue[]> => {
   return [issue('git', `${out.split('\n').length} uncommitted changes`)]
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
-  const caps = await detectCapabilities(projectPath)
-  const conditional = CONDITIONAL_VERBATIM_FILES.filter(c => caps[c.when]).map(c => c.path)
-  const required = [...VERBATIM_FILES, ...conditional]
+  const managed = await resolveManagedFiles(projectPath)
   const results = await Promise.all(
-    required.map(async name => {
+    managed.map(async ({ extendable, path: name }) => {
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return
       if (!(await dst.exists())) return issue('file', `${name} missing`)
       const [s, d] = await Promise.all([src.text(), dst.text()])
+      if (extendable) {
+        if (!isExtended(s, d)) return issue('file', `${name} out of sync`)
+        return
+      }
       if (s !== d) return issue('file', `${name} out of sync`)
     })
   )

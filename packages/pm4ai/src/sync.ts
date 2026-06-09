@@ -8,7 +8,6 @@ import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
   CLAUDE_MD,
-  CONDITIONAL_VERBATIM_FILES,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
   DEFAULT_LICENSE,
@@ -16,21 +15,21 @@ import {
   EXPECTED,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
-  TSDOWN_BASE,
-  VERBATIM_FILES
+  TSDOWN_BASE
 } from './constants.js'
 import { inferRules } from './infer.js'
 import { DEP_FIELDS } from './types.js'
 import {
   buildPkgDepMap,
   collectWorkspacePackages,
-  detectCapabilities,
   getGhRepo,
   getTsconfigTypes,
   gitCleanRe,
+  isExtended,
   isSkippedPath,
   readJson,
   readPkg,
+  resolveManagedFiles,
   writeJson
 } from './utils.js'
 
@@ -43,16 +42,15 @@ const stripFrontmatter = (content: string): string => {
   return content.slice(endIdx + 3).trim()
 }
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
-  const caps = await detectCapabilities(projectPath)
-  const conditional = CONDITIONAL_VERBATIM_FILES.filter(c => caps[c.when]).map(c => c.path)
-  const required = [...VERBATIM_FILES, ...conditional]
+  const managed = await resolveManagedFiles(projectPath)
   const results = await Promise.all(
-    required.map(async name => {
+    managed.map(async ({ extendable, path: name }) => {
       const src = file(join(selfPath, name))
       const dst = file(join(projectPath, name))
       if (!(await src.exists())) return
       const srcContent = await src.text()
       const dstContent = (await dst.exists()) ? await dst.text() : ''
+      if (extendable && isExtended(srcContent, dstContent)) return
       if (srcContent !== dstContent) {
         await write(dst, srcContent)
         return { detail: `${name} updated`, type: 'synced' } satisfies Issue

@@ -4,7 +4,7 @@ import { $, file, Glob, write } from 'bun'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
-import { LINTMAX_PKG } from './constants.js'
+import { CONDITIONAL_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 
 const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
   const f = file(path)
@@ -103,6 +103,23 @@ const detectCapabilities = async (projectPath: string): Promise<Capabilities> =>
   const publishable = entries.some(({ pkg }) => pkg.name && !pkg.private)
   return { fumadocs, github, publishable, tailwind }
 }
+interface ManagedFile {
+  extendable: boolean
+  path: string
+}
+const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> => {
+  const caps = await detectCapabilities(projectPath)
+  const verbatim = VERBATIM_FILES.map(path => ({ extendable: false, path }))
+  const conditional = CONDITIONAL_VERBATIM_FILES.filter(c => caps[c.when]).map(c => ({
+    extendable: c.extendable ?? false,
+    path: c.path
+  }))
+  return [...verbatim, ...conditional]
+}
+const TRAILING_WS_RE = /\s+$/u
+const normalizeTail = (content: string): string => content.replace(TRAILING_WS_RE, '')
+const isExtended = (canonical: string, consumer: string): boolean =>
+  normalizeTail(consumer).startsWith(normalizeTail(canonical))
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {
   const result = new Map<string, Set<string>>()
   for (const { pkg } of entries)
@@ -125,13 +142,16 @@ export {
   getGhRepo,
   getTsconfigTypes,
   gitCleanRe,
+  isExtended,
   isInsideProject,
   isSkippedPath,
   projectName,
   readJson,
   readPkg,
   rel,
+  resolveManagedFiles,
   setVerbose,
   writeJson
 }
+export type { ManagedFile }
 export type { Capabilities }

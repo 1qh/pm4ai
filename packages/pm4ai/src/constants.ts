@@ -70,11 +70,12 @@ const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 interface ConditionalFile {
+  extendable?: boolean
   path: string
   when: 'fumadocs' | 'github' | 'publishable' | 'tailwind'
 }
 const CONDITIONAL_VERBATIM_FILES: ConditionalFile[] = [
-  { path: '.github/workflows/ci.yml', when: 'github' },
+  { extendable: true, path: '.github/workflows/ci.yml', when: 'github' },
   { path: 'postcss.config.ts', when: 'tailwind' },
   { path: 'apps/docs/src/app/global.css', when: 'fumadocs' },
   { path: 'tools/prune-versions.ts', when: 'publishable' }
