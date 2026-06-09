@@ -29,7 +29,7 @@ const EXPECTED = {
   vercelInstall: 'bun i'
 }
 const DEFAULT_SCRIPTS = {
-  build: 'turbo build --output-logs=errors-only',
+  build: `bash -c "turbo build --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)"`,
   check: `${LINTMAX_PKG} check`,
   clean: 'sh clean.sh',
   fix: `${LINTMAX_PKG} fix`,

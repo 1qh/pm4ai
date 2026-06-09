@@ -26,7 +26,7 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 - `bunx pm4ai@latest fix` — sync + maintain, requires clean git (`--all` for every project).
 - `curl https://pm4ai.vercel.app/llms-full.txt` — full docs.
 
----
+* * *
 
 Execution discipline for an agent working this codebase. Engineering posture lives in `philosophy`; this is how to run a turn.
 
@@ -77,7 +77,7 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 
 - `philosophy` (engineering posture); `testing` (cheapest harness; verify by running).
 
----
+* * *
 
 Bun is the only runtime + package manager.
 
@@ -107,7 +107,7 @@ Bun is the only runtime + package manager.
 - `sh clean.sh` — nuke artifacts (node_modules, lockfile, caches, dist, .next).
 - `sh up.sh` — clean + install + fix + check (universal maintenance cycle).
 
----
+* * *
 
 Code quality bans, single-source-of-truth, canonical-state, bounded waits, codegen integrity.
 
@@ -151,7 +151,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Copy-pasting from another file → extract to a shared utility/component.
 - Call internal functions by typed reference (e.g. Convex `internal.x.y`), never a dotted-string `Record<string, unknown>` lookup. Dynamic-path traversal forces `no-unsafe-*` suppressions.
 
----
+* * *
 
 Git commit + push conventions.
 
@@ -166,7 +166,7 @@ Git commit + push conventions.
 - Mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
 - Maintain long-lived `develop` / `release-*` / `feature/*` branch hierarchies. Cost: divergent long branches rot and conflict against trunk.
 
----
+* * *
 
 lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command; we own it.
 
@@ -199,11 +199,11 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 
 ## Ignore syntax
 
-| Linter | File-level                                      | Per-line                                    |
-| ------ | ----------------------------------------------- | ------------------------------------------- |
-| oxlint | `/* oxlint-disable rule */`                     | `// oxlint-disable-next-line rule`          |
-| eslint | `/* eslint-disable rule */`                     | `// eslint-disable-next-line rule`          |
-| biome  | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
+| Linter | File-level | Per-line |
+| --- | --- | --- |
+| oxlint | `/* oxlint-disable rule */` | `// oxlint-disable-next-line rule` |
+| eslint | `/* eslint-disable rule */` | `// eslint-disable-next-line rule` |
+| biome | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
 
 ## Ignore strategy
 
@@ -248,7 +248,7 @@ Fixes, not suppressions:
 
 - Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only “recent lessons” buckets.
 
----
+* * *
 
 Same UI, fewest DOM nodes — every element earns its place. If deleting it breaks nothing (semantics, layout, behavior, required styling), it must not exist.
 
@@ -268,8 +268,8 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ## Examples
 
-| Good (selector pushdown)                           | Bad (repeated classes)                                      |
-| -------------------------------------------------- | ----------------------------------------------------------- |
+| Good (selector pushdown) | Bad (repeated classes) |
+| --- | --- |
 | `<div className='divide-y [&>p]:px-3 [&>p]:py-2'>` | `<div className='divide-y'>` with `px-3 py-2` on each `<p>` |
 
 ## Pitfall
@@ -277,7 +277,7 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 - Selector tools: `*:` direct children · `[&>li]:py-2` targeted · `[&_a]:underline` descendant (sparingly) · `group`/`peer` on existing nodes → `group-hover:*`/`peer-focus:*` · `data-[state=open]:*`/`aria-expanded:*`/`disabled:*` · `first:`/`last:`/`odd:`/`even:`/`only:` structural.
 - Review each node: can I delete it → delete; can `gap/space/divide` replace it → do it; can I pass `className` → do it; can `[&>...]:` remove repetition → do it.
 
----
+* * *
 
 React 19 + Next.js component conventions.
 
@@ -296,7 +296,7 @@ React 19 + Next.js component conventions.
 - Array index as key. Cost: stale reconciliation on reorder/insert.
 - `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.
 
----
+* * *
 
 Credential handling, env scoping, server/client boundary, mechanism-asserted invariants.
 
@@ -333,7 +333,7 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 
 - PR env-var audit: no `NEXT_PUBLIC_*` name with key/secret/token/password/private; new client fetch goes through a server boundary; credential server actions short-circuit in test-mode; `.env.example` marks server-only vars without the prefix.
 
----
+* * *
 
 shadcn components used as-is, native look, semantic classes only.
 
@@ -352,18 +352,18 @@ shadcn components used as-is, native look, semantic classes only.
 
 ## Examples
 
-| Good                                | Bad                              |
-| ----------------------------------- | -------------------------------- |
-| `cn('base', cond && 'on')`          | `` `base ${cond ? 'on' : ''}` `` |
+| Good | Bad |
+| --- | --- |
+| `cn('base', cond && 'on')` | `` `base ${cond ? 'on' : ''}` `` |
 | `cn('base', v === 'a' ? 'x' : 'y')` | `clsx('base', ...)` / `cva(...)` |
-| `bg-muted` `text-primary`           | `bg-fd-muted` `text-blue-500`    |
+| `bg-muted` `text-primary` | `bg-fd-muted` `text-blue-500` |
 
 ## Pitfall
 
 - `global.css` aliases `--color-*` → `--color-fd-*` via `@theme inline`, so `bg-muted`/`text-primary`/`border-border` resolve to the same theme as `fd-*` — always use the shadcn name.
 - fumadocs’ own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.
 
----
+* * *
 
 Building + publishing library packages with tsdown.
 
@@ -378,7 +378,7 @@ Building + publishing library packages with tsdown.
 
 - Bundle deps consumers should install themselves. Cost: duplicate/version-conflict in consumer tree.
 
----
+* * *
 
 TypeScript code style + formatting.
 
