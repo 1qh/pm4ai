@@ -1,5 +1,4 @@
 {
-  "name": "__NAME__",
   "private": true,
   "workspaces": [
     "packages/*",
