@@ -94,7 +94,9 @@ const init = async (name: string) => {
   ])
   const bunVersion = await getBunVersion()
   const rootPkgRaw = await file(join(templateDir, 'root-package.txt')).text()
-  const rootPkgText = rootPkgRaw.replace('__PACKAGE_MANAGER__', `bun@${bunVersion}`)
+  const rootPkgText = rootPkgRaw
+    .replace('__PACKAGE_MANAGER__', `bun@${bunVersion}`)
+    .replace('__NAME__', `${projectName}-workspace`)
   await Promise.all([
     write(join(dir, 'package.json'), rootPkgText),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),

@@ -3,7 +3,7 @@
 /** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
@@ -117,6 +117,12 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
     pkg.private = true
     issues.push({ detail: 'set root package.json to private', type: 'synced' })
   }
+  const expectedName = `${basename(projectPath)}-workspace`
+  const hadName = pkg.name === expectedName
+  if (!hadName) {
+    pkg.name = expectedName
+    issues.push({ detail: `set root package.json name to ${expectedName}`, type: 'synced' })
+  }
   const scripts = pkg.scripts ?? {}
   pkg.scripts = scripts
   const hadHooks = Boolean(pkg['simple-git-hooks'])
@@ -124,7 +130,7 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
     pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
     issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
   }
-  let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks
+  let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks || !hadName
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps
   changed = syncRootDevDeps(pkg, devDeps, issues) || changed
