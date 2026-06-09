@@ -315,13 +315,12 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const isLintmax = projectPath.includes('/lintmax')
   const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
-  const scanBan = async ({ ban, fix }: (typeof banned)[number]) => {
-    const files = await shell(projectPath, importPattern(ban))
-    return files ? { ban, files, fix } : undefined
-  }
-  const sourceResults: Awaited<ReturnType<typeof scanBan>>[] = []
-  for (let i = 0; i < banned.length; i += 8)
-    sourceResults.push(...(await Promise.all(banned.slice(i, i + 8).map(scanBan))))
+  const sourceResults = await Promise.all(
+    banned.map(async ({ ban, fix }) => {
+      const files = await shell(projectPath, importPattern(ban))
+      if (files) return { ban, files, fix }
+    })
+  )
   const pkgJsonFiles = await glob('**/package.json', projectPath)
   const pkgResults = await Promise.all(
     pkgJsonFiles.map(async pkgPath => {
