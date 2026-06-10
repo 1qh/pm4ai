@@ -2,7 +2,15 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { syncClaudeMd, syncConfigs, syncPackageJson, syncSubPackages, syncTsconfig, syncUi } from '../sync.js'
+import {
+  serializeTsdownConfig,
+  syncClaudeMd,
+  syncConfigs,
+  syncPackageJson,
+  syncSubPackages,
+  syncTsconfig,
+  syncUi
+} from '../sync.js'
 
 const makeTmp = () => mkdtempSync(join(tmpdir(), 'pm4ai-test-'))
 const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
@@ -456,5 +464,15 @@ describe('syncPackageJson edge cases', () => {
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, string>
     expect(pkg.packageManager).toBe('bun@1.0.0')
     rmSync(tmp, { recursive: true })
+  })
+})
+describe('serializeTsdownConfig — prettier-canonical output', () => {
+  test('emits blank line between import and export so prettier leaves it alone', () => {
+    const out = serializeTsdownConfig({ entry: ['src/index.ts'] })
+    expect(out).toContain("import { defineConfig } from 'tsdown'\n\nexport default")
+  })
+  test('idempotent: serialising the same config twice returns the same string', () => {
+    const cfg = { copy: ['static'], entry: ['src/index.ts'] }
+    expect(serializeTsdownConfig(cfg)).toBe(serializeTsdownConfig(cfg))
   })
 })

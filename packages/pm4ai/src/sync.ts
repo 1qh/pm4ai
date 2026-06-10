@@ -59,6 +59,21 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
   )
   return results.filter((r): r is Issue => r !== undefined)
 }
+const canonicaliseViaLintmax = async (rawContent: string, relName: string, projectPath: string): Promise<string> => {
+  const lintmaxBin = join(projectPath, 'node_modules', '.bin', 'lintmax')
+  if (!existsSync(lintmaxBin)) return rawContent
+  const tmpName = `.pm4ai-canon-${relName.replaceAll('/', '_')}`
+  const tmpPath = join(projectPath, tmpName)
+  await write(file(tmpPath), rawContent)
+  await $`${lintmaxBin} fix ${tmpName}`.cwd(projectPath).quiet().nothrow()
+  const formatted = await file(tmpPath).text()
+  try {
+    rmSync(tmpPath)
+  } catch {
+    /* best-effort cleanup */
+  }
+  return formatted
+}
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
@@ -69,7 +84,7 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   const inferred = await inferRules(projectPath, rulesDir)
   const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
   const blocks = contents.map(c => stripFrontmatter(c))
-  const generated = `${blocks.join('\n\n---\n\n')}\n`
+  const generated = await canonicaliseViaLintmax(`${blocks.join('\n\n---\n\n')}\n`, CLAUDE_MD, projectPath)
   const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
   if (generated !== existing) {
@@ -264,7 +279,7 @@ const serializeTsdownConfig = (config: TsdownConfig): string => {
   fields.push(`  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`)
   fields.push(`  format: '${TSDOWN_BASE.format}',`)
   fields.push(`  outDir: '${TSDOWN_BASE.outDir}'`)
-  return `import { defineConfig } from 'tsdown'\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
+  return `import { defineConfig } from 'tsdown'\n\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
 }
 const syncReadmeSymlink = ({
   issues,
@@ -615,6 +630,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   return results.filter((r): r is Issue => r !== undefined)
 }
 export {
+  serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,
   syncFumadocsBuild,
