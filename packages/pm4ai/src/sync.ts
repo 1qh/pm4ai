@@ -62,15 +62,17 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
 const canonicaliseViaLintmax = async (rawContent: string, relName: string, projectPath: string): Promise<string> => {
   const lintmaxBin = join(projectPath, 'node_modules', '.bin', 'lintmax')
   if (!existsSync(lintmaxBin)) return rawContent
-  const tmpName = `.pm4ai-canon-${relName.replaceAll('/', '_')}`
-  const tmpPath = join(projectPath, tmpName)
+  const cacheDir = join(projectPath, 'node_modules', '.cache', 'canon')
+  if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+  const tmpRel = join('node_modules', '.cache', 'canon', relName.replaceAll('/', '_'))
+  const tmpPath = join(projectPath, tmpRel)
   await write(file(tmpPath), rawContent)
-  await $`${lintmaxBin} fix ${tmpName}`.cwd(projectPath).quiet().nothrow()
+  await $`${lintmaxBin} fix ${tmpRel}`.cwd(projectPath).quiet().nothrow()
   const formatted = await file(tmpPath).text()
   try {
     rmSync(tmpPath)
   } catch {
-    /* best-effort cleanup */
+    /* leftover lives under node_modules/.cache/ — invisible to git + cleaned with node_modules */
   }
   return formatted
 }

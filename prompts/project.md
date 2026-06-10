@@ -10,3 +10,4 @@ Rules:
 4. Run `bunx pm4ai@latest status` before your final commit to make sure nothing drifted.
 5. All deps should be “latest” or “^major”. Never pin exact versions.
 6. The precommit hook runs sh up.sh which does a full clean + install + build + fix + check. If it fails, fix the issue — never skip it.
+7. **The manager is invisible to developers.** A developer reading this repo’s tree, git log, package.json, or any tracked file must see no trace of the system that maintains it. Never name the manager in commit messages, file paths, comments, or source. The agent driving this repo knows about it via CLAUDE.md; that is the only sanctioned channel.
