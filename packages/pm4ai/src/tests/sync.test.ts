@@ -162,6 +162,21 @@ describe('syncPackageJson', () => {
     expect(pkg.scripts?.fix).toBe('bun packages/lintmax/dist/cli.mjs fix')
     rmSync(tmp, { recursive: true })
   })
+  test('preserves self-hosted cli check script', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        private: true,
+        scripts: { check: 'bun packages/lintmax/dist/cli.mjs check' }
+      })
+    )
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.check).toBe('bun packages/lintmax/dist/cli.mjs check')
+    rmSync(tmp, { recursive: true })
+  })
   test('wraps root turbo scripts with workspace warning filter', async () => {
     const tmp = makeTmp()
     writeFileSync(

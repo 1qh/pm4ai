@@ -146,6 +146,10 @@ describe('checkRootScripts', () => {
     const issues = checkRootScripts({ scripts: { check: 'tsc --noEmit' } })
     expect(issues.some(i => i.detail.includes('lintmax check'))).toBe(true)
   })
+  test('check ending with cli.mjs check is not flagged', () => {
+    const issues = checkRootScripts({ scripts: { check: 'bun packages/lintmax/dist/cli.mjs check' } })
+    expect(issues.filter(i => i.detail.includes('check'))).toHaveLength(0)
+  })
   test('fix without lintmax last is flagged', () => {
     const issues = checkRootScripts({ scripts: { fix: 'prettier --write .' } })
     expect(issues.some(i => i.detail.includes('end with "lintmax fix"'))).toBe(true)

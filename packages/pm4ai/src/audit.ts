@@ -107,6 +107,14 @@ const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
 }
 const usesForbidden = (cmd: string) =>
   FORBIDDEN_PM_PREFIXES.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
+const isLintmaxScript = (script: string | undefined, command: 'check' | 'fix'): boolean => {
+  const value = script ?? ''
+  return (
+    value.endsWith(`${LINTMAX_PKG} ${command}`) ||
+    value.endsWith(`cli.js ${command}`) ||
+    value.endsWith(`cli.mjs ${command}`)
+  )
+}
 const turboRe = /\bturbo\b/u
 const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
@@ -138,14 +146,9 @@ const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
   const issues: Issue[] = []
   const scripts = rootPkg.scripts ?? {}
   if (!scripts.build?.includes('turbo')) issues.push({ detail: 'root "build" should use turbo', type: 'drift' })
-  if (scripts.check && !scripts.check.includes(LINTMAX_PKG) && !scripts.check.includes('cli.js check'))
+  if (scripts.check && !isLintmaxScript(scripts.check, 'check'))
     issues.push({ detail: 'root "check" should include "lintmax check"', type: 'drift' })
-  if (
-    scripts.fix &&
-    !scripts.fix.endsWith(`${LINTMAX_PKG} fix`) &&
-    !scripts.fix.endsWith('cli.js fix') &&
-    !scripts.fix.endsWith('cli.mjs fix')
-  )
+  if (scripts.fix && !isLintmaxScript(scripts.fix, 'fix'))
     issues.push({ detail: 'root "fix" should end with "lintmax fix"', type: 'drift' })
   return issues
 }

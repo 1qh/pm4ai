@@ -110,9 +110,9 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   }
   return issues
 }
-const isFixScriptCanonical = (script: string | undefined, fallback: string): boolean => {
+const isLintmaxScriptCanonical = (script: string | undefined, fallback: string, command: 'check' | 'fix'): boolean => {
   const value = script ?? ''
-  return value.endsWith(fallback) || value.endsWith('cli.js fix') || value.endsWith('cli.mjs fix')
+  return value.endsWith(fallback) || value.endsWith(`cli.js ${command}`) || value.endsWith(`cli.mjs ${command}`)
 }
 const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
@@ -123,7 +123,9 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
         changed = true
         issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
       }
-    } else if (name === 'fix' ? !isFixScriptCanonical(scripts.fix, value) : scripts[name] !== value) {
+    } else if (
+      name === 'fix' || name === 'check' ? !isLintmaxScriptCanonical(scripts[name], value, name) : scripts[name] !== value
+    ) {
       const action = scripts[name] ? 'updated' : 'added'
       scripts[name] = value
       changed = true
