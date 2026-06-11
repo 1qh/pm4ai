@@ -44,11 +44,12 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
+const FRONTMATTER_TITLE_RE = /^title:\s*(?<title>.+)$/mu
 const frontmatterTitle = (content: string): string | undefined => {
-  if (!content.startsWith('---')) return undefined
+  if (!content.startsWith('---')) return
   const endIdx = content.indexOf('---', 3)
-  if (endIdx === -1) return undefined
-  return content.slice(3, endIdx).match(/^title:\s*(.+)$/mu)?.[1]?.trim()
+  if (endIdx === -1) return
+  return FRONTMATTER_TITLE_RE.exec(content.slice(3, endIdx))?.groups?.title?.trim()
 }
 const ruleBlock = (content: string): string => {
   const title = frontmatterTitle(content)

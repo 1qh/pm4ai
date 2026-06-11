@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { checkBannedImports } from '../checks.js'
 
 const URL_MOD = 'url'
+const AWS_ALLOWED = '@aws-sdk/client-s3'
+const AWS_BANNED = '@aws-sdk/client-dynamodb'
 const BUN_CLS = 'S3Client'
 const BUN_REF = `Bun.${BUN_CLS}`
 const makeProject = (pkg: Record<string, unknown>, files: Record<string, string>): string => {
@@ -28,6 +30,24 @@ describe('checkBannedImports', () => {
     const tmp = makeProject({}, { 'src/b.ts': `import { fileURLToPath } from '${URL_MOD}'\nexport { fileURLToPath }\n` })
     const issues = await checkBannedImports(tmp)
     expect(issues.some(i => i.type === 'forbidden' && i.detail.includes(`"${URL_MOD}" banned, use URL`))).toBe(true)
+    rmSync(tmp, { recursive: true })
+  })
+  test('allows the temporary AWS S3 client package', async () => {
+    const tmp = makeProject(
+      { dependencies: { [AWS_ALLOWED]: 'latest' } },
+      { 'src/aws.ts': `import { S3Client } from '${AWS_ALLOWED}'\nexport { S3Client }\n` }
+    )
+    const issues = await checkBannedImports(tmp)
+    expect(issues.some(i => i.detail.includes('"@aws-sdk banned'))).toBe(false)
+    rmSync(tmp, { recursive: true })
+  })
+  test('keeps other AWS SDK packages banned', async () => {
+    const tmp = makeProject(
+      { dependencies: { [AWS_BANNED]: 'latest' } },
+      { 'src/aws.ts': `import { DynamoDBClient } from '${AWS_BANNED}'\nexport { DynamoDBClient }\n` }
+    )
+    const issues = await checkBannedImports(tmp)
+    expect(issues.some(i => i.type === 'forbidden' && i.detail.includes('"@aws-sdk banned'))).toBe(true)
     rmSync(tmp, { recursive: true })
   })
   test('exempts the Bun global in a Next app', async () => {

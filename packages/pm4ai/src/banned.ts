@@ -1011,9 +1011,12 @@ const TEMPORARY = new Set([
   '"smol-toml"',
   '"tailwind-merge"'
 ])
+const TEMPORARY_ALLOWED_PACKAGES: Record<string, readonly string[]> = {
+  '"@aws-sdk': ['@aws-sdk/client-s3']
+} as const
 const flattenBanned = (dict: Record<string, Record<string, string[]>>): BannedPackage[] =>
   Object.values(dict).flatMap(fixes => Object.entries(fixes).flatMap(([fix, bans]) => bans.map(ban => ({ ban, fix }))))
 const ALL_BANNED: BannedPackage[] = flattenBanned(BANNED)
 const LINTMAX_ONLY: BannedPackage[] = flattenBanned(LINTMAX_ONLY_RAW)
-export { ALL_BANNED, ALLOWED_STACK, BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY }
+export { ALL_BANNED, ALLOWED_STACK, BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES }
 export type { BannedPackage }

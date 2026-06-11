@@ -2,7 +2,7 @@ import { $, file, Glob } from 'bun'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Issue, IssueType } from './types.js'
-import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY } from './banned.js'
+import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
 import {
   CONDITIONAL_MUST_EXIST_FILES,
   DEFAULT_SCRIPTS,
@@ -40,6 +40,31 @@ const importPattern = (ban: string): string => {
   const exact = ban.endsWith('"')
   const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
   return `(from|import|require)[\\s(]+['"]${name}${exact ? `['"]` : ''}`
+}
+const importSpecifierPattern = (ban: string): RegExp => {
+  const exact = ban.endsWith('"')
+  const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
+  return new RegExp(`(?:from|import|require)[\\s(]+['"](${name}${exact ? '' : `[^'"]*`})['"]`, 'gu')
+}
+const temporaryAllowedPackages = (ban: string): readonly string[] => TEMPORARY_ALLOWED_PACKAGES[ban] ?? []
+const isTemporarilyAllowedPackage = (ban: string, packageName: string): boolean =>
+  temporaryAllowedPackages(ban).includes(packageName)
+const hasBlockedImport = (content: string, ban: string): boolean => {
+  for (const match of content.matchAll(importSpecifierPattern(ban))) {
+    const packageName = match[1]
+    if (packageName !== undefined && !isTemporarilyAllowedPackage(ban, packageName)) return true
+  }
+  return false
+}
+const filterBlockedImportFiles = async (files: string, ban: string): Promise<string> => {
+  const blocked: string[] = []
+  await Promise.all(
+    files.split('\n').map(async sourceFile => {
+      const content = await file(sourceFile).text()
+      if (hasBlockedImport(content, ban)) blocked.push(sourceFile)
+    })
+  )
+  return blocked.join('\n')
 }
 const relList = (files: string, base: string) =>
   files
@@ -318,7 +343,8 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const sourceResults = await Promise.all(
     banned.map(async ({ ban, fix }) => {
       const files = await shell(projectPath, importPattern(ban))
-      if (files) return { ban, files, fix }
+      const blockedFiles = files ? await filterBlockedImportFiles(files, ban) : ''
+      if (blockedFiles) return { ban, files: blockedFiles, fix }
     })
   )
   const pkgJsonFiles = await glob('**/package.json', projectPath)
@@ -330,7 +356,9 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
       return banned
         .filter(({ ban }) => {
           const clean = ban.replaceAll(/^"|"$/gu, '')
-          return ban.endsWith('"') ? depNames.includes(clean) : depNames.some(d => d.startsWith(clean))
+          return ban.endsWith('"')
+            ? depNames.includes(clean) && !isTemporarilyAllowedPackage(ban, clean)
+            : depNames.some(d => d.startsWith(clean) && !isTemporarilyAllowedPackage(ban, d))
         })
         .map(({ ban, fix }) => ({ ban, files: pkgPath, fix }))
     })
