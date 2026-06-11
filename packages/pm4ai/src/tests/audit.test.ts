@@ -130,12 +130,16 @@ describe('checkRootScripts', () => {
     const issues = checkRootScripts({ scripts: { check: 'tsc --noEmit' } })
     expect(issues.some(i => i.detail.includes('lintmax check'))).toBe(true)
   })
-  test('fix without lintmax is flagged', () => {
+  test('fix without lintmax last is flagged', () => {
     const issues = checkRootScripts({ scripts: { fix: 'prettier --write .' } })
-    expect(issues.some(i => i.detail.includes('lintmax fix'))).toBe(true)
+    expect(issues.some(i => i.detail.includes('end with "lintmax fix"'))).toBe(true)
   })
-  test('fix with lintmax fix plus extra is not flagged', () => {
+  test('fix with lintmax before extra work is flagged', () => {
     const issues = checkRootScripts({ scripts: { fix: 'lintmax fix && turbo build' } })
+    expect(issues.some(i => i.detail.includes('end with "lintmax fix"'))).toBe(true)
+  })
+  test('fix ending with lintmax fix is not flagged', () => {
+    const issues = checkRootScripts({ scripts: { fix: 'bun run build && lintmax fix' } })
     expect(issues.filter(i => i.detail.includes('fix'))).toHaveLength(0)
   })
 })

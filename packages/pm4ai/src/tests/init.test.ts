@@ -104,6 +104,10 @@ describe('init scaffold', () => {
     const sourceConfig = readFileSync(join(TEST_DIR, 'apps/docs/source.config.ts'), 'utf8')
     expect(sourceConfig).toContain("'content/docs'")
   })
+  test('docs global css scans workspace package sources', () => {
+    const globalCss = readFileSync(join(TEST_DIR, 'apps/docs/src/app/global.css'), 'utf8')
+    expect(globalCss).toContain("@source '../../../../packages/**/*.{ts,tsx}';")
+  })
   test('template root package.json matches constants', () => {
     const tplPkg = readPkg(join(TEST_DIR, 'package.json'))
     const scripts = tplPkg.scripts as Record<string, string>

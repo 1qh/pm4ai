@@ -113,7 +113,7 @@ describe('syncPackageJson', () => {
     expect(pkg.scripts?.fix).toBe('lintmax fix')
     rmSync(tmp, { recursive: true })
   })
-  test('does not overwrite existing build/check/fix scripts', async () => {
+  test('canonicalizes existing build/check/fix scripts', async () => {
     const tmp = makeTmp()
     writeFileSync(
       join(tmp, 'package.json'),
@@ -125,9 +125,26 @@ describe('syncPackageJson', () => {
     )
     await syncPackageJson(tmp, pm4aiRoot)
     const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
-    expect(pkg.scripts?.build).toBe('custom build')
-    expect(pkg.scripts?.check).toBe('custom check')
-    expect(pkg.scripts?.fix).toBe('custom fix')
+    expect(pkg.scripts?.build).toContain('grep -vE')
+    expect(pkg.scripts?.check).toBe('lintmax check')
+    expect(pkg.scripts?.fix).toBe('lintmax fix')
+    rmSync(tmp, { recursive: true })
+  })
+  test('preserves fix preflight when lintmax fix runs last', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        private: true,
+        scripts: { build: 'custom build', check: 'custom check', fix: 'bun run build && lintmax fix' }
+      })
+    )
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.build).toContain('grep -vE')
+    expect(pkg.scripts?.check).toBe('lintmax check')
+    expect(pkg.scripts?.fix).toBe('bun run build && lintmax fix')
     rmSync(tmp, { recursive: true })
   })
   test('adds packageManager if missing', async () => {

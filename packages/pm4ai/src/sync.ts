@@ -104,10 +104,11 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
         changed = true
         issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
       }
-    } else if (!scripts[name]) {
+    } else if (name === 'fix' ? !scripts.fix?.endsWith(value) : scripts[name] !== value) {
+      const action = scripts[name] ? 'updated' : 'added'
       scripts[name] = value
       changed = true
-      issues.push({ detail: `added ${name} script`, type: 'synced' })
+      issues.push({ detail: `${action} ${name} script`, type: 'synced' })
     }
   return changed
 }
