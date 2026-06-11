@@ -14,7 +14,7 @@
     "postinstall": "sherif",
     "prepare": "bunx simple-git-hooks",
     "pretest": "which rg || sudo apt-get install -y ripgrep",
-    "test": "turbo test --output-logs=errors-only"
+    "test": "bash -c \"turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)\""
   },
   "simple-git-hooks": {
     "pre-commit": "sh up.sh && git add -u"
