@@ -9,9 +9,9 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 ## MUST
 
 - Read root `README.md` first WHEN it exists. Why: project-specific entry.
-- Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; otherwise edit only companion files. Why: managed files are regenerated.
-- Put project-specific content in companion files — `LEARNING.md` (gotchas), `RULES.md` (project-only rules), `PROGRESS.md` (ongoing), `PLAN.md` (architecture). Why: managed files get overwritten.
-- Capture a gotcha into `LEARNING.md` the moment it surfaces, committed with the work that taught it. Why: an uncaptured surprise re-costs the same hour every few weeks; one home per fact, never duplicated.
+- Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; never hand-edit a managed file. Why: managed files are regenerated on the next fix.
+- Keep project-specific docs — decisions, gotchas, plans — in the project's doc repo (the `X-doc` sibling), never in code-repo companion files. Why: the code repo carries only code and machine-readable config; docs have one home in the doc repo.
+- Capture a gotcha into its topic-owner doc in the project doc repo the moment it surfaces, committed with the work that taught it. Why: an uncaptured surprise re-costs the same hour; one home per fact, never duplicated.
 - Owner adds a universal rule → `.mdx` in pm4ai `apps/docs/content/rules/` with `infer` frontmatter; a new check → `packages/pm4ai/src/{audit,checks}.ts`. Why: rules generate CLAUDE.md, checks run in status.
 - Note any cross-project discovery for pm4ai. Why: a lesson hit on many projects becomes a universal rule/check.
 - Act only on a current check: proceed on `check: passed` (current); wait on `check: running...` (don’t edit); fix violations on `check: failed`; re-run + wait when stale (passed before N commits); run `bunx pm4ai@latest fix` first on `check: never run`. Why: stale/absent checks aren’t evidence.

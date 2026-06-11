@@ -15,13 +15,9 @@ const SKIP = new Set([
   'bun.lock',
   'CLAUDE.md',
   'dist',
-  'LEARNING.md',
   'node_modules',
-  'PLAN.md',
-  'PROGRESS.md',
   'prompts',
   'README.md',
-  'RULES.md',
   'vercel.json'
 ])
 const REMOVE_PATHS = [
