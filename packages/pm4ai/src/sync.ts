@@ -13,9 +13,12 @@ import {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  filterTurboWorkspaceWarning,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
-  TSDOWN_BASE
+  TSDOWN_BASE,
+  TURBO_FLAG,
+  TURBO_WARNING_FILTER
 } from './constants.js'
 import { inferRules } from './infer.js'
 import { DEP_FIELDS } from './types.js'
@@ -110,6 +113,18 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
       changed = true
       issues.push({ detail: `${action} ${name} script`, type: 'synced' })
     }
+  for (const [name, cmd] of Object.entries(scripts)) {
+    if (
+      name.startsWith('dev') ||
+      !cmd.includes('turbo') ||
+      !cmd.includes(TURBO_FLAG) ||
+      cmd.includes(TURBO_WARNING_FILTER)
+    )
+      continue
+    scripts[name] = filterTurboWorkspaceWarning(cmd)
+    changed = true
+    issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
+  }
   return changed
 }
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {

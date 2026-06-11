@@ -2,7 +2,13 @@ import { $ } from 'bun'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
-import { FORBIDDEN_PM_PREFIXES, LINTMAX_PKG, REQUIRED_ROOT_DEVDEPS, TURBO_FLAG } from './constants.js'
+import {
+  FORBIDDEN_PM_PREFIXES,
+  LINTMAX_PKG,
+  REQUIRED_ROOT_DEVDEPS,
+  TURBO_FLAG,
+  TURBO_WARNING_FILTER
+} from './constants.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
@@ -114,6 +120,14 @@ const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
       if (usesForbidden(cmd)) issues.push({ detail: `"${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
       if (isRoot && turboRe.test(cmd) && !cmd.includes(TURBO_FLAG) && !script.startsWith('dev'))
         issues.push({ detail: `"${script}" missing ${TURBO_FLAG}`, type: 'drift' })
+      if (
+        isRoot &&
+        turboRe.test(cmd) &&
+        cmd.includes(TURBO_FLAG) &&
+        !script.startsWith('dev') &&
+        !cmd.includes(TURBO_WARNING_FILTER)
+      )
+        issues.push({ detail: `"${script}" missing turbo workspace warning filter`, type: 'drift' })
     }
     if (!isRoot && scripts.some(([s]) => s === 'clean'))
       issues.push({ detail: `${shortPath} has redundant "clean" script, use root clean.sh`, type: 'drift' })

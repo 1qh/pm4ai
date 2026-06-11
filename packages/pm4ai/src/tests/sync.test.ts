@@ -147,6 +147,22 @@ describe('syncPackageJson', () => {
     expect(pkg.scripts?.fix).toBe('bun run build && lintmax fix')
     rmSync(tmp, { recursive: true })
   })
+  test('wraps root turbo scripts with workspace warning filter', async () => {
+    const tmp = makeTmp()
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        private: true,
+        scripts: { test: 'turbo test --output-logs=errors-only' }
+      })
+    )
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = JSON.parse(readFileSync(join(tmp, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.test).toContain('grep -vE')
+    expect(pkg.scripts?.test).toContain('Could not resolve workspaces')
+    rmSync(tmp, { recursive: true })
+  })
   test('adds packageManager if missing', async () => {
     const tmp = makeTmp()
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))

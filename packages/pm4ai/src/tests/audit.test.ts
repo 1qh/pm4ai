@@ -106,6 +106,22 @@ describe('checkScripts', () => {
     const issues = checkScripts(pkgs, PROJECT)
     expect(issues.filter(i => i.detail.includes('--output-logs'))).toHaveLength(0)
   })
+  test('root turbo script without warning filter is flagged', () => {
+    const pkgs = [entry('package.json', { scripts: { test: 'turbo test --output-logs=errors-only' } })]
+    const issues = checkScripts(pkgs, PROJECT)
+    expect(issues.some(i => i.detail.includes('workspace warning filter'))).toBe(true)
+  })
+  test('root turbo script with warning filter is not flagged', () => {
+    const pkgs = [
+      entry('package.json', {
+        scripts: {
+          test: `bash -c "turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)"`
+        }
+      })
+    ]
+    const issues = checkScripts(pkgs, PROJECT)
+    expect(issues.filter(i => i.detail.includes('workspace warning filter'))).toHaveLength(0)
+  })
   test('dev script with turbo is not flagged', () => {
     const pkgs = [entry('package.json', { scripts: { dev: 'turbo run dev' } })]
     const issues = checkScripts(pkgs, PROJECT)

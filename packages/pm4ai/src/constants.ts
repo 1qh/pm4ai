@@ -28,8 +28,12 @@ const EXPECTED = {
   tsconfigExtends: `${LINTMAX_PKG}/tsconfig`,
   vercelInstall: 'bun i'
 }
+const TURBO_FLAG = '--output-logs=errors-only'
+const TURBO_WARNING_FILTER = 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function'
+const filterTurboWorkspaceWarning = (cmd: string): string =>
+  `bash -c "${cmd} 2> >(grep -vE '${TURBO_WARNING_FILTER}' >&2)"`
 const DEFAULT_SCRIPTS = {
-  build: `bash -c "turbo build --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)"`,
+  build: filterTurboWorkspaceWarning(`turbo build ${TURBO_FLAG}`),
   check: `${LINTMAX_PKG} check`,
   clean: 'sh clean.sh',
   fix: `${LINTMAX_PKG} fix`,
@@ -67,7 +71,6 @@ html > body[data-scroll-locked] {
   margin-right: 0px !important;
 }`
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
-const TURBO_FLAG = '--output-logs=errors-only'
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
 interface ConditionalFile {
   extendable?: boolean
@@ -94,6 +97,7 @@ export {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  filterTurboWorkspaceWarning,
   FORBIDDEN_LOCKFILES,
   FORBIDDEN_PM_PREFIXES,
   FUMADOCS_DARK_CSS,
@@ -109,6 +113,7 @@ export {
   SWIFTBAR_FONT,
   TSDOWN_BASE,
   TURBO_FLAG,
+  TURBO_WARNING_FILTER,
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 }
