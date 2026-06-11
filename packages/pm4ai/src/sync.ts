@@ -98,6 +98,10 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   }
   return issues
 }
+const isFixScriptCanonical = (script: string | undefined, fallback: string): boolean => {
+  const value = script ?? ''
+  return value.endsWith(fallback) || value.endsWith('cli.js fix') || value.endsWith('cli.mjs fix')
+}
 const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   for (const [name, value] of Object.entries(DEFAULT_SCRIPTS))
@@ -127,8 +131,6 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
   }
   return changed
 }
-const isFixScriptCanonical = (script: string | undefined, fallback: string): boolean =>
-  Boolean(script?.endsWith(fallback) || script?.endsWith('cli.js fix') || script?.endsWith('cli.mjs fix'))
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   const allDeps = { ...pkg.dependencies, ...devDeps }
