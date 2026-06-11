@@ -4,6 +4,7 @@ import { discover } from './discover.js'
 
 const AHEAD_RE = /\+(?<n>\d+)/u
 const BEHIND_RE = /-(?<n>\d+)/u
+type ListWriter = (row: string) => void
 const gitStatus = async (path: string): Promise<{ ahead: number; behind: number; dirty: boolean }> => {
   const sb = await $`git -C ${path} status -sb --porcelain=v2 --branch`.quiet().nothrow()
   const out = sb.stdout.toString()
@@ -16,8 +17,12 @@ const gitStatus = async (path: string): Promise<{ ahead: number; behind: number;
     dirty
   }
 }
-const list = async (): Promise<void> => {
-  const { consumers } = await discover()
+const list = async (
+  excludes: readonly string[] = [],
+  searchRoot?: string,
+  write: ListWriter = row => console.log(row)
+): Promise<void> => {
+  const { consumers } = await discover(searchRoot, excludes)
   const rows = await Promise.all(
     consumers.map(async c => {
       const g = await gitStatus(c.path)
@@ -27,6 +32,6 @@ const list = async (): Promise<void> => {
       return `${c.path}\t${flags}`
     })
   )
-  for (const r of rows.toSorted()) console.log(r)
+  for (const r of rows.toSorted()) write(r)
 }
 export { list }

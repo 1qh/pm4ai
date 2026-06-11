@@ -48,6 +48,6 @@ else if (command === 'init') {
     cleanup()
   } else if (command === 'list') {
     const { list } = await import('./list.js')
-    await list()
+    await list(excludes)
   } else console.log(guide)
 }
