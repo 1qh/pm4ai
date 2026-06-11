@@ -44,6 +44,17 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
+const frontmatterTitle = (content: string): string | undefined => {
+  if (!content.startsWith('---')) return undefined
+  const endIdx = content.indexOf('---', 3)
+  if (endIdx === -1) return undefined
+  return content.slice(3, endIdx).match(/^title:\s*(.+)$/mu)?.[1]?.trim()
+}
+const ruleBlock = (content: string): string => {
+  const title = frontmatterTitle(content)
+  const body = stripFrontmatter(content)
+  return title ? `# ${title}\n\n${body}` : body
+}
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const managed = await resolveManagedFiles(projectPath)
   const results = await Promise.all(
@@ -88,7 +99,7 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   }
   const inferred = await inferRules(projectPath, rulesDir)
   const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
-  const blocks = contents.map(c => stripFrontmatter(c))
+  const blocks = contents.map(c => ruleBlock(c))
   const generated = await canonicaliseViaLintmax(`${blocks.join('\n\n---\n\n')}\n`, CLAUDE_MD, projectPath)
   const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
