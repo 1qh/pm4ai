@@ -158,6 +158,10 @@ describe('checkRootScripts', () => {
     const issues = checkRootScripts({ scripts: { fix: 'bun run build && lintmax fix' } })
     expect(issues.filter(i => i.detail.includes('fix'))).toHaveLength(0)
   })
+  test('fix ending with cli.mjs fix is not flagged', () => {
+    const issues = checkRootScripts({ scripts: { fix: 'bun packages/lintmax/dist/cli.mjs fix' } })
+    expect(issues.filter(i => i.detail.includes('fix'))).toHaveLength(0)
+  })
 })
 describe('checkRootWorkspacesAndDevDeps', () => {
   test('missing workspaces is flagged', () => {

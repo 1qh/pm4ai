@@ -107,7 +107,7 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
         changed = true
         issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
       }
-    } else if (name === 'fix' ? !scripts.fix?.endsWith(value) : scripts[name] !== value) {
+    } else if (name === 'fix' ? !isFixScriptCanonical(scripts.fix, value) : scripts[name] !== value) {
       const action = scripts[name] ? 'updated' : 'added'
       scripts[name] = value
       changed = true
@@ -127,6 +127,8 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
   }
   return changed
 }
+const isFixScriptCanonical = (script: string | undefined, fallback: string): boolean =>
+  Boolean(script?.endsWith(fallback) || script?.endsWith('cli.js fix') || script?.endsWith('cli.mjs fix'))
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   const allDeps = { ...pkg.dependencies, ...devDeps }

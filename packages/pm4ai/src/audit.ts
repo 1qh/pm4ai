@@ -140,7 +140,12 @@ const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
   if (!scripts.build?.includes('turbo')) issues.push({ detail: 'root "build" should use turbo', type: 'drift' })
   if (scripts.check && !scripts.check.includes(LINTMAX_PKG) && !scripts.check.includes('cli.js check'))
     issues.push({ detail: 'root "check" should include "lintmax check"', type: 'drift' })
-  if (scripts.fix && !scripts.fix.endsWith(`${LINTMAX_PKG} fix`) && !scripts.fix.endsWith('cli.js fix'))
+  if (
+    scripts.fix &&
+    !scripts.fix.endsWith(`${LINTMAX_PKG} fix`) &&
+    !scripts.fix.endsWith('cli.js fix') &&
+    !scripts.fix.endsWith('cli.mjs fix')
+  )
     issues.push({ detail: 'root "fix" should end with "lintmax fix"', type: 'drift' })
   return issues
 }
