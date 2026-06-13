@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/nursery/noUndeclaredClasses: standard tailwind v4 utilities biome cannot resolve */
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { cn } from '@a/ui'

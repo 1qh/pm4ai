@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth, no-continue */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
-/** biome-ignore-all lint/nursery/noContinue: loop control flow */
 import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -131,18 +130,17 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
       changed = true
       issues.push({ detail: `${action} ${name} script`, type: 'synced' })
     }
-  for (const [name, cmd] of Object.entries(scripts)) {
+  for (const [name, cmd] of Object.entries(scripts))
     if (
-      name.startsWith('dev') ||
-      !cmd.includes('turbo') ||
-      !cmd.includes(TURBO_FLAG) ||
-      cmd.includes(TURBO_WARNING_FILTER)
-    )
-      continue
-    scripts[name] = filterTurboWorkspaceWarning(cmd)
-    changed = true
-    issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
-  }
+      !name.startsWith('dev') &&
+      cmd.includes('turbo') &&
+      cmd.includes(TURBO_FLAG) &&
+      !cmd.includes(TURBO_WARNING_FILTER)
+    ) {
+      scripts[name] = filterTurboWorkspaceWarning(cmd)
+      changed = true
+      issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
+    }
   return changed
 }
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
@@ -186,15 +184,14 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
       return depPkg ? { depName, transitive: depPkg.dependencies ?? {} } : undefined
     })
   )
-  for (const dep of depPkgs) {
-    if (!dep) continue
-    for (const other of allRootDepNames)
-      if (other !== dep.depName && dep.transitive[other] && devDeps[other] && !required.has(other)) {
-        delete devDeps[other]
-        changed = true
-        issues.push({ detail: `removed redundant "${other}" (provided by ${dep.depName})`, type: 'synced' })
-      }
-  }
+  for (const dep of depPkgs)
+    if (dep)
+      for (const other of allRootDepNames)
+        if (other !== dep.depName && dep.transitive[other] && devDeps[other] && !required.has(other)) {
+          delete devDeps[other]
+          changed = true
+          issues.push({ detail: `removed redundant "${other}" (provided by ${dep.depName})`, type: 'synced' })
+        }
   if (!pkg.packageManager) {
     const r = await $`bun --version`.quiet().nothrow()
     const bunVersion = r.stdout.toString().trim()
@@ -281,14 +278,14 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
   if (exports)
     for (const [key, val] of Object.entries(exports)) {
       const importPath = typeof val === 'string' ? val : val.import
-      if (!importPath) continue
-      if (importPath.endsWith('.css')) {
-        const srcCss = importPath.replace(distPrefixRe, 'src/')
-        if (existsSync(join(pkgDir, srcCss))) copy.push(srcCss)
-      } else {
-        const src = resolveExportSource(key, importPath, pkgDir)
-        if (src) entry.push(src)
-      }
+      if (importPath)
+        if (importPath.endsWith('.css')) {
+          const srcCss = importPath.replace(distPrefixRe, 'src/')
+          if (existsSync(join(pkgDir, srcCss))) copy.push(srcCss)
+        } else {
+          const src = resolveExportSource(key, importPath, pkgDir)
+          if (src) entry.push(src)
+        }
     }
   if (pkg.bin) {
     const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
@@ -514,14 +511,15 @@ const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<
       let dedupChanged = false
       for (const field of DEP_FIELDS) {
         const deps = entry.pkg[field]
-        if (!deps) continue
-        for (const [name, version] of Object.entries(deps))
-          if (!version.startsWith('workspace:') && providedByWs.has(name)) {
-            delete deps[name]
-            dedupChanged = true
-            issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
-          }
-        if (Object.keys(deps).length === 0) delete entry.pkg[field]
+        if (deps) {
+          for (const [name, version] of Object.entries(deps))
+            if (!version.startsWith('workspace:') && providedByWs.has(name)) {
+              delete deps[name]
+              dedupChanged = true
+              issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
+            }
+          if (Object.keys(deps).length === 0) delete entry.pkg[field]
+        }
       }
       if (dedupChanged) writes.push(writeJson(entry.path, entry.pkg))
     }

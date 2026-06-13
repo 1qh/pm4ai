@@ -34,11 +34,16 @@ const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   const url = r.stdout.toString().trim()
   return url.includes(`${GH_ORG}/cnsync`)
 }
-const cloneIfMissing = async (repo: string, dest: string) => {
-  if (existsSync(dest)) return dest
-  debug('cloning', repo, 'to', dest)
-  mkdirSync(dirname(dest), { recursive: true })
-  await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
+const ensureSourceRepo = async (repo: string, dest: string) => {
+  if (!existsSync(dest)) {
+    debug('cloning', repo, 'to', dest)
+    mkdirSync(dirname(dest), { recursive: true })
+    await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
+    return dest
+  }
+  await $`git fetch --quiet --prune`.cwd(dest).quiet().nothrow()
+  await $`git reset --hard @{u}`.cwd(dest).quiet().nothrow()
+  await $`git clean -fd`.cwd(dest).quiet().nothrow()
   return dest
 }
 const rgExcludes = [
@@ -100,12 +105,12 @@ const discover = async (
   const reposDir = join(home, CONFIG_DIR, 'repos')
   if (!self) {
     const dest = join(reposDir, PKG_NAME)
-    await cloneIfMissing(PKG_NAME, dest)
+    await ensureSourceRepo(PKG_NAME, dest)
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dest }
   }
   if (!cnsync) {
     const dest = join(reposDir, 'cnsync')
-    await cloneIfMissing('cnsync', dest)
+    await ensureSourceRepo('cnsync', dest)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
   }
   const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))
@@ -118,8 +123,14 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
   const cnsyncDir = join(reposDir, 'cnsync')
   let self: Project | undefined
   let cnsync: Project | undefined
-  if (existsSync(selfDir)) self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
-  if (existsSync(cnsyncDir)) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
+  if (existsSync(selfDir)) {
+    await ensureSourceRepo(PKG_NAME, selfDir)
+    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
+  }
+  if (existsSync(cnsyncDir)) {
+    await ensureSourceRepo('cnsync', cnsyncDir)
+    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
+  }
   if (!(self && cnsync)) {
     const result =
       await $`rg -l '"${PKG_NAME}"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**' --max-count 1`
@@ -149,11 +160,11 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
     }
   }
   if (!self) {
-    await cloneIfMissing(PKG_NAME, selfDir)
+    await ensureSourceRepo(PKG_NAME, selfDir)
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
   }
   if (!cnsync) {
-    await cloneIfMissing('cnsync', cnsyncDir)
+    await ensureSourceRepo('cnsync', cnsyncDir)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
   }
   return { cnsync, self }

@@ -1,6 +1,5 @@
 /* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: SSE handler */
-/** biome-ignore-all lint/nursery/noContinue: SSE parsing */
 /** biome-ignore-all lint/nursery/useNamedCaptureGroup: regex */
 /** biome-ignore-all lint/performance/noAwaitInLoops: SSE stream */
 /** biome-ignore-all lint/performance/useTopLevelRegex: effect */
@@ -114,18 +113,19 @@ const Dashboard = () => {
             const eventMatch = /^event: (.+)$/mu.exec(chunk)
             const dataMatch = /^data: (.*)$/mu.exec(chunk)
             if (eventMatch?.[1] === 'done') return
-            if (eventMatch?.[1] !== 'message' || !dataMatch?.[1]) continue
-            try {
-              const raw = JSON.parse(dataMatch[1]) as { json: unknown }
-              const parsed = watchEventSchema.safeParse(raw.json)
-              if (!parsed.success) continue
-              const event = parsed.data
-              dispatch({ event, type: 'event' })
-              setEventLog(prev => [event, ...prev].slice(0, 200))
-              if (event.step === 'done') queryClient.invalidateQueries({ queryKey: ['projects'] }).catch(() => {})
-            } catch {
-              /* Malformed SSE */
-            }
+            if (eventMatch?.[1] === 'message' && dataMatch?.[1])
+              try {
+                const raw = JSON.parse(dataMatch[1]) as { json: unknown }
+                const parsed = watchEventSchema.safeParse(raw.json)
+                if (parsed.success) {
+                  const event = parsed.data
+                  dispatch({ event, type: 'event' })
+                  setEventLog(prev => [event, ...prev].slice(0, 200))
+                  if (event.step === 'done') queryClient.invalidateQueries({ queryKey: ['projects'] }).catch(() => {})
+                }
+              } catch {
+                /* Malformed SSE */
+              }
           }
         }
       } catch {

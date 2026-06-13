@@ -1,6 +1,6 @@
 /* eslint-disable no-await-in-loop, @typescript-eslint/no-loop-func, @typescript-eslint/require-await */
 /** biome-ignore-all lint/performance/noAwaitInLoops: streaming by design */
-/** biome-ignore-all lint/nursery/noUnnecessaryConditions: queue check */
+/** biome-ignore-all lint/suspicious/noUnnecessaryConditions: infinite async generator queue check */
 /** biome-ignore-all lint/suspicious/useAwait: async generator */
 /** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */
 import type { WatchEvent } from 'pm4ai'

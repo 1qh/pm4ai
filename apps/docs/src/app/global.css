@@ -23,6 +23,7 @@
   --color-destructive: var(--color-fd-primary);
   --color-destructive-foreground: var(--color-fd-primary-foreground);
 }
+/* biome-ignore lint/nursery/noUnusedClasses: applied at runtime by next-themes */
 .dark {
   --color-fd-background: hsl(0, 0%, 0%);
   --color-fd-card: hsl(0, 0%, 5%);
@@ -31,6 +32,7 @@
   --color-fd-secondary: hsl(0, 0%, 8%);
   --color-fd-border: hsla(0, 0%, 30%, 30%);
 }
+/* biome-ignore lint/nursery/noUnusedClasses: applied via font variable setup to rendered pre/code */
 .font-mono,
 pre,
 code {
