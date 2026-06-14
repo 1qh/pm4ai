@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth, no-continue */
+/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 import { $, file, write } from 'bun'
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
