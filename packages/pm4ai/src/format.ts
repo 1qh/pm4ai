@@ -48,9 +48,7 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
   if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
   else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
   const f = SWIFTBAR_FONT
-  lines.push('---')
-  lines.push(`${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`)
-  lines.push('---')
+  lines.push('---', `${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`, '---')
   const maxName = Math.max(...[...allIssues.keys()].map(p => projectName(p).length))
   const allIssueLines: string[] = []
   for (const [path, issues] of allIssues) {
@@ -70,8 +68,10 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
         allIssueLines.push(`${name.trim()}: ${issue.detail}`)
       }
     if (ghUrl) lines.push(`--GitHub | href=${ghUrl}`)
-    lines.push(`--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`)
-    lines.push(`--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`)
+    lines.push(
+      `--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`,
+      `--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`
+    )
     if (realIssues.length > 0) {
       const issueText = realIssues.map(i => shellEscape(i.detail)).join(String.raw`\n`)
       lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
@@ -84,8 +84,7 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
       `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
     )
   }
-  lines.push('---')
-  lines.push('Refresh | refresh=true')
+  lines.push('---', 'Refresh | refresh=true')
   return lines.join('\n')
 }
 export { formatIssues, formatSwiftBar, getUiSyncTime, hasRealIssues, shellEscape, timeAgo }

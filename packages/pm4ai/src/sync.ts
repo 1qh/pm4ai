@@ -309,9 +309,11 @@ const serializeTsdownConfig = (config: TsdownConfig): string => {
     `  dts: ${TSDOWN_BASE.dts},`
   ]
   if (config.copy) fields.push(`  copy: [${config.copy.map(c => `'${c}'`).join(', ')}],`)
-  fields.push(`  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`)
-  fields.push(`  format: '${TSDOWN_BASE.format}',`)
-  fields.push(`  outDir: '${TSDOWN_BASE.outDir}'`)
+  fields.push(
+    `  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`,
+    `  format: '${TSDOWN_BASE.format}',`,
+    `  outDir: '${TSDOWN_BASE.outDir}'`
+  )
   return `import { defineConfig } from 'tsdown'\n\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
 }
 const syncReadmeSymlink = ({

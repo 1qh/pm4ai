@@ -229,20 +229,21 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     }
   }
   if (rootPkg) {
-    issues.push(...checkRootScripts(rootPkg))
-    issues.push(...checkRootWorkspacesAndDevDeps(rootPkg))
+    issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
     const selfPkgPath = join(import.meta.dirname, '..', '..', '..', 'package.json')
     const selfPkg = existsSync(selfPkgPath)
       ? (JSON.parse(readFileSync(selfPkgPath, 'utf8')) as PackageJson)
       : ({} as PackageJson)
     issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
-  issues.push(...checkPackageConventions(pkgs, projectPath))
-  issues.push(...checkDuplicates(pkgs, projectPath))
-  issues.push(...checkScripts(pkgs, projectPath))
-  issues.push(...checkPublishedPkgConventions(pkgs, projectPath))
-  issues.push(...checkAppPackages(pkgs, projectPath))
-  issues.push(...checkSubPkgScripts(pkgs, projectPath))
+  issues.push(
+    ...checkPackageConventions(pkgs, projectPath),
+    ...checkDuplicates(pkgs, projectPath),
+    ...checkScripts(pkgs, projectPath),
+    ...checkPublishedPkgConventions(pkgs, projectPath),
+    ...checkAppPackages(pkgs, projectPath),
+    ...checkSubPkgScripts(pkgs, projectPath)
+  )
   const publishedPkgs = pkgs.filter(p => isPublishedPkg(p.pkg))
   await Promise.all(
     publishedPkgs.map(async p => {
