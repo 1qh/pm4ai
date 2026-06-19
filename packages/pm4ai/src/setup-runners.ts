@@ -23,8 +23,8 @@ const ensureTarball = async (base: string): Promise<string> => {
   return tarball
 }
 const registerRunner = async (repo: string): Promise<void> => {
-  const safe = repo.replaceAll('/', '-')
-  const base = join(homedir(), `actions-runner-${safe}`)
+  const safe = repo.split('/').pop() ?? repo.replaceAll('/', '-')
+  const base = join(homedir(), '.actions-runners', safe, '1')
   mkdirSync(base, { recursive: true })
   const tarball = await ensureTarball(base)
   if (!existsSync(join(base, 'config.sh'))) await $`tar xzf ${tarball} -C ${base}`.nothrow()
