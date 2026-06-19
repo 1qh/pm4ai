@@ -1,7 +1,7 @@
 *.pem
 *.tsbuildinfo
 .cache/
-.claude/
+.claude/worktrees/
 .DS_Store
 .env
 .env.local
