@@ -7,6 +7,7 @@ import {
   checkAppTsconfigs,
   checkBannedImports,
   checkCi,
+  checkCiRunner,
   checkConfigs,
   checkConvexSelfHosted,
   checkDepsLatest,
@@ -73,7 +74,11 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       audit(project.path)
     ])
     for (const r of results) issues.push(...r)
-    issues.push(...(await checkCi(project.path)), ...(await checkVercel(project.path)))
+    issues.push(
+      ...(await checkCi(project.path)),
+      ...(await checkCiRunner(project.path)),
+      ...(await checkVercel(project.path))
+    )
     allIssues.set(project.path, issues)
     const hasFails = issues.length > 0
     emitToSocket(

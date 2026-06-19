@@ -93,6 +93,28 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
   if (conclusion === 'success') return [issue('info', `passed ${time ?? ''}`)]
   return []
 }
+const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
+  const repo = await getGhRepo(projectPath)
+  if (!repo) return []
+  const issues: Issue[] = []
+  const runners = await $`gh api repos/${repo}/actions/runners --jq '[.runners[]|select(.status=="online")]|length'`
+    .quiet()
+    .nothrow()
+  if (runners.exitCode !== 0) {
+    debug('command failed:', `gh api repos/${repo}/actions/runners`)
+    return []
+  }
+  if (Number(runners.stdout.toString().trim()) < 1) issues.push(issue('ci', 'no online self-hosted runner'))
+  const vars = await $`gh api repos/${repo}/actions/variables --jq '.variables[].name'`.quiet().nothrow()
+  if (vars.exitCode !== 0) {
+    debug('command failed:', `gh api repos/${repo}/actions/variables`)
+    return issues
+  }
+  const names = new Set(vars.stdout.toString().trim().split('\n').filter(Boolean))
+  if (!names.has('RUNNER_LABEL')) issues.push(issue('ci', 'missing RUNNER_LABEL var'))
+  if (!names.has('NTFY_TOPIC')) issues.push(issue('ci', 'missing NTFY_TOPIC var'))
+  return issues
+}
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const dirtyCheck = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
   if (!dirtyCheck.stdout.toString().trim()) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
@@ -544,6 +566,7 @@ export {
   checkAppTsconfigs,
   checkBannedImports,
   checkCi,
+  checkCiRunner,
   checkConfigs,
   checkConvexSelfHosted,
   checkDepsLatest,

@@ -79,6 +79,7 @@ interface ConditionalFile {
 }
 const CONDITIONAL_VERBATIM_FILES: ConditionalFile[] = [
   { extendable: true, path: '.github/workflows/ci.yml', when: 'github' },
+  { path: '.github/scripts/prune-ci-runs.sh', when: 'github' },
   { path: 'postcss.config.ts', when: 'tailwind' },
   { path: 'apps/docs/src/app/global.css', when: 'fumadocs' },
   { path: 'tools/prune-versions.ts', when: 'publishable' }

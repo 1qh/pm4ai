@@ -11,6 +11,7 @@ commands:
   pm4ai ignores    rank lint suppressions by frequency across projects
   pm4ai dashboard  local web dashboard at http://localhost:4200
   pm4ai setup      install swiftbar menubar plugin + launchd daily auto-run
+  pm4ai setup-runners  register self-hosted CI runners + set RUNNER_LABEL/NTFY_TOPIC vars
 flags:
   --all            force global scan across all projects
   --swiftbar       output in SwiftBar menubar format

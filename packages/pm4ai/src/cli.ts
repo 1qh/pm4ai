@@ -49,5 +49,8 @@ else if (command === 'init') {
   } else if (command === 'list') {
     const { list } = await import('./list.js')
     await list(excludes)
+  } else if (command === 'setup-runners') {
+    const { setupRunners } = await import('./setup-runners.js')
+    await setupRunners(excludes)
   } else console.log(guide)
 }
