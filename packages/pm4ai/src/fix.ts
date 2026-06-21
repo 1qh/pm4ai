@@ -24,6 +24,10 @@ import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 
+const hasHandwrittenTsx = async (projectPath: string): Promise<boolean> => {
+  const r = await $`rg --files -g ${'*.tsx'} -g ${`!${READONLY_UI}/**`}`.cwd(projectPath).quiet().nothrow()
+  return r.stdout.toString().trim().length > 0
+}
 const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -174,7 +178,8 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         ...fumadocsGithubIssues,
         ...subPkgIssues
       )
-      if (existsSync(join(project.path, READONLY_UI))) issues.push(...syncUi(cnsync.path, project.path))
+      if (existsSync(join(project.path, READONLY_UI)) || (await hasHandwrittenTsx(project.path)))
+        issues.push(...syncUi(cnsync.path, project.path))
       const syncCount = issues.filter(i => i.type === 'synced').length
       emitToSocket(
         createEvent({
