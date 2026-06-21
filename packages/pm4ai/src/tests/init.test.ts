@@ -10,7 +10,7 @@ const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
 const providerJsxRe = /<\w+Provider/u
 const readPkg = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
-afterAll(() => rmSync(TEST_DIR, { force: true, recursive: true }))
+afterAll(() => rmSync(TEST_DIR, { force: true, recursive: true }), 60_000)
 describe('init scaffold', () => {
   test('creates project', async () => {
     process.chdir(tmpdir())
