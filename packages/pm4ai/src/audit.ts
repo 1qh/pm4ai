@@ -245,17 +245,36 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     ...checkSubPkgScripts(pkgs, projectPath)
   )
   const publishedPkgs = pkgs.filter(p => isPublishedPkg(p.pkg))
+  const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000
   await Promise.all(
     publishedPkgs.map(async p => {
       const r = await $`bun pm view ${p.pkg.name} versions --json`.quiet().nothrow()
       if (r.exitCode !== 0) return
+      let versions: string[] = []
       try {
         const parsed: unknown = JSON.parse(r.stdout.toString())
-        if (Array.isArray(parsed) && parsed.length > 1)
-          issues.push({ detail: `${p.pkg.name} has ${parsed.length} versions published, run cleanup`, type: 'drift' })
+        if (Array.isArray(parsed)) versions = parsed as string[]
       } catch {
-        /* Noop */
+        return
       }
+      if (versions.length <= 1) return
+      const t = await $`npm view ${p.pkg.name} time --json`.quiet().nothrow()
+      let times: Record<string, string> = {}
+      if (t.exitCode === 0)
+        try {
+          times = JSON.parse(t.stdout.toString()) as Record<string, string>
+        } catch {
+          times = {}
+        }
+      const now = Date.now()
+      const stale = versions
+        .slice(0, -1)
+        .filter(v => typeof times[v] === 'string' && now - Date.parse(times[v]) > UNPUBLISH_WINDOW_MS)
+      const detail =
+        stale.length === 0
+          ? `${p.pkg.name} has ${versions.length} versions published, run cleanup`
+          : `${p.pkg.name} has ${versions.length} versions, ${stale.length} unpublishable (>72h) — npm blocks unpublish, deprecate instead`
+      issues.push({ detail, type: 'drift' })
     })
   )
   return issues

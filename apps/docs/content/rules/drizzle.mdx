@@ -8,7 +8,7 @@ Typed query builders are the contract; raw SQL erases it.
 
 ## MUST
 
-- Express every query through Drizzle's typed builder (`db.select()/insert()/update()`). Why: a typo or schema drift fails at compile time, not in production.
+- Express every query through Drizzle’s typed builder (`db.select()/insert()/update()`). Why: a typo or schema drift fails at compile time, not in production.
 - Drop to raw `sql\`\`` ONLY for constructs the builder cannot express (CASE, window funcs, PG-specific operators), never for ordinary CRUD. Why: each raw fragment is an untyped hole the next schema change silently breaks.
 - Ship schema changes as committed migrations, never `db push` against a real database. Why: push has no review, no rollback, and diverges environments.
 
