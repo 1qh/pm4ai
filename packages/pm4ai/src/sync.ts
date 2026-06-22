@@ -563,7 +563,10 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   if (existsSync(pkgPath)) {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, unknown>
     const { workspaces } = pkg
-    if (Array.isArray(workspaces) && !workspaces.includes(READONLY_UI)) {
+    if (
+      Array.isArray(workspaces) &&
+      !workspaces.some(w => w === READONLY_UI || w === 'readonly/*' || w === 'readonly/**')
+    ) {
       workspaces.push(READONLY_UI)
       writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
       issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
