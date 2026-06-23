@@ -88,18 +88,26 @@ const providerImportRe = /from\s+['"].*providers/u
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)
   if (!repo) return []
-  const result =
-    await $`gh run list --repo ${repo} --limit 1 --json conclusion,createdAt --jq '.[0] | "\(.conclusion) \(.createdAt)"'`
-      .quiet()
-      .nothrow()
+  const result = await $`gh run list --repo ${repo} --limit 100 --json conclusion,status,createdAt`.quiet().nothrow()
   if (result.exitCode !== 0) {
     debug('command failed:', `gh run list --repo ${repo}`)
     return []
   }
-  const [conclusion, time] = result.stdout.toString().trim().split(' ')
-  if (conclusion === 'failure') return [issue('ci', `failed ${time ?? ''}`)]
-  if (conclusion === 'success') return [issue('info', `passed ${time ?? ''}`)]
-  return []
+  const runs = JSON.parse(result.stdout.toString().trim() || '[]') as {
+    conclusion: null | string
+    createdAt: string
+    status: string
+  }[]
+  const issues: Issue[] = []
+  const latest = runs.at(0)
+  if (!latest) issues.push(issue('ci', 'CI: no runs'))
+  else if (latest.status !== 'completed') issues.push(issue('info', `CI ${latest.status} ${latest.createdAt}`))
+  else if (latest.conclusion === 'success') issues.push(issue('info', `CI passed ${latest.createdAt}`))
+  else issues.push(issue('ci', `CI ${latest.conclusion ?? 'incomplete'} ${latest.createdAt}`))
+  if (runs.length === 1) issues.push(issue('info', 'CI history clean (1 run)'))
+  else if (runs.length > 1)
+    issues.push(issue('ci', `CI history not clean: ${runs.length}${runs.length >= 100 ? '+' : ''} runs`))
+  return issues
 }
 const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)

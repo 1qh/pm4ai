@@ -4,8 +4,15 @@ import type { Issue } from '../types.js'
 import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
 
 describe('formatIssues', () => {
-  test('empty issues returns project path only', () => {
-    expect(formatIssues('/tmp/test', [])).toBe('/tmp/test')
+  test('no issues prints ok (ok-on-success)', () => {
+    expect(formatIssues('/tmp/test', [])).toBe('/tmp/test\n  ok')
+  })
+  test('info-only issues print ok (success info is not verbose)', () => {
+    const issues: Issue[] = [
+      { detail: 'CI passed 2024-01-01', type: 'info' },
+      { detail: 'CI history clean (1 run)', type: 'info' }
+    ]
+    expect(formatIssues('/tmp/test', issues)).toBe('/tmp/test\n  ok')
   })
   test('with issues returns formatted output', () => {
     const issues: Issue[] = [
