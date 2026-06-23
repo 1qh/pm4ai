@@ -1,5 +1,4 @@
-import { $ } from 'bun'
-import { existsSync, readFileSync } from 'node:fs'
+import { $, file } from 'bun'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import {
@@ -168,25 +167,27 @@ const checkTrustedDeps = (rootPkg: PackageJson, requiredTrusted?: string[]): Iss
     if (!trusted.includes(dep)) issues.push({ detail: `root missing "${dep}" in trustedDependencies`, type: 'missing' })
   return issues
 }
-const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
+const checkPublishedPkgConventions = async (pkgs: PkgEntry[], projectPath: string): Promise<Issue[]> => {
   const published = pkgs.filter(p => isPublishedPkg(p.pkg))
-  for (const { path: pkgPath, pkg } of published) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    if (!pkg.scripts?.postpublish)
-      issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
-    if (pkg.scripts?.build && pkg.scripts.build !== 'tsdown')
-      issues.push({ detail: `${shortPath} build must be exactly "tsdown"`, type: 'drift' })
-    if (pkg.scripts?.build && pkg.scripts.prepublishOnly !== 'bun run build')
-      issues.push({
-        detail: `${shortPath} missing "prepublishOnly": "bun run build" — stale dist will ship`,
-        type: 'drift'
-      })
-    // oxlint-disable-next-line node/no-sync
-    const hasTsdown = existsSync(join(dirname(pkgPath), 'tsdown.config.ts'))
-    if (!hasTsdown) issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
-  }
-  return issues
+  const nested = await Promise.all(
+    published.map(async ({ path: pkgPath, pkg }) => {
+      const issues: Issue[] = []
+      const shortPath = pkgPath.replace(`${projectPath}/`, '')
+      if (!pkg.scripts?.postpublish)
+        issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
+      if (pkg.scripts?.build && pkg.scripts.build !== 'tsdown')
+        issues.push({ detail: `${shortPath} build must be exactly "tsdown"`, type: 'drift' })
+      if (pkg.scripts?.build && pkg.scripts.prepublishOnly !== 'bun run build')
+        issues.push({
+          detail: `${shortPath} missing "prepublishOnly": "bun run build" — stale dist will ship`,
+          type: 'drift'
+        })
+      const hasTsdown = await file(join(dirname(pkgPath), 'tsdown.config.ts')).exists()
+      if (!hasTsdown) issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
+      return issues
+    })
+  )
+  return nested.flat()
 }
 const checkAppPackages = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
@@ -231,19 +232,16 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   }
   if (rootPkg) {
     issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
-    const selfPkgPath = join(import.meta.dirname, '..', '..', '..', 'package.json')
-    // oxlint-disable-next-line node/no-sync
-    const selfPkgExists = existsSync(selfPkgPath)
-    // oxlint-disable-next-line node/no-sync
-    const selfPkgRaw = selfPkgExists ? readFileSync(selfPkgPath, 'utf8') : null
-    const selfPkg = selfPkgRaw === null ? ({} as PackageJson) : (JSON.parse(selfPkgRaw) as PackageJson)
+    const selfPkgFile = file(join(import.meta.dirname, '..', '..', '..', 'package.json'))
+    const selfPkgExists = await selfPkgFile.exists()
+    const selfPkg = selfPkgExists ? ((await selfPkgFile.json()) as PackageJson) : ({} as PackageJson)
     issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
   issues.push(
     ...checkPackageConventions(pkgs, projectPath),
     ...checkDuplicates(pkgs, projectPath),
     ...checkScripts(pkgs, projectPath),
-    ...checkPublishedPkgConventions(pkgs, projectPath),
+    ...(await checkPublishedPkgConventions(pkgs, projectPath)),
     ...checkAppPackages(pkgs, projectPath),
     ...checkSubPkgScripts(pkgs, projectPath)
   )

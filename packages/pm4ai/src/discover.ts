@@ -1,5 +1,5 @@
 import { $, file } from 'bun'
-import { existsSync, mkdirSync } from 'node:fs'
+import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { CONFIG_DIR, GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
@@ -11,8 +11,14 @@ interface Project {
   name: string
   path: string
 }
-// oxlint-disable-next-line node/no-sync
-const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
+const dirExists = async (p: string): Promise<boolean> => {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
+const hasDirInside = async (dir: string, sub: string): Promise<boolean> => dirExists(join(dir, sub))
 const hasLintmaxDep = async (dir: string): Promise<boolean> => {
   const pkgFile = file(join(dir, 'package.json'))
   if (!(await pkgFile.exists())) return false
@@ -30,18 +36,16 @@ const hasLintmaxDep = async (dir: string): Promise<boolean> => {
   }
 }
 const isCnsyncRepo = async (dir: string): Promise<boolean> => {
-  if (!hasDirInside(dir, READONLY_UI)) return false
+  if (!(await hasDirInside(dir, READONLY_UI))) return false
   const r = await $`git remote get-url origin`.cwd(dir).quiet().nothrow()
   const url = r.stdout.toString().trim()
   return url.includes(`${GH_ORG}/cnsync`)
 }
 const ensureSourceRepo = async (repo: string, dest: string) => {
-  // oxlint-disable-next-line node/no-sync
-  const destExists = existsSync(dest)
+  const destExists = await dirExists(dest)
   if (!destExists) {
     debug('cloning', repo, 'to', dest)
-    // oxlint-disable-next-line node/no-sync
-    mkdirSync(dirname(dest), { recursive: true })
+    await mkdir(dirname(dest), { recursive: true })
     await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
     return dest
   }
@@ -127,14 +131,12 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
   const cnsyncDir = join(reposDir, 'cnsync')
   let self: Project | undefined
   let cnsync: Project | undefined
-  // oxlint-disable-next-line node/no-sync
-  const selfDirExists = existsSync(selfDir)
+  const selfDirExists = await dirExists(selfDir)
   if (selfDirExists) {
     await ensureSourceRepo(PKG_NAME, selfDir)
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
   }
-  // oxlint-disable-next-line node/no-sync
-  const cnsyncDirExists = existsSync(cnsyncDir)
+  const cnsyncDirExists = await dirExists(cnsyncDir)
   if (cnsyncDirExists) {
     await ensureSourceRepo('cnsync', cnsyncDir)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }

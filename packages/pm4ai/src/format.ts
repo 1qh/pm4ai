@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { SWIFTBAR_FONT } from './constants.js'
@@ -22,15 +22,18 @@ const timeAgo = (iso: string): string => {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
+const dirExists = async (p: string): Promise<boolean> => {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
 const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
-  // oxlint-disable-next-line node/no-sync
-  const uiDirs = allPaths.map(p => join(p, 'readonly', 'ui', 'src')).filter(d => existsSync(d))
-  if (uiDirs.length === 0) return '?'
-  const r = await $`git log -1 --format=%ci -- readonly/ui`
-    // oxlint-disable-next-line node/no-sync
-    .cwd(allPaths.find(p => existsSync(join(p, 'readonly', 'ui', 'src'))) ?? '')
-    .quiet()
-    .nothrow()
+  const presence = await Promise.all(allPaths.map(async p => dirExists(join(p, 'readonly', 'ui', 'src'))))
+  const firstWithUi = allPaths.find((_p, i) => presence[i])
+  if (firstWithUi === undefined) return '?'
+  const r = await $`git log -1 --format=%ci -- readonly/ui`.cwd(firstWithUi).quiet().nothrow()
   const out = r.stdout.toString().trim()
   return out ? timeAgo(new Date(out).toISOString()) : '?'
 }

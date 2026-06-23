@@ -45,7 +45,7 @@ else if (command === 'init') {
     await ignores(flags.has('--all'))
   } else if (command === 'cleanup') {
     const { cleanup } = await import('./cleanup.js')
-    cleanup()
+    await cleanup()
   } else if (command === 'list') {
     const { list } = await import('./list.js')
     await list(excludes)

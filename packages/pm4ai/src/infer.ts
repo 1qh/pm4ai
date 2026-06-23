@@ -1,4 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+/** biome-ignore-all lint/performance/noAwaitInLoops: ordered probe returns first match */
+import { file } from 'bun'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ALL_DEP_FIELDS } from './types.js'
 import { collectWorkspacePackages } from './utils.js'
@@ -14,13 +16,21 @@ const parseFrontmatter = (content: string): Record<string, string> => {
   }
   return fm
 }
-const getRulesDir = (): string | undefined => {
+const dirExists = async (dir: string): Promise<boolean> => {
+  try {
+    await readdir(dir)
+    return true
+  } catch {
+    return false
+  }
+}
+const getRulesDir = async (): Promise<string | undefined> => {
   const candidates = [
     join(import.meta.dir, '..', '..', '..', 'apps', 'web', 'content', 'rules'),
     join(import.meta.dir, '..', 'apps', 'web', 'content', 'rules')
   ]
-  // oxlint-disable-next-line node/no-sync
-  return candidates.find(c => existsSync(c))
+  // eslint-disable-next-line no-await-in-loop
+  for (const c of candidates) if (await dirExists(c)) return c
 }
 const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
   const deps = new Set<string>()
@@ -33,20 +43,17 @@ const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
   return deps
 }
 const inferRules = async (projectPath: string, rulesDir?: string): Promise<string[]> => {
-  const dir = rulesDir ?? getRulesDir()
-  // oxlint-disable-next-line node/no-sync
-  const dirExists = dir ? existsSync(dir) : false
-  if (!dirExists) return []
+  const dir = rulesDir ?? (await getRulesDir())
+  if (!(dir && (await dirExists(dir)))) return []
   const deps = await getAllDeps(projectPath)
-  const rules: string[] = []
-  // oxlint-disable-next-line node/no-sync
-  const mdxFiles = readdirSync(dir).filter(f => f.endsWith('.mdx'))
+  const mdxFiles = (await readdir(dir)).filter(f => f.endsWith('.mdx'))
   const indexFile = mdxFiles.find(f => f === 'index.mdx')
   const sorted = [...(indexFile ? [indexFile] : []), ...mdxFiles.filter(f => f !== 'index.mdx').toSorted()]
-  for (const mdxFile of sorted) {
-    // oxlint-disable-next-line node/no-sync
-    const content = readFileSync(join(dir, mdxFile), 'utf8')
-    const fm = parseFrontmatter(content)
+  const parsed = await Promise.all(
+    sorted.map(async mdxFile => ({ fm: parseFrontmatter(await file(join(dir, mdxFile)).text()), mdxFile }))
+  )
+  const rules: string[] = []
+  for (const { fm, mdxFile } of parsed) {
     const { infer } = fm
     if (infer && (infer === 'always' || deps.has(infer))) rules.push(mdxFile.replace('.mdx', ''))
   }

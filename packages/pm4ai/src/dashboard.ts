@@ -1,15 +1,22 @@
 /* eslint-disable no-console */
+import { write } from 'bun'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { discover } from './discover.js'
 
+const dirExists = async (p: string): Promise<boolean> => {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
 const dashboard = async () => {
   const { self } = await discover()
   const dashboardDir = join(self.path, 'apps', 'web')
-  // oxlint-disable-next-line node/no-sync
-  const dashboardExists = existsSync(dashboardDir)
+  const dashboardExists = await dirExists(dashboardDir)
   if (!dashboardExists) {
     console.log('dashboard app not found at', dashboardDir)
     console.log('run from pm4ai monorepo or ensure apps/web exists')
@@ -17,8 +24,7 @@ const dashboard = async () => {
   }
   const token = randomUUID()
   const tokenFile = join(dashboardDir, '.auth-token')
-  // oxlint-disable-next-line node/no-sync
-  writeFileSync(tokenFile, token)
+  await write(tokenFile, token)
   const url = `http://localhost:4200/auth/${token}`
   console.log(`dashboard: ${url}`)
   console.log('(token is one-time use — copy URL if port-forwarding)')
@@ -28,12 +34,9 @@ const dashboard = async () => {
   }, 2000)
   await new Promise<void>((resolve, reject) => {
     proc.on('close', code => {
-      try {
-        // oxlint-disable-next-line node/no-sync
-        unlinkSync(tokenFile)
-      } catch {
+      unlink(tokenFile).catch(() => {
         /* Already removed */
-      }
+      })
       if (code === 0) resolve()
       else reject(new Error(`dashboard exited with code ${code}`))
     })

@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
+/** biome-ignore-all lint/performance/noAwaitInLoops: ordered fs existence probes return first match */
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { access, cp, mkdir, readlink, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
@@ -35,6 +36,14 @@ import {
   writeJson
 } from './utils.js'
 
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
 const sortKeys = (obj: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(obj).toSorted(([a], [b]) => a.localeCompare(b)))
 const stripFrontmatter = (content: string): string => {
@@ -75,22 +84,18 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
 }
 const canonicaliseViaLintmax = async (rawContent: string, relName: string, projectPath: string): Promise<string> => {
   const lintmaxBin = join(projectPath, 'node_modules', '.bin', 'lintmax')
-  // oxlint-disable-next-line node/no-sync
-  const lintmaxBinExists = existsSync(lintmaxBin)
+  const lintmaxBinExists = await pathExists(lintmaxBin)
   if (!lintmaxBinExists) return rawContent
   const cacheDir = join(projectPath, 'node_modules', '.cache', 'canon')
-  // oxlint-disable-next-line node/no-sync
-  const cacheDirExists = existsSync(cacheDir)
-  // oxlint-disable-next-line node/no-sync
-  if (!cacheDirExists) mkdirSync(cacheDir, { recursive: true })
+  const cacheDirExists = await pathExists(cacheDir)
+  if (!cacheDirExists) await mkdir(cacheDir, { recursive: true })
   const tmpRel = join('node_modules', '.cache', 'canon', relName.replaceAll('/', '_'))
   const tmpPath = join(projectPath, tmpRel)
   await write(file(tmpPath), rawContent)
   await $`${lintmaxBin} fix ${tmpRel}`.cwd(projectPath).quiet().nothrow()
   const formatted = await file(tmpPath).text()
   try {
-    // oxlint-disable-next-line node/no-sync
-    rmSync(tmpPath)
+    await rm(tmpPath)
   } catch {
     /* leftover lives under node_modules/.cache/ — invisible to git + cleaned with node_modules */
   }
@@ -99,8 +104,7 @@ const canonicaliseViaLintmax = async (rawContent: string, relName: string, proje
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
-  // oxlint-disable-next-line node/no-sync
-  const rulesDirExists = existsSync(rulesDir)
+  const rulesDirExists = await pathExists(rulesDir)
   if (!rulesDirExists) {
     issues.push({ detail: 'rules directory not found in pm4ai repo', type: 'error' })
     return issues
@@ -270,12 +274,12 @@ const distPrefixRe = /^\.?\/?dist\//u
 const dotSlashRe = /^\.\//u
 const mjsExtRe = /\.mjs$/u
 const monorepoRootRe = /\/(?:packages|tool|lib)\/[^/]+$/u
-const resolveExportSource = (key: string, importPath: string, pkgDir: string): string | undefined => {
+const resolveExportSource = async (key: string, importPath: string, pkgDir: string): Promise<string | undefined> => {
   if (importPath.endsWith('.json')) return
   const srcBase = key === '.' ? 'src/index' : `src/${key.replace(dotSlashRe, '')}`
   for (const ext of ['.ts', '.tsx']) {
-    // oxlint-disable-next-line node/no-sync
-    const srcExists = existsSync(join(pkgDir, `${srcBase}${ext}`))
+    // eslint-disable-next-line no-await-in-loop
+    const srcExists = await pathExists(join(pkgDir, `${srcBase}${ext}`))
     if (srcExists) return `${srcBase}${ext}`
   }
 }
@@ -283,7 +287,7 @@ interface TsdownConfig {
   copy?: string[]
   entry: string[]
 }
-const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | undefined => {
+const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<TsdownConfig | undefined> => {
   const entry: string[] = []
   const copy: string[] = []
   const { exports } = pkg
@@ -293,11 +297,12 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
       if (importPath)
         if (importPath.endsWith('.css')) {
           const srcCss = importPath.replace(distPrefixRe, 'src/')
-          // oxlint-disable-next-line node/no-sync
-          const srcCssExists = existsSync(join(pkgDir, srcCss))
+          // eslint-disable-next-line no-await-in-loop
+          const srcCssExists = await pathExists(join(pkgDir, srcCss))
           if (srcCssExists) copy.push(srcCss)
         } else {
-          const src = resolveExportSource(key, importPath, pkgDir)
+          // eslint-disable-next-line no-await-in-loop
+          const src = await resolveExportSource(key, importPath, pkgDir)
           if (src) entry.push(src)
         }
     }
@@ -305,16 +310,14 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
     const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
     for (const binPath of Object.values(bins)) {
       const srcPath = binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts')
-      // oxlint-disable-next-line node/no-sync
-      const binSrcExists = existsSync(join(pkgDir, srcPath))
+      // eslint-disable-next-line no-await-in-loop
+      const binSrcExists = await pathExists(join(pkgDir, srcPath))
       if (binSrcExists && !entry.includes(srcPath)) entry.push(srcPath)
     }
   }
   if (entry.length === 0 && !pkg.bin) {
-    // oxlint-disable-next-line node/no-sync
-    const indexTsExists = existsSync(join(pkgDir, 'src/index.ts'))
-    // oxlint-disable-next-line node/no-sync
-    const indexTsxExists = existsSync(join(pkgDir, 'src/index.tsx'))
+    const indexTsExists = await pathExists(join(pkgDir, 'src/index.ts'))
+    const indexTsxExists = await pathExists(join(pkgDir, 'src/index.tsx'))
     if (indexTsExists) entry.push('src/index.ts')
     else if (indexTsxExists) entry.push('src/index.tsx')
   }
@@ -337,7 +340,7 @@ const serializeTsdownConfig = (config: TsdownConfig): string => {
   )
   return `import { defineConfig } from 'tsdown'\n\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
 }
-const syncReadmeSymlink = ({
+const syncReadmeSymlink = async ({
   issues,
   monorepoRoot,
   pkgDir,
@@ -347,37 +350,30 @@ const syncReadmeSymlink = ({
   monorepoRoot: string
   pkgDir: string
   rel: string
-}): boolean => {
+}): Promise<boolean> => {
   const readmeSrc = join(monorepoRoot, 'README.md')
   const readmeDst = join(pkgDir, 'README.md')
-  // oxlint-disable-next-line node/no-sync
-  const readmeSrcExists = existsSync(readmeSrc)
-  if (!readmeSrcExists) return false
-  // oxlint-disable-next-line node/no-sync
-  const srcContent = readFileSync(readmeSrc, 'utf8')
-  // oxlint-disable-next-line node/no-sync
-  const readmeDstExists = existsSync(readmeDst)
+  const srcFile = file(readmeSrc)
+  if (!(await srcFile.exists())) return false
+  const srcContent = await srcFile.text()
+  const readmeDstExists = await pathExists(readmeDst)
   if (readmeDstExists) {
     let isSymlink: boolean
     try {
-      // oxlint-disable-next-line node/no-sync
-      readlinkSync(readmeDst)
+      await readlink(readmeDst)
       isSymlink = true
     } catch {
       isSymlink = false
     }
-    // oxlint-disable-next-line node/no-sync
-    const dstMatches = !isSymlink && readFileSync(readmeDst, 'utf8') === srcContent
+    const dstMatches = !isSymlink && (await file(readmeDst).text()) === srcContent
     if (dstMatches) return false
-    // oxlint-disable-next-line node/no-sync
-    if (isSymlink) rmSync(readmeDst)
+    if (isSymlink) await rm(readmeDst)
   }
-  // oxlint-disable-next-line node/no-sync
-  writeFileSync(readmeDst, srcContent)
+  await write(readmeDst, srcContent)
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
 }
-const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): boolean => {
+const fixPublishedPkg = async ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): Promise<boolean> => {
   let changed = false
   if (pkg.type !== 'module') {
     pkg.type = 'module'
@@ -408,25 +404,22 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
   }
   const pkgDir = dirname(pkgPath)
   const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
-  const tsdownConfig = inferTsdownConfig(pkg, pkgDir)
+  const tsdownConfig = await inferTsdownConfig(pkg, pkgDir)
   if (tsdownConfig) {
-    // oxlint-disable-next-line node/no-sync
-    const tsdownExists = existsSync(tsdownConfigPath)
-    // oxlint-disable-next-line node/no-sync
-    const existingContent = tsdownExists ? readFileSync(tsdownConfigPath, 'utf8') : ''
+    const tsdownExists = await pathExists(tsdownConfigPath)
+    const existingContent = tsdownExists ? await file(tsdownConfigPath).text() : ''
     if (existingContent.includes('dts: false') || existingContent.includes('onSuccess')) {
       /* Skip — existing config has custom overrides */
     } else {
       const generatedContent = serializeTsdownConfig(tsdownConfig)
       if (existingContent !== generatedContent) {
-        // oxlint-disable-next-line node/no-sync
-        writeFileSync(tsdownConfigPath, generatedContent)
+        await write(tsdownConfigPath, generatedContent)
         issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
       }
     }
   }
   const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
-  syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
+  await syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
   const expectedPostpublish = 'bun ../../tools/prune-versions.ts'
   if (pubScripts.postpublish !== expectedPostpublish) {
     pubScripts.postpublish = expectedPostpublish
@@ -488,7 +481,7 @@ interface FixSubEntryArgs {
   projectPath: string
   repo: string | undefined
 }
-const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boolean => {
+const fixSubEntry = async ({ entry, issues, projectPath, repo }: FixSubEntryArgs): Promise<boolean> => {
   const rel = entry.path.replace(`${projectPath}/`, '')
   if (isSkippedPath(rel)) return false
   let changed = false
@@ -498,7 +491,7 @@ const fixSubEntry = ({ entry, issues, projectPath, repo }: FixSubEntryArgs): boo
     issues.push({ detail: `${rel} set to private`, type: 'synced' })
   }
   const isPublished = isPublishedPkg(entry.pkg)
-  if (isPublished) changed = fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo }) || changed
+  if (isPublished) changed = (await fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })) || changed
   if (entry.pkg.scripts?.clean) {
     delete entry.pkg.scripts.clean
     if (Object.keys(entry.pkg.scripts).length === 0) delete entry.pkg.scripts
@@ -533,10 +526,10 @@ const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<
   const repo = await getGhRepo(projectPath)
   const subEntries = entries.filter(e => e.path !== rootPkgPath)
   const writes: Promise<number>[] = []
-  for (const entry of subEntries) {
-    const changed = fixSubEntry({ entry, issues, projectPath, repo })
-    if (changed) writes.push(writeJson(entry.path, entry.pkg))
-  }
+  const fixed = await Promise.all(
+    subEntries.map(async entry => ({ changed: await fixSubEntry({ entry, issues, projectPath, repo }), entry }))
+  )
+  for (const { changed, entry } of fixed) if (changed) writes.push(writeJson(entry.path, entry.pkg))
   const pkgDepsByName = buildPkgDepMap(entries)
   for (const entry of subEntries) {
     const rel = entry.path.replace(`${projectPath}/`, '')
@@ -580,40 +573,34 @@ const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<
   }
   return issues
 }
-const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
+const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const src = join(cnsyncPath, READONLY_UI)
   const dst = join(projectPath, READONLY_UI)
-  // oxlint-disable-next-line node/no-sync
-  const srcExists = existsSync(src)
+  const srcExists = await pathExists(src)
   if (!srcExists) {
     issues.push({ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' })
     return issues
   }
   if (projectPath === cnsyncPath) return issues
-  // oxlint-disable-next-line node/no-sync
-  cpSync(src, dst, { recursive: true })
-  for (const ext of ['mjs', 'ts', 'js']) {
-    const p = join(dst, `postcss.config.${ext}`)
-    // oxlint-disable-next-line node/no-sync
-    const postcssExists = existsSync(p)
-    // oxlint-disable-next-line node/no-sync
-    if (postcssExists) rmSync(p)
-  }
+  await cp(src, dst, { recursive: true })
+  await Promise.all(
+    ['mjs', 'ts', 'js'].map(async ext => {
+      const p = join(dst, `postcss.config.${ext}`)
+      if (await pathExists(p)) await rm(p)
+    })
+  )
   const pkgPath = join(projectPath, 'package.json')
-  // oxlint-disable-next-line node/no-sync
-  const pkgExists = existsSync(pkgPath)
-  if (pkgExists) {
-    // oxlint-disable-next-line node/no-sync
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, unknown>
+  const pkgFile = file(pkgPath)
+  if (await pkgFile.exists()) {
+    const pkg = (await pkgFile.json()) as Record<string, unknown>
     const { workspaces } = pkg
     if (
       Array.isArray(workspaces) &&
       !workspaces.some(w => w === READONLY_UI || w === 'readonly/*' || w === 'readonly/**')
     ) {
       workspaces.push(READONLY_UI)
-      // oxlint-disable-next-line node/no-sync
-      writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
+      await write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
       issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
     }
   }
@@ -630,26 +617,25 @@ const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
     const allDeps = { ...e.pkg.dependencies, ...e.pkg.devDependencies }
     return Boolean(allDeps['fumadocs-ui'])
   })
-  const issues: Issue[] = []
-  for (const app of fumadocsApps) {
-    const scripts = app.pkg.scripts ?? {}
-    let changed = false
-    const next = { ...scripts }
-    for (const [k, v] of Object.entries(scripts)) {
-      const patched = patchFumadocsScript(v)
-      if (patched !== v) {
-        next[k] = patched
-        changed = true
+  const results = await Promise.all(
+    fumadocsApps.map(async app => {
+      const scripts = app.pkg.scripts ?? {}
+      let changed = false
+      const next = { ...scripts }
+      for (const [k, v] of Object.entries(scripts)) {
+        const patched = patchFumadocsScript(v)
+        if (patched !== v) {
+          next[k] = patched
+          changed = true
+        }
       }
-    }
-    if (changed) {
-      // oxlint-disable-next-line node/no-sync
-      writeFileSync(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)
+      if (!changed) return
+      await write(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)
       const rel = app.path.replace(`${projectPath}/`, '')
-      issues.push({ detail: `${rel} prefixed fumadocs/next build with bunx --bun`, type: 'synced' })
-    }
-  }
-  return issues
+      return { detail: `${rel} prefixed fumadocs/next build with bunx --bun`, type: 'synced' } satisfies Issue
+    })
+  )
+  return results.filter((r): r is Issue => r !== undefined)
 }
 const getProjectGithubUrl = async (projectPath: string): Promise<string | undefined> => {
   const r = await $`gh repo view --json url -q .url`.cwd(projectPath).quiet().nothrow()
@@ -687,24 +673,19 @@ interface PatchArgs {
   sharedPath: string
   title: string
 }
-const patchSharedFile = ({ githubUrl, projectPath, sharedPath, title }: PatchArgs): Issue | undefined => {
+const patchSharedFile = async ({ githubUrl, projectPath, sharedPath, title }: PatchArgs): Promise<Issue | undefined> => {
   const relShared = sharedPath.replace(`${projectPath}/`, '')
-  // oxlint-disable-next-line node/no-sync
-  const sharedExists = existsSync(sharedPath)
-  if (!sharedExists) {
-    // oxlint-disable-next-line node/no-sync
-    mkdirSync(dirname(sharedPath), { recursive: true })
-    // oxlint-disable-next-line node/no-sync
-    writeFileSync(sharedPath, layoutSharedTemplate(title, githubUrl))
+  const sharedFile = file(sharedPath)
+  if (!(await sharedFile.exists())) {
+    await mkdir(dirname(sharedPath), { recursive: true })
+    await write(sharedPath, layoutSharedTemplate(title, githubUrl))
     return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
   }
-  // oxlint-disable-next-line node/no-sync
-  const content = readFileSync(sharedPath, 'utf8')
+  const content = await sharedFile.text()
   if (GITHUB_URL_KEY_RE.test(content)) return
   const next = content.replace(BASEOPTIONS_OPEN_RE, `$<open>  githubUrl: '${githubUrl}',\n`)
   if (next === content) return
-  // oxlint-disable-next-line node/no-sync
-  writeFileSync(sharedPath, next)
+  await write(sharedPath, next)
   return { detail: `${relShared} added githubUrl`, type: 'synced' }
 }
 const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {

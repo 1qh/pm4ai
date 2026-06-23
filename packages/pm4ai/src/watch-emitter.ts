@@ -2,7 +2,8 @@
 /* oxlint-disable promise/prefer-await-to-then */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { Server, Socket } from 'node:net'
-import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { unlinkSync } from 'node:fs'
+import { access, mkdir, unlink } from 'node:fs/promises'
 import { createConnection, createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -16,9 +17,24 @@ type Listener = (event: WatchEvent) => void
 const clients = new Set<Socket>()
 const listeners = new Set<Listener>()
 let server: Server | undefined
-const removeSocket = () => {
+const removeSocket = async (): Promise<void> => {
   try {
-    // oxlint-disable-next-line node/no-sync
+    await unlink(SOCKET_PATH)
+  } catch {
+    /* Socket may not exist */
+  }
+}
+const socketExists = async (): Promise<boolean> => {
+  try {
+    await access(SOCKET_PATH)
+    return true
+  } catch {
+    return false
+  }
+}
+const removeSocketBlocking = () => {
+  try {
+    // oxlint-disable-next-line node/no-sync -- process 'exit' handler cannot await
     unlinkSync(SOCKET_PATH)
   } catch {
     /* Socket may not exist */
@@ -36,11 +52,8 @@ const broadcast = (line: string, exclude?: Socket) => {
 }
 const startEmitter = async (): Promise<void> => {
   if (server) return
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(SOCKET_DIR, { recursive: true })
-  // oxlint-disable-next-line node/no-sync
-  const socketPathExists = existsSync(SOCKET_PATH)
-  if (socketPathExists) removeSocket()
+  await mkdir(SOCKET_DIR, { recursive: true })
+  await removeSocket()
   await new Promise<void>((resolve, reject) => {
     const s = createServer(socket => {
       clients.add(socket)
@@ -72,20 +85,16 @@ const stopEmitter = async (): Promise<void> => {
   for (const c of clients) c.destroy()
   clients.clear()
   await new Promise<void>(resolve => {
-    s.close(() => {
-      removeSocket()
-      resolve()
-    })
+    s.close(() => resolve())
   })
+  await removeSocket().catch(() => {})
 }
 const emit = (event: WatchEvent) => {
   if (clients.size === 0) return
   broadcast(JSON.stringify(event))
 }
-const emitToSocket = (event: WatchEvent) => {
-  // oxlint-disable-next-line node/no-sync
-  const socketExists = existsSync(SOCKET_PATH)
-  if (!socketExists) return
+const emitToSocket = async (event: WatchEvent): Promise<void> => {
+  if (!(await socketExists())) return
   try {
     const sock = createConnection(SOCKET_PATH)
     sock.on('error', () => {})
@@ -106,7 +115,7 @@ const installCleanup = () => {
       for (const c of clients) c.destroy()
       clients.clear()
       server.close()
-      removeSocket()
+      removeSocketBlocking()
     }
   })
   process.on('SIGINT', () => {
@@ -122,4 +131,4 @@ const onEvent = (fn: Listener): (() => void) => {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }
-export { clients, emit, emitToSocket, installCleanup, onEvent, SOCKET_PATH, startEmitter, stopEmitter }
+export { clients, emit, emitToSocket, installCleanup, onEvent, SOCKET_PATH, socketExists, startEmitter, stopEmitter }

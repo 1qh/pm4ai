@@ -1,24 +1,22 @@
 /* eslint-disable no-console */
-import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+/** biome-ignore-all lint/performance/noAwaitInLoops: sequential unpublish must stay ordered */
+import { $, file } from 'bun'
 import { join } from 'node:path'
 
-const cleanup = () => {
+const cleanup = async () => {
   const pkgPath = join(process.cwd(), 'package.json')
-  // oxlint-disable-next-line node/no-sync
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { name?: string; version?: string }
+  const pkg = (await file(pkgPath).json()) as { name?: string; version?: string }
   if (!(pkg.name && pkg.version)) {
     console.error('package.json missing name or version')
     process.exitCode = 1
     return
   }
-  // oxlint-disable-next-line node/no-sync
-  const result = spawnSync('npm', ['view', pkg.name, 'versions', '--json'], { encoding: 'utf8' })
-  if (result.status !== 0) {
+  const result = await $`npm view ${pkg.name} versions --json`.quiet().nothrow()
+  if (result.exitCode !== 0) {
     console.log(`${pkg.name}: first publish, nothing to clean`)
     return
   }
-  const versions = JSON.parse(result.stdout) as string | string[]
+  const versions = JSON.parse(result.stdout.toString()) as string | string[]
   const allVersions = Array.isArray(versions) ? versions : [versions]
   const old = allVersions.filter(v => v !== pkg.version)
   if (old.length === 0) {
@@ -26,9 +24,10 @@ const cleanup = () => {
     return
   }
   for (const v of old) {
-    // oxlint-disable-next-line node/no-sync
-    const r = spawnSync('npm', ['unpublish', `${pkg.name}@${v}`], { encoding: 'utf8', stdio: 'inherit' })
-    if (r.status === 0) console.log(`${pkg.name}@${v} unpublished`)
+    const spec = `${pkg.name}@${v}`
+    // eslint-disable-next-line no-await-in-loop
+    const r = await $`npm unpublish ${spec}`.nothrow()
+    if (r.exitCode === 0) console.log(`${spec} unpublished`)
   }
 }
 export { cleanup }

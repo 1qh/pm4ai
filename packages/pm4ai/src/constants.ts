@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 interface PkgJson {
@@ -6,8 +6,7 @@ interface PkgJson {
   name?: string
   requiredDevDeps?: string[]
 }
-// oxlint-disable-next-line node/no-sync
-const selfPkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as PkgJson
+const selfPkg = JSON.parse(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as PkgJson
 const PKG_NAME = selfPkg.name ?? 'pm4ai'
 const DEFAULT_LICENSE = selfPkg.license ?? 'MIT'
 const LINTMAX_PKG = 'lintmax'

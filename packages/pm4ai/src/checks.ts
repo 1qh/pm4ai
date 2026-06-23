@@ -1,5 +1,5 @@
 import { $, file, Glob } from 'bun'
-import { existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
@@ -31,6 +31,14 @@ const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   for await (const f of new Glob(pattern).scan({ cwd, dot, onlyFiles: true }))
     if (!f.split('/').some(seg => SCAN_EXCLUDE.has(seg))) results.push(join(cwd, f))
   return results
+}
+const pathExists = async (p: string): Promise<boolean> => {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
 }
 const shell = async (projectPath: string, ...args: string[]) => {
   const result = await $`rg ${args} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
@@ -162,16 +170,18 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const caps = await detectCapabilities(projectPath)
-  for (const entry of MUST_EXIST_FILES) {
-    // oxlint-disable-next-line node/no-sync
-    const entryExists = existsSync(join(projectPath, entry))
-    if (!entryExists) issues.push(issue('missing', entry))
-  }
-  for (const c of CONDITIONAL_MUST_EXIST_FILES) {
-    // oxlint-disable-next-line node/no-sync
-    const cExists = existsSync(join(projectPath, c.path))
-    if (caps[c.when] && !cExists) issues.push(issue('missing', c.path))
-  }
+  await Promise.all(
+    MUST_EXIST_FILES.map(async entry => {
+      const entryExists = await pathExists(join(projectPath, entry))
+      if (!entryExists) issues.push(issue('missing', entry))
+    })
+  )
+  await Promise.all(
+    CONDITIONAL_MUST_EXIST_FILES.map(async c => {
+      const cExists = await pathExists(join(projectPath, c.path))
+      if (caps[c.when] && !cExists) issues.push(issue('missing', c.path))
+    })
+  )
   const pkg = await readPkg(join(projectPath, 'package.json'))
   if (pkg && !pkg.scripts?.action) issues.push(issue('missing', '"action" script missing'))
   const ts = await readJson(join(projectPath, 'tsconfig.json'))
@@ -227,11 +237,11 @@ const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
       if (content.includes("'./globals.css'") || content.includes('"./globals.css"'))
         issues.push(drift(`use global.css not globals.css: ${r}`))
       const dir = layoutFile.replace('/layout.tsx', '')
-      // oxlint-disable-next-line node/no-sync
-      const hasFonts = existsSync(join(dir, 'fonts.ts'))
+      const [hasFonts, hasProviders] = await Promise.all([
+        pathExists(join(dir, 'fonts.ts')),
+        pathExists(join(dir, 'providers.tsx'))
+      ])
       if (!hasFonts) issues.push(drift(`missing fonts.ts next to layout: ${r}`))
-      // oxlint-disable-next-line node/no-sync
-      const hasProviders = existsSync(join(dir, 'providers.tsx'))
       if (content.includes('Providers') && !hasProviders)
         issues.push(drift(`providers.tsx should be next to layout: ${r}`))
       const providerMatches = content.match(providerJsxRe) ?? []
@@ -351,11 +361,12 @@ const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
-  for (const f of FORBIDDEN_LOCKFILES) {
-    // oxlint-disable-next-line node/no-sync
-    const lockExists = existsSync(join(projectPath, f))
-    if (lockExists) issues.push(forbidden(`${f} found, use bun only`))
-  }
+  await Promise.all(
+    FORBIDDEN_LOCKFILES.map(async f => {
+      const lockExists = await pathExists(join(projectPath, f))
+      if (lockExists) issues.push(forbidden(`${f} found, use bun only`))
+    })
+  )
   const [bunLockTracked, tsNoCheck] = await Promise.all([
     $`git ls-files bun.lock`.cwd(projectPath).quiet().nothrow(),
     $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
@@ -427,8 +438,7 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
-  // oxlint-disable-next-line node/no-sync
-  const hasVercel = existsSync(join(projectPath, '.vercel'))
+  const hasVercel = await pathExists(join(projectPath, '.vercel'))
   if (!hasVercel) return []
   const result = await $`bunx vercel@latest ls`.cwd(projectPath).quiet().nothrow()
   if (result.exitCode !== 0) {
@@ -489,8 +499,7 @@ const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => 
         : 'src'
       const sharedRel = libBase === '.' ? 'lib/layout.shared.tsx' : `${libBase}/lib/layout.shared.tsx`
       const sharedPath = join(appDir, sharedRel)
-      // oxlint-disable-next-line node/no-sync
-      const sharedExists = existsSync(sharedPath)
+      const sharedExists = await pathExists(sharedPath)
       if (sharedExists) {
         const content = await file(sharedPath).text()
         if (!content.includes('githubUrl:'))
@@ -536,8 +545,7 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   const envFiles = await Promise.all(
     ENV_CANDIDATES.map(async cand => {
       const p = join(projectPath, cand)
-      // oxlint-disable-next-line node/no-sync
-      const pExists = existsSync(p)
+      const pExists = await pathExists(p)
       if (!pExists) return null
       const text = await file(p).text()
       return text.includes('CONVEX_SELF_HOSTED_URL') ? { p, text } : null

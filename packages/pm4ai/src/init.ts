@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { $, file, write } from 'bun'
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { access, cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { discover } from './discover.js'
@@ -32,49 +32,50 @@ const REMOVE_PATHS = [
   'apps/docs/src/app/llms.txt',
   'apps/docs/src/app/api'
 ]
-const copyTree = (src: string, dst: string, skipExtra?: Set<string>) => {
-  // oxlint-disable-next-line node/no-sync
-  const entries = readdirSync(src)
-  for (const entry of entries)
-    if (!(SKIP.has(entry) || skipExtra?.has(entry))) {
-      const s = join(src, entry)
-      const d = join(dst, entry)
-      // oxlint-disable-next-line node/no-sync
-      const isDir = statSync(s).isDirectory()
-      if (isDir) {
-        // oxlint-disable-next-line node/no-sync
-        mkdirSync(d, { recursive: true })
-        copyTree(s, d)
-      }
-      // oxlint-disable-next-line node/no-sync
-      else cpSync(s, d)
-    }
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+const copyTree = async (src: string, dst: string, skipExtra?: Set<string>): Promise<void> => {
+  const entries = await readdir(src)
+  await Promise.all(
+    entries
+      .filter(entry => !(SKIP.has(entry) || skipExtra?.has(entry)))
+      .map(async entry => {
+        const s = join(src, entry)
+        const d = join(dst, entry)
+        const isDir = (await stat(s)).isDirectory()
+        if (isDir) {
+          await mkdir(d, { recursive: true })
+          await copyTree(s, d)
+        } else await cp(s, d)
+      })
+  )
 }
 const copyTemplateDir = async (tplDir: string, dstDir: string, projectName: string): Promise<void> => {
+  const entries = await readdir(tplDir)
   await Promise.all(
-    // oxlint-disable-next-line node/no-sync
-    readdirSync(tplDir).map(async entry => {
+    entries.map(async entry => {
       const s = join(tplDir, entry)
       const d = join(dstDir, entry)
-      // oxlint-disable-next-line node/no-sync
-      const isDir = statSync(s).isDirectory()
+      const isDir = (await stat(s)).isDirectory()
       if (isDir) {
-        // oxlint-disable-next-line node/no-sync
-        mkdirSync(d, { recursive: true })
+        await mkdir(d, { recursive: true })
         await copyTemplateDir(s, d, projectName)
       } else {
         const content = await file(s).text()
-        // oxlint-disable-next-line node/no-sync
-        mkdirSync(dirname(d), { recursive: true })
+        await mkdir(dirname(d), { recursive: true })
         await write(d, content.replaceAll('__NAME__', projectName))
       }
     })
   )
 }
 const patchFile = async (path: string, replacements: [string, string][]) => {
-  // oxlint-disable-next-line node/no-sync
-  const pathExists = existsSync(path)
-  if (!pathExists) return
+  if (!(await pathExists(path))) return
   let content = await file(path).text()
   for (const [from, to] of replacements) content = content.replaceAll(from, to)
   await write(path, content)
@@ -83,26 +84,19 @@ const templateDir = join(dirname(new URL(import.meta.url).pathname), 'templates'
 const init = async (name: string) => {
   const projectName = basename(resolve(process.cwd(), name))
   const dir = resolve(process.cwd(), name)
-  // oxlint-disable-next-line node/no-sync
-  const dirExists = existsSync(dir)
-  if (dirExists) {
+  if (await pathExists(dir)) {
     console.log(`${dir} already exists`)
     return
   }
   const { self } = await discover()
   const src = self.path
   console.log(`scaffolding ${projectName} from ${src}...`)
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(dir, { recursive: true })
-  copyTree(src, dir, new Set(['packages']))
-  // oxlint-disable-next-line node/no-sync
-  for (const p of REMOVE_PATHS) rmSync(join(dir, p), { force: true, recursive: true })
-  // oxlint-disable-next-line node/no-sync
-  rmSync(join(dir, 'packages'), { force: true, recursive: true })
-  // oxlint-disable-next-line node/no-sync
-  rmSync(join(dir, 'apps', 'docs', 'content', 'rules'), { force: true, recursive: true })
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(join(dir, 'apps', 'docs', 'content', 'docs'), { recursive: true })
+  await mkdir(dir, { recursive: true })
+  await copyTree(src, dir, new Set(['packages']))
+  await Promise.all(REMOVE_PATHS.map(async p => rm(join(dir, p), { force: true, recursive: true })))
+  await rm(join(dir, 'packages'), { force: true, recursive: true })
+  await rm(join(dir, 'apps', 'docs', 'content', 'rules'), { force: true, recursive: true })
+  await mkdir(join(dir, 'apps', 'docs', 'content', 'docs'), { recursive: true })
   await Promise.all([
     copyTemplateDir(join(templateDir, 'cli'), join(dir, 'packages', 'cli'), projectName),
     copyTemplateDir(join(templateDir, 'lib'), join(dir, 'packages', 'lib'), projectName),
@@ -122,9 +116,7 @@ const init = async (name: string) => {
   ])
   await syncClaudeMd(src, dir)
   const bookInstall = join(homedir(), 'book', 'install.sh')
-  // oxlint-disable-next-line node/no-sync
-  const bookInstallExists = existsSync(bookInstall)
-  if (bookInstallExists) await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
+  if (await pathExists(bookInstall)) await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
   await $`git init`.cwd(dir).quiet()
   await $`git add -A`.cwd(dir).quiet()
   await $`git -c user.name=pm4ai -c user.email=pm4ai commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet().nothrow()

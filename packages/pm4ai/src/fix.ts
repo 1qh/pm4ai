@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
-import { $ } from 'bun'
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { $, file } from 'bun'
+import { copyFile, mkdir, open, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
@@ -24,6 +24,13 @@ import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 
+const dirExists = async (p: string): Promise<boolean> => {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
 const hasHandwrittenTsx = async (projectPath: string): Promise<boolean> => {
   const r = await $`rg --files -g ${'*.tsx'} -g ${`!${READONLY_UI}/**`}`.cwd(projectPath).quiet().nothrow()
   return r.stdout.toString().trim().length > 0
@@ -32,8 +39,7 @@ const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const upSh = join(projectPath, 'up.sh')
-  // oxlint-disable-next-line node/no-sync
-  const upShExists = existsSync(upSh)
+  const upShExists = await file(upSh).exists()
   if (!upShExists) {
     issues.push({ detail: 'missing, cannot maintain', type: 'up.sh' })
     return issues
@@ -44,23 +50,20 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   if (exitCode === 0) {
     const snapshotDir = join(homedir(), CONFIG_DIR, 'snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
-    // oxlint-disable-next-line node/no-sync
-    const lockfileExists = existsSync(lockfile)
+    const lockfileExists = await file(lockfile).exists()
     if (lockfileExists) {
-      // oxlint-disable-next-line node/no-sync
-      mkdirSync(snapshotDir, { recursive: true })
-      // oxlint-disable-next-line node/no-sync
-      copyFileSync(lockfile, join(snapshotDir, 'bun.lock'))
+      await mkdir(snapshotDir, { recursive: true })
+      await copyFile(lockfile, join(snapshotDir, 'bun.lock'))
     }
-    writeCheckResult({ pass: true, projectPath, violations: 0 })
+    await writeCheckResult({ pass: true, projectPath, violations: 0 })
   } else {
     const errorLine = stderr.split('\n').findLast(Boolean) ?? 'unknown error'
     issues.push({ detail: `failed: ${errorLine}`, type: 'up.sh' })
     const violationMatch = violationRe.exec(stderr)
     const violations = violationMatch?.groups?.count ? Math.trunc(Number(violationMatch.groups.count)) : 1
-    writeCheckResult({ pass: false, projectPath, summary: errorLine, violations })
+    await writeCheckResult({ pass: false, projectPath, summary: errorLine, violations })
   }
-  updateLog({
+  await updateLog({
     at: new Date().toISOString(),
     error: exitCode === 0 ? undefined : stderr.slice(0, 500),
     pass: exitCode === 0,
@@ -72,26 +75,21 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 export { maintain }
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = join(homedir(), CONFIG_DIR, 'fix.lock')
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(join(homedir(), CONFIG_DIR), { recursive: true })
+  await mkdir(join(homedir(), CONFIG_DIR), { recursive: true })
   const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
-  const tryAcquireLock = (): boolean => {
+  const tryAcquireLock = async (): Promise<boolean> => {
     try {
-      // oxlint-disable-next-line node/no-sync
-      const fd = openSync(lockFile, 'wx')
-      // oxlint-disable-next-line node/no-sync
-      writeFileSync(fd, lockData)
-      // oxlint-disable-next-line node/no-sync
-      closeSync(fd)
+      const fd = await open(lockFile, 'wx')
+      await fd.writeFile(lockData)
+      await fd.close()
       return true
     } catch {
       return false
     }
   }
-  if (!tryAcquireLock()) {
+  if (!(await tryAcquireLock())) {
     try {
-      // oxlint-disable-next-line node/no-sync
-      const lock = safeParseJson(lockSchema, readFileSync(lockFile, 'utf8'))
+      const lock = safeParseJson(lockSchema, await file(lockFile).text())
       if (!lock) return
       const age = Date.now() - new Date(lock.at).getTime()
       let alive = false
@@ -108,9 +106,8 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     } catch {
       /* Corrupt lock */
     }
-    // oxlint-disable-next-line node/no-sync
-    rmSync(lockFile, { force: true })
-    if (!tryAcquireLock()) {
+    await rm(lockFile, { force: true })
+    if (!(await tryAcquireLock())) {
       console.log('another fix is already running')
       return
     }
@@ -170,7 +167,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     const tasks = allTargets.map(async project => {
       const name = projectName(project.path)
       const issues: Issue[] = []
-      emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
+      await emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
       const [configIssues, claudeIssues, pkgIssues, tsconfigIssues, fumadocsBuildIssues, fumadocsGithubIssues] =
         await Promise.all([
           syncConfigs(self.path, project.path),
@@ -190,11 +187,11 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         ...fumadocsGithubIssues,
         ...subPkgIssues
       )
-      // oxlint-disable-next-line node/no-sync
-      const hasReadonlyUi = existsSync(join(project.path, READONLY_UI))
-      if (hasReadonlyUi || (await hasHandwrittenTsx(project.path))) issues.push(...syncUi(cnsync.path, project.path))
+      const hasReadonlyUi = await dirExists(join(project.path, READONLY_UI))
+      if (hasReadonlyUi || (await hasHandwrittenTsx(project.path)))
+        issues.push(...(await syncUi(cnsync.path, project.path)))
       const syncCount = issues.filter(i => i.type === 'synced').length
-      emitToSocket(
+      await emitToSocket(
         createEvent({
           detail: syncCount > 0 ? `${syncCount} synced` : undefined,
           project: name,
@@ -202,10 +199,10 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
           step: 'sync'
         })
       )
-      emitToSocket(createEvent({ project: name, status: 'start', step: 'audit' }))
+      await emitToSocket(createEvent({ project: name, status: 'start', step: 'audit' }))
       const auditIssues = await audit(project.path)
       issues.push(...auditIssues)
-      emitToSocket(
+      await emitToSocket(
         createEvent({
           detail: auditIssues.length > 0 ? `${auditIssues.length} issues` : undefined,
           project: name,
@@ -213,11 +210,11 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
           step: 'audit'
         })
       )
-      emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
+      await emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
       const maintainIssues = await maintain(project.path)
       issues.push(...maintainIssues)
       const maintainDetail = maintainIssues[0]?.detail
-      emitToSocket(
+      await emitToSocket(
         createEvent({
           detail: maintainDetail,
           project: name,
@@ -228,7 +225,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
       const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
       const changed = diff.stdout.toString().trim()
       const fileCount = changed ? changed.split('\n').length : 0
-      emitToSocket(
+      await emitToSocket(
         createEvent({
           detail: fileCount > 0 ? `${fileCount} files modified` : 'clean',
           project: name,
@@ -255,7 +252,6 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     for (const s of summaries) console.log(s)
     if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   } finally {
-    // oxlint-disable-next-line node/no-sync
-    rmSync(lockFile, { force: true })
+    await rm(lockFile, { force: true })
   }
 }

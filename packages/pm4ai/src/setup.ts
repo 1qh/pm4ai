@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { write } from 'bun'
-import { existsSync, mkdirSync } from 'node:fs'
+import { access, chmod, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -141,26 +141,30 @@ const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>
 `
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
 const setup = async () => {
   const swiftbarDir = join(homedir(), 'Library', 'Application Support', 'SwiftBar', 'plugins')
-  // oxlint-disable-next-line node/no-sync
-  const swiftbarInstalled = existsSync(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))
+  const swiftbarInstalled = await pathExists(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))
   if (swiftbarInstalled) {
-    // oxlint-disable-next-line node/no-sync
-    mkdirSync(swiftbarDir, { recursive: true })
+    await mkdir(swiftbarDir, { recursive: true })
     const pollingPath = join(swiftbarDir, 'pm4ai.1h.sh')
     const streamingPath = join(swiftbarDir, 'pm4ai-stream.1h.ts')
     await write(pollingPath, SWIFTBAR_PLUGIN)
     await write(streamingPath, SWIFTBAR_STREAMING_PLUGIN)
-    const { chmod } = await import('node:fs/promises')
     await chmod(pollingPath, 0o755)
     await chmod(streamingPath, 0o755)
     console.log(`swiftbar polling plugin: ${pollingPath}`)
     console.log(`swiftbar streaming plugin: ${streamingPath}`)
   } else console.log('swiftbar not found, install with: brew install swiftbar')
   const launchdDir = join(homedir(), 'Library', 'LaunchAgents')
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(launchdDir, { recursive: true })
+  await mkdir(launchdDir, { recursive: true })
   const plistPath = join(launchdDir, 'com.pm4ai.fix.plist')
   await write(plistPath, launchdPlist)
   console.log(`launchd plist: ${plistPath}`)

@@ -1,5 +1,5 @@
+import { $ } from 'bun'
 import { describe, expect, test } from 'bun:test'
-import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
@@ -67,19 +67,16 @@ const isCI = Boolean(process.env.CI)
 describe.skipIf(isCI)('status() via CLI', () => {
   const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
   const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
-  test('status command runs on real project', () => {
-    // oxlint-disable-next-line node/no-sync
-    const result = execSync(`bun ${cliPath} status`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 30_000 })
+  test('status command runs on real project', async () => {
+    const result = (await $`bun ${cliPath} status`.cwd(pm4aiPath).quiet().nothrow()).text()
     expect(result).toContain('pm4ai')
   }, 30_000)
-  test('status --all shows every discovered project', () => {
-    // oxlint-disable-next-line node/no-sync
-    const result = execSync(`bun ${cliPath} status --all`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 120_000 })
+  test('status --all shows every discovered project', async () => {
+    const result = (await $`bun ${cliPath} status --all`.cwd(pm4aiPath).quiet().nothrow()).text()
     for (const name of ['pm4ai', 'cnsync', 'lintmax', 'ogrid', 'idecn', 'noboil']) expect(result).toContain(name)
   }, 120_000)
-  test('status --swiftbar outputs SwiftBar format', () => {
-    // oxlint-disable-next-line node/no-sync
-    const result = execSync(`bun ${cliPath} status --swiftbar`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 120_000 })
+  test('status --swiftbar outputs SwiftBar format', async () => {
+    const result = (await $`bun ${cliPath} status --swiftbar`.cwd(pm4aiPath).quiet().nothrow()).text()
     expect(result).toContain('sfimage=')
     expect(result).toContain('Refresh | refresh=true')
   }, 120_000)

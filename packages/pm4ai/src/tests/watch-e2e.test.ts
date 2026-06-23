@@ -2,10 +2,9 @@
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { WatchEvent } from '../watch-types.js'
-import { emitToSocket, SOCKET_PATH, stopEmitter } from '../watch-emitter.js'
+import { emitToSocket, socketExists, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
 
 const isCI = 'CI' in process.env
@@ -14,9 +13,8 @@ const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
 const waitForSocket = async (timeout = 5000): Promise<void> => {
   const start = Date.now()
   while (Date.now() - start < timeout) {
-    // oxlint-disable-next-line node/no-sync
-    const socketExists = existsSync(SOCKET_PATH)
-    if (socketExists) return
+    const exists = await socketExists()
+    if (exists) return
     await wait(100)
   }
   throw new Error('watch.sock not created in time')
@@ -47,8 +45,8 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   }
   test('receives events as NDJSON lines', async () => {
     const { lines } = await spawnWatchJson()
-    emitToSocket(createEvent({ project: 'test-proj', status: 'start', step: 'sync' }))
-    emitToSocket(createEvent({ detail: 'done', project: 'test-proj', status: 'ok', step: 'sync' }))
+    await emitToSocket(createEvent({ project: 'test-proj', status: 'start', step: 'sync' }))
+    await emitToSocket(createEvent({ detail: 'done', project: 'test-proj', status: 'ok', step: 'sync' }))
     await wait(500)
     expect(lines.length).toBeGreaterThanOrEqual(2)
     const parsed = lines.map(l => JSON.parse(l) as WatchEvent)
@@ -60,9 +58,9 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   })
   test('each line is valid JSON with required fields', async () => {
     const { lines } = await spawnWatchJson()
-    emitToSocket(createEvent({ project: 'p1', status: 'start', step: 'audit' }))
-    emitToSocket(createEvent({ project: 'p2', status: 'ok', step: 'check' }))
-    emitToSocket(createEvent({ detail: 'clean', project: 'p1', status: 'ok', step: 'done' }))
+    await emitToSocket(createEvent({ project: 'p1', status: 'start', step: 'audit' }))
+    await emitToSocket(createEvent({ project: 'p2', status: 'ok', step: 'check' }))
+    await emitToSocket(createEvent({ detail: 'clean', project: 'p1', status: 'ok', step: 'done' }))
     await wait(500)
     expect(lines.length).toBe(3)
     for (const line of lines) {
@@ -76,7 +74,8 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   })
   test('handles rapid burst of events', async () => {
     const { lines } = await spawnWatchJson()
-    for (let i = 0; i < 20; i += 1) emitToSocket(createEvent({ project: `proj-${i}`, status: 'start', step: 'sync' }))
+    for (let i = 0; i < 20; i += 1)
+      await emitToSocket(createEvent({ project: `proj-${i}`, status: 'start', step: 'sync' }))
     await wait(1000)
     expect(lines.length).toBe(20)
     const projects = new Set(lines.map(l => (JSON.parse(l) as WatchEvent).project))
@@ -93,7 +92,8 @@ describe.skipIf(isCI)('watch --json e2e', () => {
       ['myapp', 'maintain', 'ok', '2 fixed'],
       ['myapp', 'done', 'ok', 'clean']
     ]
-    for (const [project, step, status, detail] of lifecycle) emitToSocket(createEvent({ detail, project, status, step }))
+    for (const [project, step, status, detail] of lifecycle)
+      await emitToSocket(createEvent({ detail, project, status, step }))
     await wait(500)
     expect(lines.length).toBe(7)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)
@@ -106,12 +106,12 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   })
   test('multiple projects interleaved', async () => {
     const { lines } = await spawnWatchJson()
-    emitToSocket(createEvent({ project: 'a', status: 'start', step: 'sync' }))
-    emitToSocket(createEvent({ project: 'b', status: 'start', step: 'sync' }))
-    emitToSocket(createEvent({ project: 'a', status: 'ok', step: 'sync' }))
-    emitToSocket(createEvent({ project: 'b', status: 'ok', step: 'sync' }))
-    emitToSocket(createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }))
-    emitToSocket(createEvent({ detail: 'clean', project: 'b', status: 'ok', step: 'done' }))
+    await emitToSocket(createEvent({ project: 'a', status: 'start', step: 'sync' }))
+    await emitToSocket(createEvent({ project: 'b', status: 'start', step: 'sync' }))
+    await emitToSocket(createEvent({ project: 'a', status: 'ok', step: 'sync' }))
+    await emitToSocket(createEvent({ project: 'b', status: 'ok', step: 'sync' }))
+    await emitToSocket(createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }))
+    await emitToSocket(createEvent({ detail: 'clean', project: 'b', status: 'ok', step: 'done' }))
     await wait(500)
     expect(lines.length).toBe(6)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)
@@ -122,9 +122,9 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   })
   test('fail status events are received correctly', async () => {
     const { lines } = await spawnWatchJson()
-    emitToSocket(createEvent({ project: 'broken', status: 'start', step: 'check' }))
-    emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'check' }))
-    emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'done' }))
+    await emitToSocket(createEvent({ project: 'broken', status: 'start', step: 'check' }))
+    await emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'check' }))
+    await emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'done' }))
     await wait(500)
     expect(lines.length).toBe(3)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)

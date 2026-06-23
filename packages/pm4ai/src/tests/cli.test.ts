@@ -1,14 +1,13 @@
+import { $ } from 'bun'
 import { describe, expect, test } from 'bun:test'
-import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 
 const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.mjs')
 const versionRe = /^\d+\.\d+\.\d+$/u
-// oxlint-disable-next-line node/no-sync
-const run = (args: string) => execSync(`bun ${cli} ${args}`, { encoding: 'utf8', timeout: 10_000 }).trim()
+const run = async (args: string): Promise<string> => (await $`bun ${cli} ${args}`.quiet().nothrow().text()).trim()
 describe('guide', () => {
-  test('no args prints guide with all commands', () => {
-    const out = run('')
+  test('no args prints guide with all commands', async () => {
+    const out = await run('')
     expect(out).toContain('pm4ai')
     expect(out).toContain('commands:')
     expect(out).toContain('status')
@@ -19,22 +18,22 @@ describe('guide', () => {
     expect(out).toContain('--all')
     expect(out).toContain('--swiftbar')
   })
-  test('unknown command prints guide', () => {
-    const out = run('unknown')
+  test('unknown command prints guide', async () => {
+    const out = await run('unknown')
     expect(out).toContain('commands:')
   })
-  test('init without name prints usage', () => {
-    const out = run('init')
+  test('init without name prints usage', async () => {
+    const out = await run('init')
     expect(out).toContain('usage')
   })
-  test('guide includes fix behavior', () => {
-    const out = run('')
+  test('guide includes fix behavior', async () => {
+    const out = await run('')
     expect(out).toContain('clean git')
     expect(out).toContain('syncs')
     expect(out).toContain('maintains')
   })
-  test('guide includes checks list', () => {
-    const out = run('')
+  test('guide includes checks list', async () => {
+    const out = await run('')
     expect(out).toContain('checks:')
     expect(out).toContain('git status')
     expect(out).toContain('config drift')
@@ -42,28 +41,28 @@ describe('guide', () => {
   })
 })
 describe('--version', () => {
-  test('--version prints version number', () => {
-    const out = run('--version')
+  test('--version prints version number', async () => {
+    const out = await run('--version')
     expect(out).toMatch(versionRe)
   })
-  test('-v prints version number', () => {
-    const out = run('-v')
+  test('-v prints version number', async () => {
+    const out = await run('-v')
     expect(out).toMatch(versionRe)
   })
 })
 describe('flags', () => {
-  test('flags mixed with commands are parsed correctly', () => {
-    const out = run('--version')
+  test('flags mixed with commands are parsed correctly', async () => {
+    const out = await run('--version')
     expect(out).toBeTruthy()
   })
-  test('unknown flags with known command still works', () => {
-    const out = run('init')
+  test('unknown flags with known command still works', async () => {
+    const out = await run('init')
     expect(out).toContain('usage')
   })
 })
 describe('guide includes watch', () => {
-  test('guide mentions watch command', () => {
-    const out = run('')
+  test('guide mentions watch command', async () => {
+    const out = await run('')
     expect(out).toContain('watch')
   })
 })

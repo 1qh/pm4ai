@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ProjectInfo, ProjectState } from './watch-state.js'
 import pkg from '../package.json' with { type: 'json' }
-import { readCheckResult } from './check-cache.js'
+import { readCheckResultBlocking } from './check-cache.js'
 import { PKG_NAME } from './constants.js'
 import { discover } from './discover.js'
 import { projectName } from './utils.js'
@@ -31,7 +31,7 @@ import {
 const VERSION = pkg.version ?? '0.0.0'
 const safeReadCheck = (path: string) => {
   try {
-    return readCheckResult(path)
+    return readCheckResultBlocking(path)
   } catch {
     return null
   }
@@ -312,12 +312,13 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         guard: () => !hasFails && stats.running === 0,
         handler: () => {
           const p = sorted[focusedIdx]
-          // oxlint-disable-next-line node/no-sync
-          const pathExists = p ? existsSync(p.path) : false
-          if (p && pathExists)
+          if (!p) return
+          // oxlint-disable-next-line node/no-sync -- sync Ink key handler cannot await; existence gate is best-effort
+          const pathExists = existsSync(p.path)
+          if (pathExists)
             if (safeSpawn([PKG_NAME, 'fix'], p.path)) showToast(`fixing ${p.name}...`)
             else showToast(`${p.name}: spawn failed`)
-          else if (p) showToast(`${p.name}: ${p.path} not found`)
+          else showToast(`${p.name}: ${p.path} not found`)
         },
         key: 'return'
       },

@@ -1,35 +1,33 @@
-import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { file } from 'bun'
+import { beforeAll, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 
 describe('setup templates', () => {
-  test('SwiftBar plugin uses bunx pm4ai@latest', () => {
-    // oxlint-disable-next-line node/no-sync
-    const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  test('SwiftBar plugin uses bunx pm4ai@latest', async () => {
+    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
     expect(src).toContain('bunx pm4ai@latest status --swiftbar')
   })
-  test('SwiftBar plugin sets PATH', () => {
-    // oxlint-disable-next-line node/no-sync
-    const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  test('SwiftBar plugin sets PATH', async () => {
+    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
     expect(src).toContain('export PATH=')
     expect(src).toContain('.bun/bin')
   })
-  test('launchd plist targets pm4ai@latest fix', () => {
-    // oxlint-disable-next-line node/no-sync
-    const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  test('launchd plist targets pm4ai@latest fix', async () => {
+    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
     expect(src).toContain('pm4ai@latest')
     expect(src).toContain('fix')
   })
-  test('launchd plist runs daily at 9am', () => {
-    // oxlint-disable-next-line node/no-sync
-    const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  test('launchd plist runs daily at 9am', async () => {
+    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
     expect(src).toContain('<integer>9</integer>')
     expect(src).toContain('<integer>0</integer>')
   })
 })
 describe('streaming plugin', () => {
-  // oxlint-disable-next-line node/no-sync
-  const src = readFileSync(join(import.meta.dirname, '..', 'setup.ts'), 'utf8')
+  let src = ''
+  beforeAll(async () => {
+    src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
+  })
   test('declares swiftbar.type as streamable', () => {
     expect(src).toContain('swiftbar.type>streamable')
   })

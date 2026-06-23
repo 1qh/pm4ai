@@ -5,7 +5,7 @@
 /** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
@@ -16,35 +16,41 @@ import { isConnected, subscribe } from './socket'
 type CheckResult = z.infer<typeof checkResultSchema>
 const checksDir = join(homedir(), '.pm4ai', 'checks')
 const leadingSepRe = /^--/u
-const readCheckResult = (projectPath: string): CheckResult | null => {
+const pathExists = async (p: string): Promise<boolean> => {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
+}
+const readCheckResult = async (projectPath: string): Promise<CheckResult | null> => {
   const safeName = projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
   const p = join(checksDir, `${safeName}.json`)
-  // oxlint-disable-next-line node/no-sync
-  const exists = existsSync(p)
+  const exists = await Bun.file(p).exists()
   if (!exists) return null
-  // oxlint-disable-next-line node/no-sync
-  return safeParseJson(checkResultSchema, readFileSync(p, 'utf8')) ?? null
+  return safeParseJson(checkResultSchema, await Bun.file(p).text()) ?? null
 }
-const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string; path: string }[] => {
-  // oxlint-disable-next-line node/no-sync
-  const dirExists = existsSync(checksDir)
+const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null; name: string; path: string }[]> => {
+  const dirExists = await pathExists(checksDir)
   if (!dirExists) return []
-  // oxlint-disable-next-line node/no-sync
-  const entries = readdirSync(checksDir)
-  return (
+  const entries = await readdir(checksDir)
+  const mapped = await Promise.all(
     entries
       .filter(f => f.endsWith('.json'))
-      .map(f => {
+      .map(async f => {
         const safeName = f.replace('.json', '')
         const path = `/${safeName.replaceAll('--', '/')}`
         const name = path.split('/').pop() ?? ''
-        const result = readCheckResult(path)
-        return { checkResult: result, name, path }
+        const result = await readCheckResult(path)
+        const projExists = await pathExists(path)
+        return { checkResult: result, keep: projExists && !path.startsWith('/tmp/'), name, path }
       })
-      // oxlint-disable-next-line node/no-sync
-      .filter(p => existsSync(p.path) && !p.path.startsWith('/tmp/'))
-      .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
   )
+  return mapped
+    .filter(p => p.keep)
+    .map(({ checkResult, name, path }) => ({ checkResult, name, path }))
+    .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 }
 const authed = os.middleware(async ({ context, next }) => {
   const { headers } = context as { headers: Headers }
@@ -100,11 +106,12 @@ const fixProject = os
   .input(z.object({ project: z.string() }))
   .handler(async ({ input }) => {
     if (!projectNameRe.test(input.project)) throw new Error('Invalid project name')
-    const known = getProjectsFromCache().map(p => p.name)
+    const cached = await getProjectsFromCache()
+    const known = cached.map(p => p.name)
     if (!known.includes(input.project)) throw new Error('Unknown project')
     const { spawn } = await import('node:child_process')
     const proc = spawn('bunx', ['pm4ai', 'fix'], {
-      cwd: getProjectsFromCache().find(p => p.name === input.project)?.path,
+      cwd: cached.find(p => p.name === input.project)?.path,
       detached: true,
       stdio: 'ignore'
     })
@@ -112,7 +119,7 @@ const fixProject = os
     return { pid: proc.pid ?? 0 }
   })
 const projectStatus = os.input(z.object({ project: z.string() })).handler(async ({ input }) => {
-  const found = getProjectsFromCache().find(p => p.name === input.project)
+  const found = (await getProjectsFromCache()).find(p => p.name === input.project)
   if (!found) return null
   return found
 })

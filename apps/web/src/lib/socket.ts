@@ -13,14 +13,14 @@ const ensureStarted = async () => {
   if (started) return
   started = true
   const { createConnection } = await import('node:net')
-  const { existsSync } = await import('node:fs')
   const { homedir } = await import('node:os')
   const { join } = await import('node:path')
   const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
-  const doConnect = () => {
-    // oxlint-disable-next-line node/no-sync
-    if (!existsSync(socketPath)) {
-      setTimeout(doConnect, 1000)
+  const doConnect = async () => {
+    if (!(await Bun.file(socketPath).exists())) {
+      setTimeout(() => {
+        doConnect().catch(() => {})
+      }, 1000)
       return
     }
     const sock = createConnection(socketPath).on('error', () => {})
@@ -38,10 +38,12 @@ const ensureStarted = async () => {
     })
     sock.on('close', () => {
       connected = false
-      setTimeout(doConnect, 1000)
+      setTimeout(() => {
+        doConnect().catch(() => {})
+      }, 1000)
     })
   }
-  doConnect()
+  doConnect().catch(() => {})
 }
 const subscribe = (fn: Listener): (() => void) => {
   ensureStarted().catch(() => {})

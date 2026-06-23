@@ -121,18 +121,15 @@ describe('formatSwiftBar', () => {
     expect(result).toContain('GitHub')
   })
   test('handles multiple projects', async () => {
-    const { mkdtempSync } = await import('node:fs')
+    const { mkdtemp, rm } = await import('node:fs/promises')
     const { tmpdir } = await import('node:os')
-    // oxlint-disable-next-line node/no-sync
-    const tmp = mkdtempSync(join(tmpdir(), 'pm4ai-fmt-'))
+    const tmp = await mkdtemp(join(tmpdir(), 'pm4ai-fmt-'))
     const issues = new Map<string, Issue[]>()
     issues.set(testPath, [{ detail: 'passed 2026-01-01T00:00:00Z', type: 'info' }])
     issues.set(tmp, [])
     const result = await formatSwiftBar(issues)
     expect(result).toContain('2 projects')
-    const { rmSync } = await import('node:fs')
-    // oxlint-disable-next-line node/no-sync
-    rmSync(tmp, { recursive: true })
+    await rm(tmp, { recursive: true })
   })
   test('shows ci time from info issues', async () => {
     const issues = new Map<string, Issue[]>()

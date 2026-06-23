@@ -1,70 +1,63 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdir, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { isConnected, subscribe } from '../lib/socket'
 
 const leadingSepRe = /^--/u
+const pathExists = async (p: string): Promise<boolean> => {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
+}
 describe('check result reading', () => {
   const checksDir = join(homedir(), '.pm4ai', 'checks')
   const toSafe = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
-  test('reads valid check result', () => {
-    // oxlint-disable-next-line node/no-sync
-    mkdirSync(checksDir, { recursive: true })
+  test('reads valid check result', async () => {
+    await mkdir(checksDir, { recursive: true })
     const path = '/Users/o/z/pm4ai'
     const file = join(checksDir, `${toSafe(path)}.json`)
-    // oxlint-disable-next-line node/no-sync
-    if (existsSync(file)) {
-      // oxlint-disable-next-line node/no-sync
-      const data = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+    if (await Bun.file(file).exists()) {
+      const data = (await Bun.file(file).json()) as Record<string, unknown>
       expect(data.at).toBeDefined()
       expect(typeof data.pass).toBe('boolean')
       expect(typeof data.violations).toBe('number')
     }
   })
-  test('check cache directory exists', () => {
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(checksDir)).toBe(true)
+  test('check cache directory exists', async () => {
+    expect(await pathExists(checksDir)).toBe(true)
   })
-  test('all check files are valid JSON', () => {
-    // oxlint-disable-next-line node/no-sync
-    const files = existsSync(checksDir) ? readdirSync(checksDir).filter(f => f.endsWith('.json')) : []
-    for (const f of files) {
-      // oxlint-disable-next-line node/no-sync
-      const content = readFileSync(join(checksDir, f), 'utf8')
+  test('all check files are valid JSON', async () => {
+    const files = (await pathExists(checksDir)) ? (await readdir(checksDir)).filter(f => f.endsWith('.json')) : []
+    const contents = await Promise.all(files.map(async f => Bun.file(join(checksDir, f)).text()))
+    for (const content of contents)
       expect(() => {
         JSON.parse(content) as unknown
       }).not.toThrow()
-    }
   })
 })
 describe('project discovery from cache', () => {
-  test('cache files map back to real paths', () => {
+  test('cache files map back to real paths', async () => {
     const checksDir = join(homedir(), '.pm4ai', 'checks')
-    // oxlint-disable-next-line node/no-sync
-    const checksDirExists = existsSync(checksDir)
+    const checksDirExists = await pathExists(checksDir)
     if (!checksDirExists) return
-    // oxlint-disable-next-line node/no-sync
-    const files = readdirSync(checksDir).filter(f => f.endsWith('.json'))
-    const realProjects = files
-      .map(f => `/${f.replace('.json', '').replaceAll('--', '/')}`)
-      // oxlint-disable-next-line node/no-sync
-      .filter(p => existsSync(p) && !p.startsWith('/tmp/'))
+    const files = (await readdir(checksDir)).filter(f => f.endsWith('.json'))
+    const candidates = files.map(f => `/${f.replace('.json', '').replaceAll('--', '/')}`)
+    const exists = await Promise.all(candidates.map(pathExists))
+    const realProjects = candidates.filter((p, i) => exists[i] && !p.startsWith('/tmp/'))
     expect(realProjects.length).toBeGreaterThan(0)
-    for (const p of realProjects) {
-      // oxlint-disable-next-line node/no-sync
-      const pExists = existsSync(p)
-      expect(pExists).toBe(true)
-    }
+    const realExists = await Promise.all(realProjects.map(pathExists))
+    for (const e of realExists) expect(e).toBe(true)
   })
-  test('known projects are in cache', () => {
+  test('known projects are in cache', async () => {
     const checksDir = join(homedir(), '.pm4ai', 'checks')
-    // oxlint-disable-next-line node/no-sync
-    const checksDirExists = existsSync(checksDir)
+    const checksDirExists = await pathExists(checksDir)
     if (!checksDirExists) return
-    // oxlint-disable-next-line node/no-sync
-    const files = readdirSync(checksDir).filter(f => f.endsWith('.json'))
+    const files = (await readdir(checksDir)).filter(f => f.endsWith('.json'))
     const names = files.map(f => f.replace('.json', '').split('--').pop())
     expect(names).toContain('pm4ai')
   })
@@ -97,27 +90,25 @@ describe('project name validation', () => {
   })
 })
 describe('getProjectsFromCache logic', () => {
-  test('check file names decode to paths with correct format', () => {
-    // oxlint-disable-next-line node/no-sync
-    const checksDirExists = existsSync(join(homedir(), '.pm4ai', 'checks'))
-    // oxlint-disable-next-line node/no-sync
-    const files = checksDirExists ? readdirSync(join(homedir(), '.pm4ai', 'checks')).filter(f => f.endsWith('.json')) : []
+  test('check file names decode to paths with correct format', async () => {
+    const checksDir = join(homedir(), '.pm4ai', 'checks')
+    const checksDirExists = await pathExists(checksDir)
+    const files = checksDirExists ? (await readdir(checksDir)).filter(f => f.endsWith('.json')) : []
     for (const f of files) {
       const path = `/${f.replace('.json', '').replaceAll('--', '/')}`
       expect(path.startsWith('/')).toBe(true)
       expect(path.length).toBeGreaterThan(1)
     }
   })
-  test('each cached project has at, pass, violations fields', () => {
+  test('each cached project has at, pass, violations fields', async () => {
     const dir = join(homedir(), '.pm4ai', 'checks')
-    // oxlint-disable-next-line node/no-sync
-    const dirExists = existsSync(dir)
+    const dirExists = await pathExists(dir)
     if (!dirExists) return
-    // oxlint-disable-next-line node/no-sync
-    const files = readdirSync(dir).filter(f => f.endsWith('.json'))
-    for (const f of files) {
-      // oxlint-disable-next-line node/no-sync
-      const data = JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, unknown>
+    const files = (await readdir(dir)).filter(f => f.endsWith('.json'))
+    const datas = await Promise.all(
+      files.map(async f => Bun.file(join(dir, f)).json() as Promise<Record<string, unknown>>)
+    )
+    for (const data of datas) {
       expect(data).toHaveProperty('at')
       expect(data).toHaveProperty('pass')
       expect(data).toHaveProperty('violations')

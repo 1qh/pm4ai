@@ -1,11 +1,20 @@
+/** biome-ignore-all lint/performance/noAwaitInLoops: sequential parent-dir walk is dependent */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
 /* eslint-disable no-empty */
 import { $, file, Glob, write } from 'bun'
-import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
 const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
   const f = file(path)
   if (!(await f.exists())) return
@@ -37,14 +46,16 @@ const collectWorkspacePackages = async (projectPath: string): Promise<{ path: st
   const negated = new Set(workspaces.filter(w => w.startsWith('!')).map(w => w.slice(1)))
   const positive = workspaces.filter(w => !w.startsWith('!'))
   const matched = new Set<string>()
-  for (const ws of positive) {
-    const glob = new Glob(ws)
-    // oxlint-disable-next-line node/no-sync
-    const matches = glob.scanSync({ cwd: projectPath, onlyFiles: false })
-    for (const match of matches) if (!negated.has(match)) matched.add(match)
-  }
-  // oxlint-disable-next-line node/no-sync
-  const wsPkgPaths = [...matched].map(m => join(projectPath, m, 'package.json')).filter(p => existsSync(p))
+  await Promise.all(
+    positive.map(async ws => {
+      const glob = new Glob(ws)
+      for await (const match of glob.scan({ cwd: projectPath, onlyFiles: false }))
+        if (!negated.has(match)) matched.add(match)
+    })
+  )
+  const candidatePaths = [...matched].map(m => join(projectPath, m, 'package.json'))
+  const candidateExists = await Promise.all(candidatePaths.map(async p => pathExists(p)))
+  const wsPkgPaths = candidatePaths.filter((_, i) => candidateExists[i])
   const wsPkgs = await Promise.all(
     wsPkgPaths.map(async p => {
       const pkg = await readPkg(p)
@@ -61,17 +72,17 @@ const setVerbose = (v: boolean) => {
 const debug = (...args: unknown[]) => {
   if (verbose) console.error('[pm4ai]', ...args) // eslint-disable-line no-console
 }
-const findGitRoot = (): string | undefined => {
+const findGitRoot = async (): Promise<string | undefined> => {
   let dir = process.cwd()
   while (dir !== '/') {
-    // oxlint-disable-next-line node/no-sync
-    const hasGit = existsSync(join(dir, '.git'))
+    // eslint-disable-next-line no-await-in-loop
+    const hasGit = await pathExists(join(dir, '.git'))
     if (hasGit) return dir
     dir = dirname(dir)
   }
 }
 const isInsideProject = async (): Promise<string | undefined> => {
-  const root = findGitRoot()
+  const root = await findGitRoot()
   if (!root) return
   const allPkgs = await collectWorkspacePackages(root)
   const hasLintmax = allPkgs.some(({ pkg }) => {

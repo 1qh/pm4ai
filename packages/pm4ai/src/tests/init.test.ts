@@ -1,26 +1,38 @@
-import { $ } from 'bun'
+import { $, file } from 'bun'
 import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
 
+const dirExists = async (p: string): Promise<boolean> => {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
+const pathExists = async (p: string): Promise<boolean> => {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
+}
 const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
 const providerJsxRe = /<\w+Provider/u
-// oxlint-disable-next-line node/no-sync
-const readPkg = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
-// oxlint-disable-next-line node/no-sync
-afterAll(() => rmSync(TEST_DIR, { force: true, recursive: true }), 60_000)
+const readPkg = async (path: string) => (await file(path).json()) as Record<string, unknown>
+afterAll(async () => rm(TEST_DIR, { force: true, recursive: true }), 60_000)
 describe('init scaffold', () => {
   test('creates project', async () => {
     process.chdir(tmpdir())
     await init(TEST_NAME)
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(TEST_DIR)).toBe(true)
+    expect(await dirExists(TEST_DIR)).toBe(true)
   }, 30_000)
-  test('has all required structure', () => {
+  test('has all required structure', async () => {
     const must = [
       'CLAUDE.md',
       'package.json',
@@ -57,10 +69,9 @@ describe('init scaffold', () => {
       'readonly/ui/package.json',
       '.git'
     ]
-    // oxlint-disable-next-line node/no-sync
-    for (const f of must) expect(existsSync(join(TEST_DIR, f))).toBe(true)
+    await Promise.all(must.map(async f => expect(await pathExists(join(TEST_DIR, f))).toBe(true)))
   })
-  test('has no pm4ai-specific files', () => {
+  test('has no pm4ai-specific files', async () => {
     const forbidden = [
       'vercel.json',
       'prompts',
@@ -76,58 +87,51 @@ describe('init scaffold', () => {
       'apps/docs/src/app/api',
       'packages/pm4ai'
     ]
-    // oxlint-disable-next-line node/no-sync
-    for (const f of forbidden) expect(existsSync(join(TEST_DIR, f))).toBe(false)
+    await Promise.all(forbidden.map(async f => expect(await pathExists(join(TEST_DIR, f))).toBe(false)))
   })
-  test('package names are correct', () => {
-    const rootPkg = readPkg(join(TEST_DIR, 'package.json'))
+  test('package names are correct', async () => {
+    const rootPkg = await readPkg(join(TEST_DIR, 'package.json'))
     expect(rootPkg.name).toBeUndefined()
     expect(rootPkg.private).toBe(true)
-    const cliPkg = readPkg(join(TEST_DIR, 'packages/cli/package.json'))
+    const cliPkg = await readPkg(join(TEST_DIR, 'packages/cli/package.json'))
     expect(cliPkg.name).toBe(TEST_NAME)
     const bin = cliPkg.bin as Record<string, string>
     expect(bin[TEST_NAME]).toBe('dist/cli.mjs')
-    const libPkg = readPkg(join(TEST_DIR, 'packages/lib/package.json'))
+    const libPkg = await readPkg(join(TEST_DIR, 'packages/lib/package.json'))
     expect(libPkg.name).toBe(`@${TEST_NAME}/lib`)
   })
-  test('no pm4ai-specific deps', () => {
-    const webPkg = readPkg(join(TEST_DIR, 'apps/web/package.json'))
+  test('no pm4ai-specific deps', async () => {
+    const webPkg = await readPkg(join(TEST_DIR, 'apps/web/package.json'))
     const webDeps = (webPkg.dependencies ?? {}) as Record<string, string>
     expect(webDeps.pm4ai).toBeUndefined()
     expect(webDeps['@orpc/client']).toBeUndefined()
     expect(webDeps.zod).toBeUndefined()
-    const docsPkg = readPkg(join(TEST_DIR, 'apps/docs/package.json'))
+    const docsPkg = await readPkg(join(TEST_DIR, 'apps/docs/package.json'))
     const docsDeps = (docsPkg.dependencies ?? {}) as Record<string, string>
     expect(docsDeps.pm4ai).toBeUndefined()
   })
-  test('no Provider in layout files', () => {
-    // oxlint-disable-next-line node/no-sync
-    const webLayout = readFileSync(join(TEST_DIR, 'apps/web/src/app/layout.tsx'), 'utf8')
+  test('no Provider in layout files', async () => {
+    const webLayout = await file(join(TEST_DIR, 'apps/web/src/app/layout.tsx')).text()
     expect(webLayout).not.toMatch(providerJsxRe)
     expect(webLayout).toContain('Providers')
   })
-  test('docs uses content/docs path', () => {
-    // oxlint-disable-next-line node/no-sync
-    const sourceConfig = readFileSync(join(TEST_DIR, 'apps/docs/source.config.ts'), 'utf8')
+  test('docs uses content/docs path', async () => {
+    const sourceConfig = await file(join(TEST_DIR, 'apps/docs/source.config.ts')).text()
     expect(sourceConfig).toContain("'content/docs'")
   })
-  test('docs global css scans workspace package sources', () => {
-    // oxlint-disable-next-line node/no-sync
-    const globalCss = readFileSync(join(TEST_DIR, 'apps/docs/src/app/global.css'), 'utf8')
+  test('docs global css scans workspace package sources', async () => {
+    const globalCss = await file(join(TEST_DIR, 'apps/docs/src/app/global.css')).text()
     expect(globalCss).toContain("@source '../../../../packages/**/*.{ts,tsx}';")
   })
-  test('template root package.json matches constants', () => {
-    const tplPkg = readPkg(join(TEST_DIR, 'package.json'))
+  test('template root package.json matches constants', async () => {
+    const tplPkg = await readPkg(join(TEST_DIR, 'package.json'))
     const scripts = tplPkg.scripts as Record<string, string>
     for (const [key, val] of Object.entries(DEFAULT_SCRIPTS)) expect(scripts[key]).toBe(val)
     const hooks = tplPkg['simple-git-hooks'] as Record<string, string>
     expect(hooks['pre-commit']).toBe(EXPECTED.preCommit)
     const devDeps = Object.keys(tplPkg.devDependencies as Record<string, string>)
     for (const dep of REQUIRED_ROOT_DEVDEPS) expect(devDeps).toContain(dep)
-    const rootPkg = JSON.parse(
-      // oxlint-disable-next-line node/no-sync
-      readFileSync(join(import.meta.dirname, '..', '..', '..', '..', 'package.json'), 'utf8')
-    ) as {
+    const rootPkg = (await file(join(import.meta.dirname, '..', '..', '..', '..', 'package.json')).json()) as {
       trustedDependencies?: string[]
     }
     const trusted = tplPkg.trustedDependencies as string[]

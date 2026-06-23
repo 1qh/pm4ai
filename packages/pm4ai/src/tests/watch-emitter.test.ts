@@ -1,10 +1,10 @@
 /* eslint-disable no-promise-executor-return */
 import type { Socket } from 'node:net'
+import { write } from 'bun'
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
-import { clients, emit, SOCKET_PATH, startEmitter, stopEmitter } from '../watch-emitter.js'
+import { clients, emit, SOCKET_PATH, socketExists, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
 
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
@@ -37,37 +37,31 @@ afterEach(async () => {
 describe('socket lifecycle', () => {
   test('creates socket at expected path', async () => {
     await startEmitter()
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(SOCKET_PATH)).toBe(true)
+    expect(await socketExists()).toBe(true)
   })
   test('cleans up socket on stop', async () => {
     await startEmitter()
     await stopEmitter()
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(SOCKET_PATH)).toBe(false)
+    expect(await socketExists()).toBe(false)
   })
   test('handles stale socket file', async () => {
     await startEmitter()
     await stopEmitter()
-    // oxlint-disable-next-line node/no-sync
-    writeFileSync(SOCKET_PATH, 'stale')
+    await write(SOCKET_PATH, 'stale')
     await startEmitter()
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(SOCKET_PATH)).toBe(true)
+    expect(await socketExists()).toBe(true)
   })
   test('multiple start/stop cycles', async () => {
     for (let i = 0; i < 3; i += 1) {
       await startEmitter()
       await stopEmitter()
     }
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(SOCKET_PATH)).toBe(false)
+    expect(await socketExists()).toBe(false)
   })
   test('second start is no-op', async () => {
     await startEmitter()
     await startEmitter()
-    // oxlint-disable-next-line node/no-sync
-    expect(existsSync(SOCKET_PATH)).toBe(true)
+    expect(await socketExists()).toBe(true)
   })
 })
 describe('event delivery', () => {

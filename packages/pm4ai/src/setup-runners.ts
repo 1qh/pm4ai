@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
-import { $ } from 'bun'
-import { existsSync, mkdirSync } from 'node:fs'
+import { $, file } from 'bun'
+import { mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { discover } from './discover.js'
@@ -18,8 +18,7 @@ const onlineRunnerCount = async (repo: string): Promise<number> => {
 }
 const ensureTarball = async (base: string): Promise<string> => {
   const tarball = join(base, `actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz`)
-  // oxlint-disable-next-line node/no-sync
-  const hasTarball = existsSync(tarball)
+  const hasTarball = await file(tarball).exists()
   if (!hasTarball)
     await $`curl -fsSL -o ${tarball} https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz`.nothrow()
   return tarball
@@ -27,11 +26,9 @@ const ensureTarball = async (base: string): Promise<string> => {
 const registerRunner = async (repo: string): Promise<void> => {
   const safe = repo.split('/').pop() ?? repo.replaceAll('/', '-')
   const base = join(homedir(), '.actions-runners', safe, '1')
-  // oxlint-disable-next-line node/no-sync
-  mkdirSync(base, { recursive: true })
+  await mkdir(base, { recursive: true })
   const tarball = await ensureTarball(base)
-  // oxlint-disable-next-line node/no-sync
-  const hasConfig = existsSync(join(base, 'config.sh'))
+  const hasConfig = await file(join(base, 'config.sh')).exists()
   if (!hasConfig) await $`tar xzf ${tarball} -C ${base}`.nothrow()
   const tokenResult = await $`gh api -X POST repos/${repo}/actions/runners/registration-token -q .token`.quiet().nothrow()
   const token = tokenResult.stdout.toString().trim()

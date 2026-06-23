@@ -52,7 +52,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
   const allIssues = new Map<string, Issue[]>()
   const checks = allProjects.map(async project => {
     const name = projectName(project.path)
-    emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
+    await emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
     const issues: Issue[] = []
     const results: Issue[][] = await Promise.all([
       checkGit(project.path),
@@ -81,7 +81,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
     )
     allIssues.set(project.path, issues)
     const hasFails = issues.length > 0
-    emitToSocket(
+    await emitToSocket(
       createEvent({
         detail: hasFails ? `${issues.length} issues` : undefined,
         project: name,
@@ -89,7 +89,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
         step: 'check'
       })
     )
-    emitToSocket(
+    await emitToSocket(
       createEvent({
         detail: hasFails ? `${issues.length} issues` : 'clean',
         project: name,
@@ -99,7 +99,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
     )
   })
   await Promise.all(checks)
-  for (const project of allProjects) spawnBackgroundCheck(project.path)
+  await Promise.all(allProjects.map(async project => spawnBackgroundCheck(project.path)))
   if (swiftbar) console.log(await formatSwiftBar(allIssues))
   else {
     for (const [path, issues] of allIssues) {
