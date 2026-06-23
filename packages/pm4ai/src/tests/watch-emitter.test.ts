@@ -37,18 +37,22 @@ afterEach(async () => {
 describe('socket lifecycle', () => {
   test('creates socket at expected path', async () => {
     await startEmitter()
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(SOCKET_PATH)).toBe(true)
   })
   test('cleans up socket on stop', async () => {
     await startEmitter()
     await stopEmitter()
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(SOCKET_PATH)).toBe(false)
   })
   test('handles stale socket file', async () => {
     await startEmitter()
     await stopEmitter()
+    // oxlint-disable-next-line node/no-sync
     writeFileSync(SOCKET_PATH, 'stale')
     await startEmitter()
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(SOCKET_PATH)).toBe(true)
   })
   test('multiple start/stop cycles', async () => {
@@ -56,11 +60,13 @@ describe('socket lifecycle', () => {
       await startEmitter()
       await stopEmitter()
     }
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(SOCKET_PATH)).toBe(false)
   })
   test('second start is no-op', async () => {
     await startEmitter()
     await startEmitter()
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(SOCKET_PATH)).toBe(true)
   })
 })

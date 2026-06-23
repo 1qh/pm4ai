@@ -182,8 +182,9 @@ const checkPublishedPkgConventions = (pkgs: PkgEntry[], projectPath: string): Is
         detail: `${shortPath} missing "prepublishOnly": "bun run build" — stale dist will ship`,
         type: 'drift'
       })
-    if (!existsSync(join(dirname(pkgPath), 'tsdown.config.ts')))
-      issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
+    // oxlint-disable-next-line node/no-sync
+    const hasTsdown = existsSync(join(dirname(pkgPath), 'tsdown.config.ts'))
+    if (!hasTsdown) issues.push({ detail: `${shortPath} missing tsdown.config.ts`, type: 'missing' })
   }
   return issues
 }
@@ -231,9 +232,11 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   if (rootPkg) {
     issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
     const selfPkgPath = join(import.meta.dirname, '..', '..', '..', 'package.json')
-    const selfPkg = existsSync(selfPkgPath)
-      ? (JSON.parse(readFileSync(selfPkgPath, 'utf8')) as PackageJson)
-      : ({} as PackageJson)
+    // oxlint-disable-next-line node/no-sync
+    const selfPkgExists = existsSync(selfPkgPath)
+    // oxlint-disable-next-line node/no-sync
+    const selfPkgRaw = selfPkgExists ? readFileSync(selfPkgPath, 'utf8') : null
+    const selfPkg = selfPkgRaw === null ? ({} as PackageJson) : (JSON.parse(selfPkgRaw) as PackageJson)
     issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
   issues.push(

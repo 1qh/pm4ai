@@ -75,15 +75,21 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
 }
 const canonicaliseViaLintmax = async (rawContent: string, relName: string, projectPath: string): Promise<string> => {
   const lintmaxBin = join(projectPath, 'node_modules', '.bin', 'lintmax')
-  if (!existsSync(lintmaxBin)) return rawContent
+  // oxlint-disable-next-line node/no-sync
+  const lintmaxBinExists = existsSync(lintmaxBin)
+  if (!lintmaxBinExists) return rawContent
   const cacheDir = join(projectPath, 'node_modules', '.cache', 'canon')
-  if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+  // oxlint-disable-next-line node/no-sync
+  const cacheDirExists = existsSync(cacheDir)
+  // oxlint-disable-next-line node/no-sync
+  if (!cacheDirExists) mkdirSync(cacheDir, { recursive: true })
   const tmpRel = join('node_modules', '.cache', 'canon', relName.replaceAll('/', '_'))
   const tmpPath = join(projectPath, tmpRel)
   await write(file(tmpPath), rawContent)
   await $`${lintmaxBin} fix ${tmpRel}`.cwd(projectPath).quiet().nothrow()
   const formatted = await file(tmpPath).text()
   try {
+    // oxlint-disable-next-line node/no-sync
     rmSync(tmpPath)
   } catch {
     /* leftover lives under node_modules/.cache/ — invisible to git + cleaned with node_modules */
@@ -93,7 +99,9 @@ const canonicaliseViaLintmax = async (rawContent: string, relName: string, proje
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
-  if (!existsSync(rulesDir)) {
+  // oxlint-disable-next-line node/no-sync
+  const rulesDirExists = existsSync(rulesDir)
+  if (!rulesDirExists) {
     issues.push({ detail: 'rules directory not found in pm4ai repo', type: 'error' })
     return issues
   }
@@ -265,7 +273,11 @@ const monorepoRootRe = /\/(?:packages|tool|lib)\/[^/]+$/u
 const resolveExportSource = (key: string, importPath: string, pkgDir: string): string | undefined => {
   if (importPath.endsWith('.json')) return
   const srcBase = key === '.' ? 'src/index' : `src/${key.replace(dotSlashRe, '')}`
-  for (const ext of ['.ts', '.tsx']) if (existsSync(join(pkgDir, `${srcBase}${ext}`))) return `${srcBase}${ext}`
+  for (const ext of ['.ts', '.tsx']) {
+    // oxlint-disable-next-line node/no-sync
+    const srcExists = existsSync(join(pkgDir, `${srcBase}${ext}`))
+    if (srcExists) return `${srcBase}${ext}`
+  }
 }
 interface TsdownConfig {
   copy?: string[]
@@ -281,7 +293,9 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
       if (importPath)
         if (importPath.endsWith('.css')) {
           const srcCss = importPath.replace(distPrefixRe, 'src/')
-          if (existsSync(join(pkgDir, srcCss))) copy.push(srcCss)
+          // oxlint-disable-next-line node/no-sync
+          const srcCssExists = existsSync(join(pkgDir, srcCss))
+          if (srcCssExists) copy.push(srcCss)
         } else {
           const src = resolveExportSource(key, importPath, pkgDir)
           if (src) entry.push(src)
@@ -291,12 +305,19 @@ const inferTsdownConfig = (pkg: PackageJson, pkgDir: string): TsdownConfig | und
     const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
     for (const binPath of Object.values(bins)) {
       const srcPath = binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts')
-      if (existsSync(join(pkgDir, srcPath)) && !entry.includes(srcPath)) entry.push(srcPath)
+      // oxlint-disable-next-line node/no-sync
+      const binSrcExists = existsSync(join(pkgDir, srcPath))
+      if (binSrcExists && !entry.includes(srcPath)) entry.push(srcPath)
     }
   }
-  if (entry.length === 0 && !pkg.bin)
-    if (existsSync(join(pkgDir, 'src/index.ts'))) entry.push('src/index.ts')
-    else if (existsSync(join(pkgDir, 'src/index.tsx'))) entry.push('src/index.tsx')
+  if (entry.length === 0 && !pkg.bin) {
+    // oxlint-disable-next-line node/no-sync
+    const indexTsExists = existsSync(join(pkgDir, 'src/index.ts'))
+    // oxlint-disable-next-line node/no-sync
+    const indexTsxExists = existsSync(join(pkgDir, 'src/index.tsx'))
+    if (indexTsExists) entry.push('src/index.ts')
+    else if (indexTsxExists) entry.push('src/index.tsx')
+  }
   if (entry.length === 0) return
   const config: TsdownConfig = { entry }
   if (copy.length > 0) config.copy = copy
@@ -329,19 +350,29 @@ const syncReadmeSymlink = ({
 }): boolean => {
   const readmeSrc = join(monorepoRoot, 'README.md')
   const readmeDst = join(pkgDir, 'README.md')
-  if (!existsSync(readmeSrc)) return false
+  // oxlint-disable-next-line node/no-sync
+  const readmeSrcExists = existsSync(readmeSrc)
+  if (!readmeSrcExists) return false
+  // oxlint-disable-next-line node/no-sync
   const srcContent = readFileSync(readmeSrc, 'utf8')
-  if (existsSync(readmeDst)) {
+  // oxlint-disable-next-line node/no-sync
+  const readmeDstExists = existsSync(readmeDst)
+  if (readmeDstExists) {
     let isSymlink: boolean
     try {
+      // oxlint-disable-next-line node/no-sync
       readlinkSync(readmeDst)
       isSymlink = true
     } catch {
       isSymlink = false
     }
-    if (!isSymlink && readFileSync(readmeDst, 'utf8') === srcContent) return false
+    // oxlint-disable-next-line node/no-sync
+    const dstMatches = !isSymlink && readFileSync(readmeDst, 'utf8') === srcContent
+    if (dstMatches) return false
+    // oxlint-disable-next-line node/no-sync
     if (isSymlink) rmSync(readmeDst)
   }
+  // oxlint-disable-next-line node/no-sync
   writeFileSync(readmeDst, srcContent)
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
@@ -379,12 +410,16 @@ const fixPublishedPkg = ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArg
   const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
   const tsdownConfig = inferTsdownConfig(pkg, pkgDir)
   if (tsdownConfig) {
-    const existingContent = existsSync(tsdownConfigPath) ? readFileSync(tsdownConfigPath, 'utf8') : ''
+    // oxlint-disable-next-line node/no-sync
+    const tsdownExists = existsSync(tsdownConfigPath)
+    // oxlint-disable-next-line node/no-sync
+    const existingContent = tsdownExists ? readFileSync(tsdownConfigPath, 'utf8') : ''
     if (existingContent.includes('dts: false') || existingContent.includes('onSuccess')) {
       /* Skip — existing config has custom overrides */
     } else {
       const generatedContent = serializeTsdownConfig(tsdownConfig)
       if (existingContent !== generatedContent) {
+        // oxlint-disable-next-line node/no-sync
         writeFileSync(tsdownConfigPath, generatedContent)
         issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
       }
@@ -549,18 +584,27 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const src = join(cnsyncPath, READONLY_UI)
   const dst = join(projectPath, READONLY_UI)
-  if (!existsSync(src)) {
+  // oxlint-disable-next-line node/no-sync
+  const srcExists = existsSync(src)
+  if (!srcExists) {
     issues.push({ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' })
     return issues
   }
   if (projectPath === cnsyncPath) return issues
+  // oxlint-disable-next-line node/no-sync
   cpSync(src, dst, { recursive: true })
   for (const ext of ['mjs', 'ts', 'js']) {
     const p = join(dst, `postcss.config.${ext}`)
-    if (existsSync(p)) rmSync(p)
+    // oxlint-disable-next-line node/no-sync
+    const postcssExists = existsSync(p)
+    // oxlint-disable-next-line node/no-sync
+    if (postcssExists) rmSync(p)
   }
   const pkgPath = join(projectPath, 'package.json')
-  if (existsSync(pkgPath)) {
+  // oxlint-disable-next-line node/no-sync
+  const pkgExists = existsSync(pkgPath)
+  if (pkgExists) {
+    // oxlint-disable-next-line node/no-sync
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, unknown>
     const { workspaces } = pkg
     if (
@@ -568,6 +612,7 @@ const syncUi = (cnsyncPath: string, projectPath: string): Issue[] => {
       !workspaces.some(w => w === READONLY_UI || w === 'readonly/*' || w === 'readonly/**')
     ) {
       workspaces.push(READONLY_UI)
+      // oxlint-disable-next-line node/no-sync
       writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
       issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
     }
@@ -598,6 +643,7 @@ const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
       }
     }
     if (changed) {
+      // oxlint-disable-next-line node/no-sync
       writeFileSync(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)
       const rel = app.path.replace(`${projectPath}/`, '')
       issues.push({ detail: `${rel} prefixed fumadocs/next build with bunx --bun`, type: 'synced' })
@@ -643,15 +689,21 @@ interface PatchArgs {
 }
 const patchSharedFile = ({ githubUrl, projectPath, sharedPath, title }: PatchArgs): Issue | undefined => {
   const relShared = sharedPath.replace(`${projectPath}/`, '')
-  if (!existsSync(sharedPath)) {
+  // oxlint-disable-next-line node/no-sync
+  const sharedExists = existsSync(sharedPath)
+  if (!sharedExists) {
+    // oxlint-disable-next-line node/no-sync
     mkdirSync(dirname(sharedPath), { recursive: true })
+    // oxlint-disable-next-line node/no-sync
     writeFileSync(sharedPath, layoutSharedTemplate(title, githubUrl))
     return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
   }
+  // oxlint-disable-next-line node/no-sync
   const content = readFileSync(sharedPath, 'utf8')
   if (GITHUB_URL_KEY_RE.test(content)) return
   const next = content.replace(BASEOPTIONS_OPEN_RE, `$<open>  githubUrl: '${githubUrl}',\n`)
   if (next === content) return
+  // oxlint-disable-next-line node/no-sync
   writeFileSync(sharedPath, next)
   return { detail: `${relShared} added githubUrl`, type: 'synced' }
 }

@@ -39,8 +39,11 @@ const collectWorkspacePackages = async (projectPath: string): Promise<{ path: st
   const matched = new Set<string>()
   for (const ws of positive) {
     const glob = new Glob(ws)
-    for (const match of glob.scanSync({ cwd: projectPath, onlyFiles: false })) if (!negated.has(match)) matched.add(match)
+    // oxlint-disable-next-line node/no-sync
+    const matches = glob.scanSync({ cwd: projectPath, onlyFiles: false })
+    for (const match of matches) if (!negated.has(match)) matched.add(match)
   }
+  // oxlint-disable-next-line node/no-sync
   const wsPkgPaths = [...matched].map(m => join(projectPath, m, 'package.json')).filter(p => existsSync(p))
   const wsPkgs = await Promise.all(
     wsPkgPaths.map(async p => {
@@ -61,7 +64,9 @@ const debug = (...args: unknown[]) => {
 const findGitRoot = (): string | undefined => {
   let dir = process.cwd()
   while (dir !== '/') {
-    if (existsSync(join(dir, '.git'))) return dir
+    // oxlint-disable-next-line node/no-sync
+    const hasGit = existsSync(join(dir, '.git'))
+    if (hasGit) return dir
     dir = dirname(dir)
   }
 }

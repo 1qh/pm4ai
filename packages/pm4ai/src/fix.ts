@@ -32,7 +32,9 @@ const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const upSh = join(projectPath, 'up.sh')
-  if (!existsSync(upSh)) {
+  // oxlint-disable-next-line node/no-sync
+  const upShExists = existsSync(upSh)
+  if (!upShExists) {
     issues.push({ detail: 'missing, cannot maintain', type: 'up.sh' })
     return issues
   }
@@ -42,8 +44,12 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   if (exitCode === 0) {
     const snapshotDir = join(homedir(), CONFIG_DIR, 'snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
-    if (existsSync(lockfile)) {
+    // oxlint-disable-next-line node/no-sync
+    const lockfileExists = existsSync(lockfile)
+    if (lockfileExists) {
+      // oxlint-disable-next-line node/no-sync
       mkdirSync(snapshotDir, { recursive: true })
+      // oxlint-disable-next-line node/no-sync
       copyFileSync(lockfile, join(snapshotDir, 'bun.lock'))
     }
     writeCheckResult({ pass: true, projectPath, violations: 0 })
@@ -51,7 +57,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
     const errorLine = stderr.split('\n').findLast(Boolean) ?? 'unknown error'
     issues.push({ detail: `failed: ${errorLine}`, type: 'up.sh' })
     const violationMatch = violationRe.exec(stderr)
-    const violations = violationMatch?.groups?.count ? Number.parseInt(violationMatch.groups.count, 10) : 1
+    const violations = violationMatch?.groups?.count ? Math.trunc(Number(violationMatch.groups.count)) : 1
     writeCheckResult({ pass: false, projectPath, summary: errorLine, violations })
   }
   updateLog({
@@ -66,12 +72,16 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 export { maintain }
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = join(homedir(), CONFIG_DIR, 'fix.lock')
+  // oxlint-disable-next-line node/no-sync
   mkdirSync(join(homedir(), CONFIG_DIR), { recursive: true })
   const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
   const tryAcquireLock = (): boolean => {
     try {
+      // oxlint-disable-next-line node/no-sync
       const fd = openSync(lockFile, 'wx')
+      // oxlint-disable-next-line node/no-sync
       writeFileSync(fd, lockData)
+      // oxlint-disable-next-line node/no-sync
       closeSync(fd)
       return true
     } catch {
@@ -80,6 +90,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
   }
   if (!tryAcquireLock()) {
     try {
+      // oxlint-disable-next-line node/no-sync
       const lock = safeParseJson(lockSchema, readFileSync(lockFile, 'utf8'))
       if (!lock) return
       const age = Date.now() - new Date(lock.at).getTime()
@@ -97,6 +108,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     } catch {
       /* Corrupt lock */
     }
+    // oxlint-disable-next-line node/no-sync
     rmSync(lockFile, { force: true })
     if (!tryAcquireLock()) {
       console.log('another fix is already running')
@@ -131,8 +143,8 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         await $`git fetch`.cwd(repo.path).quiet().nothrow()
         const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()
-        const b = Number.parseInt(behind.stdout.toString().trim(), 10)
-        const a = Number.parseInt(ahead.stdout.toString().trim(), 10)
+        const b = Math.trunc(Number(behind.stdout.toString().trim()))
+        const a = Math.trunc(Number(ahead.stdout.toString().trim()))
         if (b > 0 && a > 0) return { name, reason: `diverged (${b} behind, ${a} ahead)` }
         if (a > 0) return { name, reason: `${a} commits ahead, push first` }
         return { behind: b, name, path: repo.path }
@@ -178,8 +190,9 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         ...fumadocsGithubIssues,
         ...subPkgIssues
       )
-      if (existsSync(join(project.path, READONLY_UI)) || (await hasHandwrittenTsx(project.path)))
-        issues.push(...syncUi(cnsync.path, project.path))
+      // oxlint-disable-next-line node/no-sync
+      const hasReadonlyUi = existsSync(join(project.path, READONLY_UI))
+      if (hasReadonlyUi || (await hasHandwrittenTsx(project.path))) issues.push(...syncUi(cnsync.path, project.path))
       const syncCount = issues.filter(i => i.type === 'synced').length
       emitToSocket(
         createEvent({
@@ -242,6 +255,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     for (const s of summaries) console.log(s)
     if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   } finally {
+    // oxlint-disable-next-line node/no-sync
     rmSync(lockFile, { force: true })
   }
 }

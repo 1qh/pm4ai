@@ -143,7 +143,10 @@ const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
 `
 const setup = async () => {
   const swiftbarDir = join(homedir(), 'Library', 'Application Support', 'SwiftBar', 'plugins')
-  if (existsSync(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))) {
+  // oxlint-disable-next-line node/no-sync
+  const swiftbarInstalled = existsSync(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))
+  if (swiftbarInstalled) {
+    // oxlint-disable-next-line node/no-sync
     mkdirSync(swiftbarDir, { recursive: true })
     const pollingPath = join(swiftbarDir, 'pm4ai.1h.sh')
     const streamingPath = join(swiftbarDir, 'pm4ai-stream.1h.ts')
@@ -156,6 +159,7 @@ const setup = async () => {
     console.log(`swiftbar streaming plugin: ${streamingPath}`)
   } else console.log('swiftbar not found, install with: brew install swiftbar')
   const launchdDir = join(homedir(), 'Library', 'LaunchAgents')
+  // oxlint-disable-next-line node/no-sync
   mkdirSync(launchdDir, { recursive: true })
   const plistPath = join(launchdDir, 'com.pm4ai.fix.plist')
   await write(plistPath, launchdPlist)

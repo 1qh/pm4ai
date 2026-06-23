@@ -11,6 +11,7 @@ interface Project {
   name: string
   path: string
 }
+// oxlint-disable-next-line node/no-sync
 const hasDirInside = (dir: string, sub: string) => existsSync(join(dir, sub))
 const hasLintmaxDep = async (dir: string): Promise<boolean> => {
   const pkgFile = file(join(dir, 'package.json'))
@@ -35,8 +36,11 @@ const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   return url.includes(`${GH_ORG}/cnsync`)
 }
 const ensureSourceRepo = async (repo: string, dest: string) => {
-  if (!existsSync(dest)) {
+  // oxlint-disable-next-line node/no-sync
+  const destExists = existsSync(dest)
+  if (!destExists) {
     debug('cloning', repo, 'to', dest)
+    // oxlint-disable-next-line node/no-sync
     mkdirSync(dirname(dest), { recursive: true })
     await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
     return dest
@@ -123,11 +127,15 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
   const cnsyncDir = join(reposDir, 'cnsync')
   let self: Project | undefined
   let cnsync: Project | undefined
-  if (existsSync(selfDir)) {
+  // oxlint-disable-next-line node/no-sync
+  const selfDirExists = existsSync(selfDir)
+  if (selfDirExists) {
     await ensureSourceRepo(PKG_NAME, selfDir)
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
   }
-  if (existsSync(cnsyncDir)) {
+  // oxlint-disable-next-line node/no-sync
+  const cnsyncDirExists = existsSync(cnsyncDir)
+  if (cnsyncDirExists) {
     await ensureSourceRepo('cnsync', cnsyncDir)
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
   }

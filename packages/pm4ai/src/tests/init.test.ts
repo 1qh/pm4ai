@@ -9,12 +9,15 @@ import { init } from '../init.js'
 const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
 const providerJsxRe = /<\w+Provider/u
+// oxlint-disable-next-line node/no-sync
 const readPkg = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+// oxlint-disable-next-line node/no-sync
 afterAll(() => rmSync(TEST_DIR, { force: true, recursive: true }), 60_000)
 describe('init scaffold', () => {
   test('creates project', async () => {
     process.chdir(tmpdir())
     await init(TEST_NAME)
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(TEST_DIR)).toBe(true)
   }, 30_000)
   test('has all required structure', () => {
@@ -54,6 +57,7 @@ describe('init scaffold', () => {
       'readonly/ui/package.json',
       '.git'
     ]
+    // oxlint-disable-next-line node/no-sync
     for (const f of must) expect(existsSync(join(TEST_DIR, f))).toBe(true)
   })
   test('has no pm4ai-specific files', () => {
@@ -72,6 +76,7 @@ describe('init scaffold', () => {
       'apps/docs/src/app/api',
       'packages/pm4ai'
     ]
+    // oxlint-disable-next-line node/no-sync
     for (const f of forbidden) expect(existsSync(join(TEST_DIR, f))).toBe(false)
   })
   test('package names are correct', () => {
@@ -96,15 +101,18 @@ describe('init scaffold', () => {
     expect(docsDeps.pm4ai).toBeUndefined()
   })
   test('no Provider in layout files', () => {
+    // oxlint-disable-next-line node/no-sync
     const webLayout = readFileSync(join(TEST_DIR, 'apps/web/src/app/layout.tsx'), 'utf8')
     expect(webLayout).not.toMatch(providerJsxRe)
     expect(webLayout).toContain('Providers')
   })
   test('docs uses content/docs path', () => {
+    // oxlint-disable-next-line node/no-sync
     const sourceConfig = readFileSync(join(TEST_DIR, 'apps/docs/source.config.ts'), 'utf8')
     expect(sourceConfig).toContain("'content/docs'")
   })
   test('docs global css scans workspace package sources', () => {
+    // oxlint-disable-next-line node/no-sync
     const globalCss = readFileSync(join(TEST_DIR, 'apps/docs/src/app/global.css'), 'utf8')
     expect(globalCss).toContain("@source '../../../../packages/**/*.{ts,tsx}';")
   })
@@ -117,6 +125,7 @@ describe('init scaffold', () => {
     const devDeps = Object.keys(tplPkg.devDependencies as Record<string, string>)
     for (const dep of REQUIRED_ROOT_DEVDEPS) expect(devDeps).toContain(dep)
     const rootPkg = JSON.parse(
+      // oxlint-disable-next-line node/no-sync
       readFileSync(join(import.meta.dirname, '..', '..', '..', '..', 'package.json'), 'utf8')
     ) as {
       trustedDependencies?: string[]

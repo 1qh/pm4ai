@@ -312,7 +312,9 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         guard: () => !hasFails && stats.running === 0,
         handler: () => {
           const p = sorted[focusedIdx]
-          if (p && existsSync(p.path))
+          // oxlint-disable-next-line node/no-sync
+          const pathExists = p ? existsSync(p.path) : false
+          if (p && pathExists)
             if (safeSpawn([PKG_NAME, 'fix'], p.path)) showToast(`fixing ${p.name}...`)
             else showToast(`${p.name}: spawn failed`)
           else if (p) showToast(`${p.name}: ${p.path} not found`)

@@ -14,7 +14,9 @@ const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
 const waitForSocket = async (timeout = 5000): Promise<void> => {
   const start = Date.now()
   while (Date.now() - start < timeout) {
-    if (existsSync(SOCKET_PATH)) return
+    // oxlint-disable-next-line node/no-sync
+    const socketExists = existsSync(SOCKET_PATH)
+    if (socketExists) return
     await wait(100)
   }
   throw new Error('watch.sock not created in time')

@@ -19,22 +19,32 @@ const leadingSepRe = /^--/u
 const readCheckResult = (projectPath: string): CheckResult | null => {
   const safeName = projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
   const p = join(checksDir, `${safeName}.json`)
-  if (!existsSync(p)) return null
+  // oxlint-disable-next-line node/no-sync
+  const exists = existsSync(p)
+  if (!exists) return null
+  // oxlint-disable-next-line node/no-sync
   return safeParseJson(checkResultSchema, readFileSync(p, 'utf8')) ?? null
 }
 const getProjectsFromCache = (): { checkResult: CheckResult | null; name: string; path: string }[] => {
-  if (!existsSync(checksDir)) return []
-  return readdirSync(checksDir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => {
-      const safeName = f.replace('.json', '')
-      const path = `/${safeName.replaceAll('--', '/')}`
-      const name = path.split('/').pop() ?? ''
-      const result = readCheckResult(path)
-      return { checkResult: result, name, path }
-    })
-    .filter(p => existsSync(p.path) && !p.path.startsWith('/tmp/'))
-    .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
+  // oxlint-disable-next-line node/no-sync
+  const dirExists = existsSync(checksDir)
+  if (!dirExists) return []
+  // oxlint-disable-next-line node/no-sync
+  const entries = readdirSync(checksDir)
+  return (
+    entries
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const safeName = f.replace('.json', '')
+        const path = `/${safeName.replaceAll('--', '/')}`
+        const name = path.split('/').pop() ?? ''
+        const result = readCheckResult(path)
+        return { checkResult: result, name, path }
+      })
+      // oxlint-disable-next-line node/no-sync
+      .filter(p => existsSync(p.path) && !p.path.startsWith('/tmp/'))
+      .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
+  )
 }
 const authed = os.middleware(async ({ context, next }) => {
   const { headers } = context as { headers: Headers }

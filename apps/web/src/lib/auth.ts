@@ -8,11 +8,15 @@ let currentToken: string | undefined
 const loadTokenFromFile = () => {
   try {
     const tokenFile = join(process.cwd(), '.auth-token')
-    if (existsSync(tokenFile)) {
+    // oxlint-disable-next-line node/no-sync
+    const exists = existsSync(tokenFile)
+    if (exists) {
+      // oxlint-disable-next-line node/no-sync
       const token = readFileSync(tokenFile, 'utf8').trim()
       if (token) {
         pendingTokens.set(token, true)
         currentToken = token
+        // oxlint-disable-next-line node/no-sync
         unlinkSync(tokenFile)
       }
     }

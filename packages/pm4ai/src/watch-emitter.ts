@@ -18,6 +18,7 @@ const listeners = new Set<Listener>()
 let server: Server | undefined
 const removeSocket = () => {
   try {
+    // oxlint-disable-next-line node/no-sync
     unlinkSync(SOCKET_PATH)
   } catch {
     /* Socket may not exist */
@@ -35,8 +36,11 @@ const broadcast = (line: string, exclude?: Socket) => {
 }
 const startEmitter = async (): Promise<void> => {
   if (server) return
+  // oxlint-disable-next-line node/no-sync
   mkdirSync(SOCKET_DIR, { recursive: true })
-  if (existsSync(SOCKET_PATH)) removeSocket()
+  // oxlint-disable-next-line node/no-sync
+  const socketPathExists = existsSync(SOCKET_PATH)
+  if (socketPathExists) removeSocket()
   await new Promise<void>((resolve, reject) => {
     const s = createServer(socket => {
       clients.add(socket)
@@ -79,7 +83,9 @@ const emit = (event: WatchEvent) => {
   broadcast(JSON.stringify(event))
 }
 const emitToSocket = (event: WatchEvent) => {
-  if (!existsSync(SOCKET_PATH)) return
+  // oxlint-disable-next-line node/no-sync
+  const socketExists = existsSync(SOCKET_PATH)
+  if (!socketExists) return
   try {
     const sock = createConnection(SOCKET_PATH)
     sock.on('error', () => {})

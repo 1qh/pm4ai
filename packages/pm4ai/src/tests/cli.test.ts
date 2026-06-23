@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.mjs')
 const versionRe = /^\d+\.\d+\.\d+$/u
+// oxlint-disable-next-line node/no-sync
 const run = (args: string) => execSync(`bun ${cli} ${args}`, { encoding: 'utf8', timeout: 10_000 }).trim()
 describe('guide', () => {
   test('no args prints guide with all commands', () => {

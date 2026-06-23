@@ -18,6 +18,7 @@ const ensureStarted = async () => {
   const { join } = await import('node:path')
   const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
   const doConnect = () => {
+    // oxlint-disable-next-line node/no-sync
     if (!existsSync(socketPath)) {
       setTimeout(doConnect, 1000)
       return

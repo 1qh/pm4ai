@@ -68,14 +68,17 @@ describe.skipIf(isCI)('status() via CLI', () => {
   const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
   const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
   test('status command runs on real project', () => {
+    // oxlint-disable-next-line node/no-sync
     const result = execSync(`bun ${cliPath} status`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 30_000 })
     expect(result).toContain('pm4ai')
   }, 30_000)
   test('status --all shows every discovered project', () => {
+    // oxlint-disable-next-line node/no-sync
     const result = execSync(`bun ${cliPath} status --all`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 120_000 })
     for (const name of ['pm4ai', 'cnsync', 'lintmax', 'ogrid', 'idecn', 'noboil']) expect(result).toContain(name)
   }, 120_000)
   test('status --swiftbar outputs SwiftBar format', () => {
+    // oxlint-disable-next-line node/no-sync
     const result = execSync(`bun ${cliPath} status --swiftbar`, { cwd: pm4aiPath, encoding: 'utf8', timeout: 120_000 })
     expect(result).toContain('sfimage=')
     expect(result).toContain('Refresh | refresh=true')

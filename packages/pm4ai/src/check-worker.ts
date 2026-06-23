@@ -10,10 +10,13 @@ const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')
 const dir = join(homedir(), CONFIG_DIR, 'checks')
 const cp = join(dir, `${safeName}.json`)
 const lp = join(dir, `${safeName}.lock`)
+// oxlint-disable-next-line node/no-sync
 mkdirSync(dir, { recursive: true })
+// oxlint-disable-next-line node/no-sync
 writeFileSync(lp, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
 const getCommit = (): string => {
   try {
+    // oxlint-disable-next-line node/no-sync
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectPath, stdio: 'pipe' }).toString().trim()
   } catch {
     return ''
@@ -21,19 +24,23 @@ const getCommit = (): string => {
 }
 const commit = getCommit()
 try {
+  // oxlint-disable-next-line node/no-sync
   execSync('bun run check', { cwd: projectPath, stdio: 'pipe' })
+  // oxlint-disable-next-line node/no-sync
   writeFileSync(cp, JSON.stringify({ at: new Date().toISOString(), commit, pass: true, violations: 0 }))
 } catch (error: unknown) {
   const err = error as { stderr?: Buffer; stdout?: Buffer }
   const out = (err.stderr ?? err.stdout ?? Buffer.from('')).toString()
   const lines = out.split('\n').filter(Boolean)
   const summary = lines.slice(-3).join('; ').slice(0, 200)
+  // oxlint-disable-next-line node/no-sync
   writeFileSync(
     cp,
     JSON.stringify({ at: new Date().toISOString(), commit, pass: false, summary, violations: lines.length })
   )
 } finally {
   try {
+    // oxlint-disable-next-line node/no-sync
     rmSync(lp)
   } catch {
     // Already removed

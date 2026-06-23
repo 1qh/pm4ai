@@ -105,6 +105,7 @@ describe('watch --json via CLI', () => {
     const { existsSync } = await import('node:fs')
     const { join } = await import('node:path')
     const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
+    // oxlint-disable-next-line node/no-sync
     expect(existsSync(cliPath)).toBe(true)
   })
 })

@@ -19,6 +19,7 @@ const getRulesDir = (): string | undefined => {
     join(import.meta.dir, '..', '..', '..', 'apps', 'web', 'content', 'rules'),
     join(import.meta.dir, '..', 'apps', 'web', 'content', 'rules')
   ]
+  // oxlint-disable-next-line node/no-sync
   return candidates.find(c => existsSync(c))
 }
 const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
@@ -33,13 +34,17 @@ const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
 }
 const inferRules = async (projectPath: string, rulesDir?: string): Promise<string[]> => {
   const dir = rulesDir ?? getRulesDir()
-  if (!(dir && existsSync(dir))) return []
+  // oxlint-disable-next-line node/no-sync
+  const dirExists = dir ? existsSync(dir) : false
+  if (!dirExists) return []
   const deps = await getAllDeps(projectPath)
   const rules: string[] = []
+  // oxlint-disable-next-line node/no-sync
   const mdxFiles = readdirSync(dir).filter(f => f.endsWith('.mdx'))
   const indexFile = mdxFiles.find(f => f === 'index.mdx')
   const sorted = [...(indexFile ? [indexFile] : []), ...mdxFiles.filter(f => f !== 'index.mdx').toSorted()]
   for (const mdxFile of sorted) {
+    // oxlint-disable-next-line node/no-sync
     const content = readFileSync(join(dir, mdxFile), 'utf8')
     const fm = parseFrontmatter(content)
     const { infer } = fm

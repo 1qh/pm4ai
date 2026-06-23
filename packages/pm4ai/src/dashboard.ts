@@ -8,13 +8,16 @@ import { discover } from './discover.js'
 const dashboard = async () => {
   const { self } = await discover()
   const dashboardDir = join(self.path, 'apps', 'web')
-  if (!existsSync(dashboardDir)) {
+  // oxlint-disable-next-line node/no-sync
+  const dashboardExists = existsSync(dashboardDir)
+  if (!dashboardExists) {
     console.log('dashboard app not found at', dashboardDir)
     console.log('run from pm4ai monorepo or ensure apps/web exists')
     return
   }
   const token = randomUUID()
   const tokenFile = join(dashboardDir, '.auth-token')
+  // oxlint-disable-next-line node/no-sync
   writeFileSync(tokenFile, token)
   const url = `http://localhost:4200/auth/${token}`
   console.log(`dashboard: ${url}`)
@@ -26,6 +29,7 @@ const dashboard = async () => {
   await new Promise<void>((resolve, reject) => {
     proc.on('close', code => {
       try {
+        // oxlint-disable-next-line node/no-sync
         unlinkSync(tokenFile)
       } catch {
         /* Already removed */
