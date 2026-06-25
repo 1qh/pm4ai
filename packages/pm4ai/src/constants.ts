@@ -82,11 +82,14 @@ const CONDITIONAL_VERBATIM_FILES: ConditionalFile[] = [
   { path: '.github/scripts/prune-ci-runs.sh', when: 'github' },
   { path: 'postcss.config.ts', when: 'tailwind' },
   { path: 'apps/docs/src/app/global.css', when: 'fumadocs' },
-  { path: 'tools/prune-versions.ts', when: 'publishable' }
+  { path: 'tools/prune-versions.ts', when: 'publishable' },
+  { path: 'tools/release.ts', when: 'publishable' },
+  { path: '.github/workflows/release.yml', when: 'publishable' }
 ]
 const CONDITIONAL_MUST_EXIST_FILES: ConditionalFile[] = [
   { path: 'postcss.config.ts', when: 'tailwind' },
-  { path: '.github/workflows/ci.yml', when: 'github' }
+  { path: '.github/workflows/ci.yml', when: 'github' },
+  { path: '.github/workflows/release.yml', when: 'publishable' }
 ]
 export {
   CLAUDE_MD,
