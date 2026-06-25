@@ -4,6 +4,8 @@ import { $, file, Glob } from 'bun'
 import { dirname, join } from 'node:path'
 
 interface Pkg {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   name?: string
   private?: boolean
   version?: string
@@ -30,7 +32,14 @@ const findPublishable = async (): Promise<null | { dir: string; name: string; ve
         .catch(() => ({}))) as Pkg
     }))
   )
-  const hit = pkgs.find(({ pkg }) => pkg.name && pkg.version && !pkg.private)
+  const internal = new Set(
+    pkgs.flatMap(({ pkg }) =>
+      Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })
+        .filter(([, v]) => typeof v === 'string' && v.startsWith('workspace:'))
+        .map(([dep]) => dep)
+    )
+  )
+  const hit = pkgs.find(({ pkg }) => pkg.name && pkg.version && !pkg.private && !internal.has(pkg.name))
   if (!(hit?.pkg.name && hit.pkg.version)) return null
   return { dir: dirname(hit.path), name: hit.pkg.name, version: hit.pkg.version }
 }
