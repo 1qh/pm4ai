@@ -258,7 +258,7 @@ const BANNED: Record<string, Record<string, string[]>> = {
     [`${n('util')} promisify or ${n('fs/promises')}`]: ['"mz"', '"pify"', '"thenify"']
   },
   components: {
-    'cnsync (readonly/ui)': ['"@radix-ui'],
+    'cnsync (readonly/ui)': ['"@radix-ui', '"@base-ui'],
     'shadcn + cnsync': [
       '"@ariakit/react"',
       '"@headlessui',

@@ -289,6 +289,12 @@ const checkPages = async (projectPath: string): Promise<Issue[]> => {
 }
 const FD_CLASS_RE =
   /\b(?<util>bg|text|border|ring|fill|stroke|from|to|via|outline|divide|placeholder|decoration|caret|accent|shadow)-fd-/u
+const RAW_EL_RE = /<(?<el>button|input|select|textarea|dialog)(?=[\s/>])/gu
+const rawElements = (content: string): string[] => {
+  const found = new Set<string>()
+  for (const m of content.matchAll(RAW_EL_RE)) if (m.groups?.el) found.add(m.groups.el)
+  return [...found].toSorted()
+}
 const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const files = await glob('**/*.tsx', projectPath)
@@ -297,6 +303,11 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
       const content = await file(tsxFile).text()
       if (FD_CLASS_RE.test(content))
         issues.push(drift(`use shadcn semantic classes, not fd-* aliases: ${rel(tsxFile, projectPath)}`))
+      const raw = rawElements(content)
+      if (raw.length > 0)
+        issues.push(
+          drift(`review raw <${raw.join('>, <')}> — prefer @a/ui unless intentional: ${rel(tsxFile, projectPath)}`)
+        )
     })
   )
   return issues
