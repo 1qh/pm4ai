@@ -62,11 +62,13 @@ if (toPublish.length === 0) {
   console.log(`already published: ${onNpm.map(t => `${t.name}@${t.version}`).join(', ')}`)
   process.exit(0)
 }
-const results = await Promise.all(
-  toPublish.map(async t =>
-    Object.assign(t, { ok: (await $`bun publish --access public`.cwd(t.dir).nothrow()).exitCode === 0 })
-  )
-)
+const publishOne = async (t: Target): Promise<Target & { ok: boolean }> => {
+  const pub = await $`bun publish --access public`.cwd(t.dir).nothrow()
+  if (pub.exitCode === 0) return { ...t, ok: true }
+  const recheck = await $`npm view ${t.name}@${t.version} version`.quiet().nothrow()
+  return { ...t, ok: recheck.exitCode === 0 && recheck.stdout.toString().trim().length > 0 }
+}
+const results = await Promise.all(toPublish.map(publishOne))
 const failed = results.filter(r => !r.ok)
 if (failed.length > 0) {
   console.error(`publish failed: ${failed.map(f => `${f.name}@${f.version}`).join(', ')}`)
