@@ -9,6 +9,7 @@
 .source/
 .stdb-test-token.json
 .turbo/
+.venv*/
 .vercel
 bun.lock
 build/
@@ -20,6 +21,7 @@ out/
 playwright-report/
 secrets/
 test-results/
+venv/
 # operator-local secrets/paths (book-system; never committed)
 CLAUDE.local.md
 .eslintcache
