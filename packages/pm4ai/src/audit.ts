@@ -249,11 +249,11 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000
   await Promise.all(
     publishedPkgs.map(async p => {
-      const r = await $`npm view ${p.pkg.name} --json`.quiet().nothrow()
-      if (r.exitCode !== 0) return
+      const res = await fetch(`https://registry.npmjs.org/${p.pkg.name}`).catch(() => undefined)
+      if (!res?.ok) return
       let doc: { time?: Record<string, string>; versions?: Record<string, { deprecated?: string }> }
       try {
-        doc = JSON.parse(r.stdout.toString()) as typeof doc
+        doc = (await res.json()) as typeof doc
       } catch {
         return
       }
