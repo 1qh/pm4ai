@@ -22,7 +22,6 @@ playwright-report/
 secrets/
 test-results/
 venv/
-# operator-local secrets/paths (book-system; never committed)
 CLAUDE.local.md
 .eslintcache
 .output/
