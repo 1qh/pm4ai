@@ -5,7 +5,7 @@
 /** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
@@ -27,9 +27,8 @@ const pathExists = async (p: string): Promise<boolean> => {
 const readCheckResult = async (projectPath: string): Promise<CheckResult | null> => {
   const safeName = projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
   const p = join(checksDir, `${safeName}.json`)
-  const exists = await Bun.file(p).exists()
-  if (!exists) return null
-  return safeParseJson(checkResultSchema, await Bun.file(p).text()) ?? null
+  if (!(await pathExists(p))) return null
+  return safeParseJson(checkResultSchema, await readFile(p, 'utf8')) ?? null
 }
 const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null; name: string; path: string }[]> => {
   const dirExists = await pathExists(checksDir)

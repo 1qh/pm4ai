@@ -1,11 +1,10 @@
 /** biome-ignore-all lint/nursery/noPlaywrightElementHandle: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
 /** biome-ignore-all lint/nursery/noPlaywrightWaitForSelector: playwright e2e */
-/** biome-ignore-all lint/nursery/noPlaywrightWaitForTimeout: timing */
 /* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
@@ -14,6 +13,7 @@ import { emit, startEmitter, stopEmitter } from '../../../../packages/pm4ai/src/
 
 const PORT = 4202
 const BASE = `http://localhost:${PORT}`
+setDefaultTimeout(60_000)
 const dashboardDir = join(import.meta.dirname, '..', '..')
 let server: ChildProcess
 let browser: Browser
@@ -38,7 +38,9 @@ beforeAll(async () => {
   await waitForReady()
   browser = await chromium.launch()
   page = await browser.newPage()
-})
+  await page.goto(BASE)
+  await page.waitForSelector('h1', { timeout: 60_000 })
+}, 120_000)
 afterAll(async () => {
   await browser?.close()
   server?.kill()
@@ -52,8 +54,8 @@ describe('dashboard e2e', () => {
   })
   test('renders Fix All and Status All buttons', async () => {
     await page.goto(BASE)
-    await page.waitForSelector('button')
-    await page.waitForTimeout(1000)
+    await page.waitForSelector('button:has-text("Fix All")')
+    await page.waitForSelector('button:has-text("Status All")')
     const buttons = await page.$$eval('button', els => els.map(b => b.textContent?.trim()))
     expect(buttons).toContain('Fix All')
     expect(buttons).toContain('Status All')

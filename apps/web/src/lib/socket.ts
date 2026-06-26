@@ -13,11 +13,20 @@ const ensureStarted = async () => {
   if (started) return
   started = true
   const { createConnection } = await import('node:net')
+  const { access } = await import('node:fs/promises')
   const { homedir } = await import('node:os')
   const { join } = await import('node:path')
   const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
+  const socketExists = async () => {
+    try {
+      await access(socketPath)
+      return true
+    } catch {
+      return false
+    }
+  }
   const doConnect = async () => {
-    if (!(await Bun.file(socketPath).exists())) {
+    if (!(await socketExists())) {
       setTimeout(() => {
         doConnect().catch(() => {})
       }, 1000)

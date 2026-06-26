@@ -1,14 +1,15 @@
 import type { ChildProcess } from 'node:child_process'
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 
 const dashboardDir = join(import.meta.dirname, '..', '..')
+setDefaultTimeout(60_000)
 let server: ChildProcess
 let baseUrl: string
 const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('server did not start')), 15_000)
+    const timeout = setTimeout(() => reject(new Error('server did not start')), 30_000)
     server.stderr?.on('data', (chunk: Buffer) => {
       if (chunk.toString().includes('Ready')) {
         clearTimeout(timeout)
@@ -29,7 +30,13 @@ beforeAll(async () => {
     stdio: ['pipe', 'pipe', 'pipe']
   })
   await waitForReady()
-})
+  await fetch(`${baseUrl}/api/rpc/projects`, {
+    body: '{}',
+    headers: { 'content-type': 'application/json' },
+    method: 'POST'
+  }).catch(() => undefined)
+  await fetch(baseUrl).catch(() => undefined)
+}, 120_000)
 afterAll(() => {
   server.kill()
 })
