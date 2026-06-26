@@ -88,7 +88,9 @@ const providerImportRe = /from\s+['"].*providers/u
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)
   if (!repo) return []
-  const result = await $`gh run list --repo ${repo} --limit 100 --json conclusion,status,createdAt`.quiet().nothrow()
+  const result = await $`gh run list --repo ${repo} --workflow ci.yml --limit 100 --json conclusion,status,createdAt`
+    .quiet()
+    .nothrow()
   if (result.exitCode !== 0) {
     debug('command failed:', `gh run list --repo ${repo}`)
     return []

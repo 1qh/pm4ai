@@ -6,7 +6,7 @@
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effects */
 'use client'
 /* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
-/* eslint-disable @typescript-eslint/strict-void-return, @typescript-eslint/no-unnecessary-condition, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, max-depth, no-await-in-loop, no-unmodified-loop-condition, prefer-named-capture-group, complexity, @eslint-react/jsx-no-iife, @typescript-eslint/no-use-before-define */
+/* eslint-disable @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, max-depth, no-await-in-loop, no-unmodified-loop-condition, prefer-named-capture-group, complexity, @eslint-react/jsx-no-iife, @typescript-eslint/no-use-before-define */
 import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'
 import { cn } from '@a/ui'
@@ -142,7 +142,7 @@ const Dashboard = () => {
     return () => clearInterval(interval)
   }, [])
   useEffect(() => {
-    if (state.phase !== 'done' || (state.phase === 'done' && stats.failed > 0)) return
+    if (state.phase !== 'done' || stats.failed > 0) return
     const timer = setTimeout(() => dispatch({ mkIdle, projects, type: 'reset' }), RESET_DELAY)
     return () => clearTimeout(timer)
   }, [state.phase, projects, mkIdle])
@@ -269,6 +269,7 @@ const Dashboard = () => {
           const icon = statusIcon(ps.status, ps.cachedPass)
           const color = statusColor(ps.status, ps.cachedPass)
           const isRunning = ps.status === 'running'
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           const stepLabel = isRunning ? (STEP_LABELS[ps.step as keyof typeof STEP_LABELS] ?? '⚡ working') : ''
           const dots = isRunning ? progressDots(ps.completedSteps, ps.step) : ''
           return (
