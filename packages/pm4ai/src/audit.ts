@@ -249,24 +249,18 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000
   await Promise.all(
     publishedPkgs.map(async p => {
-      const r = await $`bun pm view ${p.pkg.name} versions --json`.quiet().nothrow()
+      const r = await $`npm view ${p.pkg.name} --json`.quiet().nothrow()
       if (r.exitCode !== 0) return
-      let versions: string[] = []
+      let doc: { time?: Record<string, string>; versions?: Record<string, { deprecated?: string }> }
       try {
-        const parsed: unknown = JSON.parse(r.stdout.toString())
-        if (Array.isArray(parsed)) versions = parsed as string[]
+        doc = JSON.parse(r.stdout.toString()) as typeof doc
       } catch {
         return
       }
+      const manifests = doc.versions ?? {}
+      const versions = Object.keys(manifests).filter(v => manifests[v]?.deprecated === undefined)
       if (versions.length <= 1) return
-      const t = await $`npm view ${p.pkg.name} time --json`.quiet().nothrow()
-      let times: Record<string, string> = {}
-      if (t.exitCode === 0)
-        try {
-          times = JSON.parse(t.stdout.toString()) as Record<string, string>
-        } catch {
-          times = {}
-        }
+      const times = doc.time ?? {}
       const now = Date.now()
       const stale = versions
         .slice(0, -1)
