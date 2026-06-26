@@ -20,6 +20,7 @@ import {
   checkMergeMarkers,
   checkNextConfigs,
   checkPages,
+  checkRelease,
   checkRootPkg,
   checkShadcnClasses,
   checkVercel
@@ -77,6 +78,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
     issues.push(
       ...(await checkCi(project.path)),
       ...(await checkCiRunner(project.path)),
+      ...(await checkRelease(project.path)),
       ...(await checkVercel(project.path))
     )
     allIssues.set(project.path, issues)

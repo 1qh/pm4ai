@@ -131,6 +131,20 @@ const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
   if (!names.has('NTFY_TOPIC')) issues.push(issue('ci', 'missing NTFY_TOPIC var'))
   return issues
 }
+const checkRelease = async (projectPath: string): Promise<Issue[]> => {
+  const caps = await detectCapabilities(projectPath)
+  if (!caps.publishable) return []
+  const repo = await getGhRepo(projectPath)
+  if (!repo) return []
+  const tags = await $`gh api repos/${repo}/tags --jq length`.quiet().nothrow()
+  if (tags.exitCode !== 0) {
+    debug('command failed:', `gh api repos/${repo}/tags`)
+    return []
+  }
+  const count = Number(tags.stdout.toString().trim())
+  if (count > 1) return [issue('ci', `${count} release tags (single-present-release expects 1)`)]
+  return []
+}
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const dirtyCheck = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
   if (!dirtyCheck.stdout.toString().trim()) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
@@ -615,6 +629,7 @@ export {
   checkMergeMarkers,
   checkNextConfigs,
   checkPages,
+  checkRelease,
   checkRootPkg,
   checkShadcnClasses,
   checkVercel
