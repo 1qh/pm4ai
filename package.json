@@ -11,7 +11,7 @@
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
-    "postinstall": "sherif",
+    "postinstall": "sherif -i typescript",
     "prepare": "bunx simple-git-hooks",
     "pretest": "which rg || sudo apt-get install -y ripgrep",
     "test": "bash -c \"turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)\""
@@ -29,7 +29,7 @@
     "simple-git-hooks": "latest",
     "tsdown": "latest",
     "turbo": "latest",
-    "typescript": "latest",
+    "typescript": "~6.0.3",
     "unrun": "latest"
   },
   "packageManager": "bun@1.3.14",

@@ -303,6 +303,7 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
 }
 const PINNED_VERSION_RE = /\d+\.\d+/u
 const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
+const PIN_EXCEPTIONS = new Map([['typescript', /^~6\.0\./u]])
 const VERSION_RE = /(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?/u
 const versionTriple = (v: string): [number, number, number] => {
   const g = VERSION_RE.exec(v)?.groups
@@ -331,7 +332,12 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
       const r = rel(pkgFile, projectPath)
       for (const field of ['dependencies', 'devDependencies'] as const)
         for (const [name, version] of Object.entries(pkg[field] ?? {}))
-          if (typeof version === 'string' && PINNED_VERSION_RE.test(version) && !ALLOWED_VERSION_RE.test(version))
+          if (
+            typeof version === 'string' &&
+            PINNED_VERSION_RE.test(version) &&
+            !ALLOWED_VERSION_RE.test(version) &&
+            PIN_EXCEPTIONS.get(name)?.test(version) !== true
+          )
             candidates.push({ name, r, version })
     })
   )
