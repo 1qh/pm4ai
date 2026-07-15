@@ -390,6 +390,14 @@ const checkSherifScope = async (projectPath: string): Promise<Issue[]> => {
   if (postinstall.includes(SHERIF_SCOPE)) return []
   return [drift(`postinstall sherif should scope "${SHERIF_SCOPE}" (workspace ~6.0 vs ${READONLY_UI} ^5)`)]
 }
+const checkActionRunsTests = async (projectPath: string): Promise<Issue[]> => {
+  const pkg = await readPkg(join(projectPath, 'package.json'))
+  const scripts = pkg?.scripts
+  if (!scripts?.test) return []
+  const { action } = scripts
+  if (typeof action !== 'string' || action.includes('test')) return []
+  return [drift('"action" should run "test" — a declared suite that ci never invokes rots unseen')]
+}
 const DEFAULT_EXPORT_RE = /export default (?<id>\w+)/u
 const delegatesConfig = (content: string): boolean => {
   const id = DEFAULT_EXPORT_RE.exec(content)?.groups?.id
@@ -654,6 +662,7 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 export {
+  checkActionRunsTests,
   checkAppTsconfigs,
   checkBannedImports,
   checkCi,

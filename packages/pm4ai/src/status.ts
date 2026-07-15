@@ -4,6 +4,7 @@ import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { spawnBackgroundCheck } from './check-cache.js'
 import {
+  checkActionRunsTests,
   checkAppTsconfigs,
   checkBannedImports,
   checkCi,
@@ -69,6 +70,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       checkDepsLatest(project.path),
       checkTypescriptPin(project.path),
       checkSherifScope(project.path),
+      checkActionRunsTests(project.path),
       checkNextConfigs(project.path),
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
