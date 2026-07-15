@@ -9,6 +9,7 @@ import {
   EXPECTED,
   FORBIDDEN_LOCKFILES,
   MUST_EXIST_FILES,
+  READONLY_UI,
   RG_EXCLUDE,
   UI_PACKAGE_NAME
 } from './constants.js'
@@ -303,7 +304,11 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
 }
 const PINNED_VERSION_RE = /\d+\.\d+/u
 const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
-const PIN_EXCEPTIONS = new Map([['typescript', /^~6\.0\./u]])
+const PIN_EXCEPTIONS = new Map([['typescript', '~6.0.']])
+const isPinExempt = (name: string, version: string): boolean => {
+  const allowed = PIN_EXCEPTIONS.get(name)
+  return allowed !== undefined && version.startsWith(allowed)
+}
 const VERSION_RE = /(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?/u
 const versionTriple = (v: string): [number, number, number] => {
   const g = VERSION_RE.exec(v)?.groups
@@ -336,7 +341,7 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
             typeof version === 'string' &&
             PINNED_VERSION_RE.test(version) &&
             !ALLOWED_VERSION_RE.test(version) &&
-            PIN_EXCEPTIONS.get(name)?.test(version) !== true
+            !isPinExempt(name, version)
           )
             candidates.push({ name, r, version })
     })
@@ -356,6 +361,34 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
       issues.push(drift(`${c.name}@${c.version} pinned, use "latest" (latest ${latest}): ${c.r}`))
   }
   return issues
+}
+const checkTypescriptPin = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
+  const files = await glob('**/package.json', projectPath)
+  await Promise.all(
+    files.map(async pkgFile => {
+      const r = rel(pkgFile, projectPath)
+      if (r.startsWith(READONLY_UI)) return
+      const pkg = await readPkg(pkgFile)
+      if (!pkg) return
+      for (const field of ['dependencies', 'devDependencies'] as const) {
+        const version = pkg[field]?.typescript
+        if (typeof version === 'string' && !isPinExempt('typescript', version))
+          issues.push(drift(`typescript@${version} must be pinned to ${PIN_EXCEPTIONS.get('typescript') ?? ''}x: ${r}`))
+      }
+    })
+  )
+  return issues
+}
+const SHERIF_SCOPE = '-i typescript'
+const checkSherifScope = async (projectPath: string): Promise<Issue[]> => {
+  const hasReadonlyUi = await pathExists(join(projectPath, READONLY_UI))
+  if (!hasReadonlyUi) return []
+  const pkg = await readPkg(join(projectPath, 'package.json'))
+  const postinstall = pkg?.scripts?.postinstall
+  if (typeof postinstall !== 'string' || !postinstall.startsWith('sherif')) return []
+  if (postinstall.includes(SHERIF_SCOPE)) return []
+  return [drift(`postinstall sherif should scope "${SHERIF_SCOPE}" (workspace ~6.0 vs ${READONLY_UI} ^5)`)]
 }
 const DEFAULT_EXPORT_RE = /export default (?<id>\w+)/u
 const delegatesConfig = (content: string): boolean => {
@@ -640,5 +673,7 @@ export {
   checkRelease,
   checkRootPkg,
   checkShadcnClasses,
+  checkSherifScope,
+  checkTypescriptPin,
   checkVercel
 }

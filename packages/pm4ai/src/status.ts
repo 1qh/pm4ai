@@ -23,6 +23,8 @@ import {
   checkRelease,
   checkRootPkg,
   checkShadcnClasses,
+  checkSherifScope,
+  checkTypescriptPin,
   checkVercel
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
@@ -65,6 +67,8 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       checkPages(project.path),
       checkShadcnClasses(project.path),
       checkDepsLatest(project.path),
+      checkTypescriptPin(project.path),
+      checkSherifScope(project.path),
       checkNextConfigs(project.path),
       checkAppTsconfigs(project.path),
       checkBannedImports(project.path),
