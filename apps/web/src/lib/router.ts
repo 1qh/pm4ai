@@ -1,8 +1,7 @@
-/* eslint-disable no-await-in-loop, @typescript-eslint/no-loop-func, @typescript-eslint/require-await */
+/* eslint-disable no-await-in-loop, @typescript-eslint/require-await */
 /** biome-ignore-all lint/performance/noAwaitInLoops: streaming by design */
 /** biome-ignore-all lint/suspicious/noUnnecessaryConditions: infinite async generator queue check */
 /** biome-ignore-all lint/suspicious/useAwait: async generator */
-/** biome-ignore-all lint/nursery/noLoopFunc: deferred resolver */
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
 import { readdir, readFile, stat } from 'node:fs/promises'
@@ -64,12 +63,15 @@ const events = os.handler(async function* generateEvents() {
     queue.push(event)
     waiting?.()
   })
+  const waitForEvent = async (): Promise<void> => {
+    const pending = new Promise<void>(resolve => {
+      waiting = resolve
+    })
+    await pending
+  }
   try {
     while (true) {
-      if (queue.length === 0)
-        await new Promise<void>(resolve => {
-          waiting = resolve
-        })
+      if (queue.length === 0) await waitForEvent()
       while (queue.length > 0) {
         const event = queue.shift()
         if (event) yield event

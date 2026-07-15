@@ -6,7 +6,7 @@
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effects */
 'use client'
 /* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
-/* eslint-disable @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, @eslint-react/web-api/no-leaked-timeout, max-depth, no-await-in-loop, no-unmodified-loop-condition, prefer-named-capture-group, complexity, @eslint-react/jsx-no-iife, @typescript-eslint/no-use-before-define */
+/* eslint-disable @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, max-depth, no-await-in-loop, no-unmodified-loop-condition, prefer-named-capture-group, complexity, @typescript-eslint/no-use-before-define */
 import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'
 import { cn } from '@a/ui'
@@ -55,6 +55,16 @@ const statusIcon = (s: ProjectState['status'], pass?: boolean) => {
   if (pass !== undefined) return '●'
   return '·'
 }
+const ElapsedDelta = ({ elapsed, lastElapsed }: { elapsed: number; lastElapsed: number }) => {
+  const delta = elapsed - lastElapsed
+  if (delta === 0) return null
+  return (
+    <span className={cn(delta > 0 ? 'text-destructive' : 'text-green-400')}>
+      ({delta > 0 ? '+' : ''}
+      {delta}s)
+    </span>
+  )
+}
 const Dashboard = () => {
   const queryClient = useQueryClient()
   const { data: apiProjects, isLoading } = useQuery({
@@ -93,6 +103,7 @@ const Dashboard = () => {
   }, [projects, mkIdle])
   useEffect(() => {
     let cancelled = false
+    let retry: ReturnType<typeof setTimeout> | undefined
     const run = async () => {
       try {
         const res = await fetch('/api/rpc/events', {
@@ -129,12 +140,13 @@ const Dashboard = () => {
           }
         }
       } catch {
-        if (!cancelled) setTimeout(run, 2000)
+        if (!cancelled) retry = setTimeout(run, 2000)
       }
     }
     run().catch(() => {})
     return () => {
       cancelled = true
+      if (retry !== undefined) clearTimeout(retry)
     }
   }, [])
   useEffect(() => {
@@ -239,18 +251,7 @@ const Dashboard = () => {
             <div className='flex items-center gap-3'>
               <span className='text-green-400 font-bold'>✔ all clean</span>
               <span className='text-muted-foreground'>{formatTime(state.elapsed)}</span>
-              {state.lastElapsed > 0
-                ? (() => {
-                    const delta = state.elapsed - state.lastElapsed
-                    if (delta === 0) return null
-                    return (
-                      <span className={cn(delta > 0 ? 'text-destructive' : 'text-green-400')}>
-                        ({delta > 0 ? '+' : ''}
-                        {delta}s)
-                      </span>
-                    )
-                  })()
-                : null}
+              {state.lastElapsed > 0 ? <ElapsedDelta elapsed={state.elapsed} lastElapsed={state.lastElapsed} /> : null}
               {state.history.length > 1 ? (
                 <span className='text-muted-foreground/60 font-mono'>{sparkline(state.history)}</span>
               ) : null}

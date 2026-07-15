@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noMisplacedAssertion: the rule recognises test(name, fn) but not the test.skipIf(cond)(name, fn) call form, so it reads every assertion in these blocks as sitting outside a test */
 import { $, file } from 'bun'
 import { afterAll, describe, expect, test } from 'bun:test'
 import { rm, stat } from 'node:fs/promises'
