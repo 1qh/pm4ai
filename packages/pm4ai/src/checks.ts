@@ -685,10 +685,13 @@ const HERMETIC_TEST_PATTERNS = [
   '(fetch|\\.goto|got|axios\\.[a-z]+|\\.request)\\(([\'"`])https?://'
 ]
 const LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal/u
+const HOME_READ_RG = String.raw`(?:os\.)?homedir\(\)|process\.env(?:\.HOME\b|\[['"]HOME)`
+const HOME_SWAP_RE = /process\.env(?:\.HOME|\[['"]HOME['"]\])\s*=[^=]/u
 const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
+  const issues: Issue[] = []
   const rgArgs = HERMETIC_TEST_PATTERNS.flatMap(p => ['-e', p])
-  const result = await $`rg -n ${rgArgs} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow()
-  const offenders = result.stdout
+  const netResult = await $`rg -n ${rgArgs} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow()
+  const netOffenders = netResult.stdout
     .toString()
     .trim()
     .split('\n')
@@ -698,12 +701,28 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
       const [path, lineNo] = line.split(':')
       return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
     })
-  if (offenders.length === 0) return []
-  return [
-    forbidden(
-      `non-hermetic network in test — use a local bare repo, mock the call, or gate a live test behind a credential: ${offenders.join(', ')}`
+  if (netOffenders.length > 0)
+    issues.push(
+      forbidden(
+        `non-hermetic network in test — use a local bare repo, mock the call, or gate a live test behind a credential: ${netOffenders.join(', ')}`
+      )
     )
-  ]
+  const homeResult = await $`rg -l -e ${HOME_READ_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
+    .quiet()
+    .nothrow()
+  const homeFiles = homeResult.stdout.toString().trim().split('\n').filter(Boolean)
+  const ambient = (
+    await Promise.all(
+      homeFiles.map(async f => (HOME_SWAP_RE.test(await file(f).text()) ? undefined : rel(f, projectPath)))
+    )
+  ).filter((x): x is string => x !== undefined)
+  if (ambient.length > 0)
+    issues.push(
+      forbidden(
+        `non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
+      )
+    )
+  return issues
 }
 export {
   checkActionRunsTests,

@@ -1,65 +1,58 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
+import { write } from 'bun'
 import { describe, expect, test } from 'bun:test'
-import { mkdir, readdir, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isConnected, subscribe } from '../lib/socket'
 
 const leadingSepRe = /^--/u
-const pathExists = async (p: string): Promise<boolean> => {
-  try {
-    await stat(p)
-    return true
-  } catch {
-    return false
-  }
+const toSafe = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
+const decode = (fileName: string) => `/${fileName.replace('.json', '').replaceAll('--', '/')}`
+const makeChecksDir = async (): Promise<string> => mkdtemp(join(tmpdir(), 'pm4ai-web-checks-'))
+const writeCheck = async (dir: string, path: string, data: Record<string, unknown>): Promise<void> => {
+  await write(join(dir, `${toSafe(path)}.json`), JSON.stringify(data))
 }
+const jsonFiles = async (dir: string): Promise<string[]> => (await readdir(dir)).filter(f => f.endsWith('.json'))
 describe('check result reading', () => {
-  const checksDir = join(homedir(), '.pm4ai', 'checks')
-  const toSafe = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
-  test('reads valid check result', async () => {
-    await mkdir(checksDir, { recursive: true })
-    const path = '/Users/o/z/pm4ai'
-    const file = join(checksDir, `${toSafe(path)}.json`)
-    if (await Bun.file(file).exists()) {
-      const data = (await Bun.file(file).json()) as Record<string, unknown>
-      expect(data.at).toBeDefined()
-      expect(typeof data.pass).toBe('boolean')
-      expect(typeof data.violations).toBe('number')
-    }
-  })
-  test('check cache directory exists', async () => {
-    expect(await pathExists(checksDir)).toBe(true)
+  test('reads and validates a check result', async () => {
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/Users/o/z/pm4ai', { at: '2026-01-01T00:00:00Z', pass: true, violations: 0 })
+    const [firstFile] = await jsonFiles(dir)
+    expect(firstFile).toBeDefined()
+    const data = (await Bun.file(join(dir, firstFile ?? '')).json()) as Record<string, unknown>
+    expect(data.at).toBeDefined()
+    expect(typeof data.pass).toBe('boolean')
+    expect(typeof data.violations).toBe('number')
+    await rm(dir, { recursive: true })
   })
   test('all check files are valid JSON', async () => {
-    const files = (await pathExists(checksDir)) ? (await readdir(checksDir)).filter(f => f.endsWith('.json')) : []
-    const contents = await Promise.all(files.map(async f => Bun.file(join(checksDir, f)).text()))
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/a/b', { at: 'x', pass: true, violations: 0 })
+    await writeCheck(dir, '/c/d', { at: 'y', pass: false, violations: 3 })
+    const contents = await Promise.all((await jsonFiles(dir)).map(async f => Bun.file(join(dir, f)).text()))
     for (const content of contents)
       expect(() => {
         JSON.parse(content) as unknown
       }).not.toThrow()
+    await rm(dir, { recursive: true })
   })
 })
 describe('project discovery from cache', () => {
-  test('cache files map back to real paths', async () => {
-    const checksDir = join(homedir(), '.pm4ai', 'checks')
-    const checksDirExists = await pathExists(checksDir)
-    if (!checksDirExists) return
-    const files = (await readdir(checksDir)).filter(f => f.endsWith('.json'))
-    const candidates = files.map(f => `/${f.replace('.json', '').replaceAll('--', '/')}`)
-    const exists = await Promise.all(candidates.map(pathExists))
-    const realProjects = candidates.filter((p, i) => exists[i] && !p.startsWith('/tmp/'))
-    expect(realProjects.length).toBeGreaterThan(0)
-    const realExists = await Promise.all(realProjects.map(pathExists))
-    for (const e of realExists) expect(e).toBe(true)
+  test('cache filenames decode back to their paths', async () => {
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/Users/o/pm4ai', { at: 'x', pass: true, violations: 0 })
+    await writeCheck(dir, '/Users/o/lintmax', { at: 'y', pass: true, violations: 0 })
+    const decoded = (await jsonFiles(dir)).map(decode)
+    expect(decoded).toContain('/Users/o/pm4ai')
+    expect(decoded).toContain('/Users/o/lintmax')
+    await rm(dir, { recursive: true })
   })
-  test('known projects are in cache', async () => {
-    const checksDir = join(homedir(), '.pm4ai', 'checks')
-    const checksDirExists = await pathExists(checksDir)
-    if (!checksDirExists) return
-    const files = (await readdir(checksDir)).filter(f => f.endsWith('.json'))
-    const names = files.map(f => f.replace('.json', '').split('--').pop())
+  test('decoded project name is the last path segment', async () => {
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/Users/o/pm4ai', { at: 'x', pass: true, violations: 0 })
+    const names = (await jsonFiles(dir)).map(f => f.replace('.json', '').split('--').pop())
     expect(names).toContain('pm4ai')
+    await rm(dir, { recursive: true })
   })
 })
 const projectNameRe = /^[\w-]+$/u
@@ -90,34 +83,35 @@ describe('project name validation', () => {
   })
 })
 describe('getProjectsFromCache logic', () => {
-  test('check file names decode to paths with correct format', async () => {
-    const checksDir = join(homedir(), '.pm4ai', 'checks')
-    const checksDirExists = await pathExists(checksDir)
-    const files = checksDirExists ? (await readdir(checksDir)).filter(f => f.endsWith('.json')) : []
-    for (const f of files) {
-      const path = `/${f.replace('.json', '').replaceAll('--', '/')}`
+  test('check file names decode to absolute paths', async () => {
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/x/y/z', { at: 'x', pass: true, violations: 0 })
+    for (const f of await jsonFiles(dir)) {
+      const path = decode(f)
       expect(path.startsWith('/')).toBe(true)
       expect(path.length).toBeGreaterThan(1)
     }
+    await rm(dir, { recursive: true })
   })
-  test('each cached project has at, pass, violations fields', async () => {
-    const dir = join(homedir(), '.pm4ai', 'checks')
-    const dirExists = await pathExists(dir)
-    if (!dirExists) return
-    const files = (await readdir(dir)).filter(f => f.endsWith('.json'))
+  test('each cached project json has at, pass, violations', async () => {
+    const dir = await makeChecksDir()
+    await writeCheck(dir, '/x/y', { at: 'x', pass: true, violations: 0 })
     const datas = await Promise.all(
-      files.map(async f => Bun.file(join(dir, f)).json() as Promise<Record<string, unknown>>)
+      (await jsonFiles(dir)).map(async f => Bun.file(join(dir, f)).json() as Promise<Record<string, unknown>>)
     )
     for (const data of datas) {
       expect(data).toHaveProperty('at')
       expect(data).toHaveProperty('pass')
       expect(data).toHaveProperty('violations')
     }
+    await rm(dir, { recursive: true })
   })
 })
 describe('socket module', () => {
   test('subscribe returns unsubscribe function', () => {
-    const unsub = subscribe(() => {})
+    const unsub = subscribe(() => {
+      /* empty */
+    })
     expect(typeof unsub).toBe('function')
     unsub()
   })

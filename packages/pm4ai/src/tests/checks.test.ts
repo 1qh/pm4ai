@@ -168,6 +168,8 @@ describe('checkHermeticTests', () => {
   const EXT = 'https://api.example.com/v1'
   const localhostUrl = ['http:/', '/localhost:3000/api'].join('')
   const dataUrl = 'https://api.openai.com/v1'
+  const HOMEDIR = 'homedir'
+  const PENV = 'process.env'
   const writeFileIn = async (name: string, body: string): Promise<string> => {
     const tmp = await makeTmp()
     await mkdir(join(tmp, 'src'), { recursive: true })
@@ -214,6 +216,18 @@ describe('checkHermeticTests', () => {
   })
   test('exempts a deliberate -live test file', async () => {
     const tmp = await writeFileIn('x-live.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('flags a test that reads the real home dir without a HOME swap', async () => {
+    const tmp = await writeFileIn('h.test.ts', `const d = join(${HOMEDIR}(), '.x')\nawait mkdir(d)\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues.some(i => i.detail.includes('ambient state'))).toBe(true)
+    await rm(tmp, { recursive: true })
+  })
+  test('exempts a test that swaps the HOME env var to an isolated dir', async () => {
+    const tmp = await writeFileIn('i.test.ts', `${PENV}.HOME = tmpDir\nconst d = ${HOMEDIR}()\n`)
     const issues = await checkHermeticTests(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
