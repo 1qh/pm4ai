@@ -1,26 +1,49 @@
+# pm4ai — Managed Repo Guide
+
+## Contents
+
+- [Getting Started](#getting-started)
+- [Agent execution](#agent-execution)
+- [Bun](#bun)
+- [Code Quality](#code-quality)
+- [Git](#git)
+- [Lintmax](#lintmax)
+- [Minimal DOM](#minimal-dom)
+- [React & Next.js](#react-next-js)
+- [Security](#security)
+- [shadcn](#shadcn)
+- [tsdown](#tsdown)
+- [TypeScript](#typescript)
+
+---
+
+## Getting Started
+
 pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAUDE.md`, enforces conventions, runs maintenance.
 
-## MUST
+### MUST
 
 - Read root `README.md` first WHEN it exists. Why: project-specific entry.
-- Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; otherwise edit only companion files. Why: managed files are regenerated.
-- Put project-specific content in companion files — `LEARNING.md` (gotchas), `RULES.md` (project-only rules), `PROGRESS.md` (ongoing), `PLAN.md` (architecture). Why: managed files get overwritten.
-- Capture a gotcha into `LEARNING.md` the moment it surfaces, committed with the work that taught it. Why: an uncaptured surprise re-costs the same hour every few weeks; one home per fact, never duplicated.
+- Determine role via `gh auth status`: owner (`1qh`) may edit pm4ai rules/checks directly; never hand-edit a synced managed file. Why: synced files are regenerated on the next fix.
+- Extend an extendable managed file (currently `.github/workflows/ci.yml`) by appending project steps AFTER the canonical block, leaving the canonical prefix byte-identical. Why: `fix`/`status` preserve it via the starts-with check (`isExtended`), so project CI coexists with the synced baseline.
+- Keep project-specific docs — decisions, gotchas, plans — in the project’s doc repo (the `X-doc` sibling), never in code-repo companion files. Why: the code repo carries only code and machine-readable config; docs have one home in the doc repo.
+- Capture a gotcha into its topic-owner doc in the project doc repo the moment it surfaces, committed with the work that taught it. Why: an uncaptured surprise re-costs the same hour; one home per fact, never duplicated.
 - Owner adds a universal rule → `.mdx` in pm4ai `apps/docs/content/rules/` with `infer` frontmatter; a new check → `packages/pm4ai/src/{audit,checks}.ts`. Why: rules generate CLAUDE.md, checks run in status.
 - Note any cross-project discovery for pm4ai. Why: a lesson hit on many projects becomes a universal rule/check.
 - Act only on a current check: proceed on `check: passed` (current); wait on `check: running...` (don’t edit); fix violations on `check: failed`; re-run + wait when stale (passed before N commits); run `bunx pm4ai@latest fix` first on `check: never run`. Why: stale/absent checks aren’t evidence.
 
-## NEVER
+### NEVER
 
-- Edit a managed file directly — `CLAUDE.md`, `.github/workflows/ci.yml`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
+- Edit a synced managed file directly — `CLAUDE.md`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
+- Alter the canonical prefix of an extendable file (`.github/workflows/ci.yml`) or interleave custom steps inside it. Cost: breaks the starts-with check, so `fix` overwrites the whole file and drops your steps.
 
-## Key repos
+### Key repos
 
 - **pm4ai** — manager; rules `apps/docs/content/rules/*.mdx`, checks `packages/pm4ai/src/`.
 - **lintmax** — max-strict lint/format orchestrator; every project depends on it.
 - **cnsync** — canonical `readonly/ui` (shadcn + ai-elements).
 
-## Commands
+### Commands
 
 - `bunx pm4ai@latest status` — check current project (`--all` for every project).
 - `bunx pm4ai@latest fix` — sync + maintain, requires clean git (`--all` for every project).
@@ -28,12 +51,14 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 
 ---
 
+## Agent execution
+
 Execution discipline for an agent working this codebase. Engineering posture lives in `philosophy`; this is how to run a turn.
 
-## MUST
+### MUST
 
 - Continue to the next task while autonomous-feasible work remains; identify it and start. Why: idle and handoff are the costliest parts of the loop.
-- Lock the full surfaced scope into `PLAN.md` the moment it rounds out and ship every item in one pass; the locked set is the immovable target. Why: a “this round / next round” split is where items go to die.
+- Lock the full surfaced scope into the project doc repo the moment it rounds out and ship every item in one pass; the locked set is the immovable target. Why: a “this round / next round” split is where items go to die.
 - Parallelize independent work against any known wait (build, codegen, install, network) — the parent grinds another file while a subagent runs. Why: idle wait is the costliest non-stop state in the loop.
 - Self-decide reversible, config-only, or rule-settled choices; surface only a genuine fork as one question + options (each with pros/cons) + recommendation + reasoning. Why: most “decisions” are already settled by the rules, and a stacked or unreasoned MCQ drops answer quality.
 - Exhaust code, docs, git history, and memory before asking; ask only what cannot be discovered. Why: the discovery cost is already paid.
@@ -53,7 +78,7 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - Confirm the exact target with the user before any destructive or irreversible action — delete, overwrite, `git push --force`, `reset --hard`, `git clean`, `DROP`, `TRUNCATE`, prune, or mass mutation; name precisely what will be affected and wait for an explicit go. Why: irreversible loss has no undo, so the autonomy default never extends to it.
 - Scope a delete/cleanup task to the precise paths named and confirmed first; remove only the named child, never a parent directory that also holds unrelated data. Why: deleting a folder to clear its contents takes every sibling inside it, unrecoverably.
 
-## NEVER
+### NEVER
 
 - Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
 - Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
@@ -67,21 +92,23 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
 - Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
 
-## Valid stops — only these
+### Valid stops — only these
 
 - The user says stop or pivots.
 - A hard external blocker — a credential or decision the agent cannot obtain.
 - All work done, verified, and green.
 
-## Pairs with
+### Pairs with
 
 - `philosophy` (engineering posture); `testing` (cheapest harness; verify by running).
 
 ---
 
+## Bun
+
 Bun is the only runtime + package manager.
 
-## MUST
+### MUST
 
 - Use only `bun`. Why: one toolchain, no manager drift.
 - `bun fix` passes before done. Why: lint/format gate.
@@ -95,23 +122,25 @@ Bun is the only runtime + package manager.
 - Read an opaque eslint `ResolveMessage {}` as a stale workspace symlink → reinstall first. Why: it masks every other violation; not a lint-internals bug.
 - Scripts silent on success, verbose on failure. Why: agent context budget.
 
-## NEVER
+### NEVER
 
 - yarn / npm / npx / pnpm. Cost: toolchain drift.
 - `bun update`. Cost: rewrites `"latest"` to resolved versions.
 - Commit `bun.lock` (keep in `.gitignore`). Cost: lockfile drift across machines.
 - `git clean`. Cost: deletes `.env` + uncommitted files — use explicit `rm -rf`.
 
-## Scripts
+### Scripts
 
 - `sh clean.sh` — nuke artifacts (node_modules, lockfile, caches, dist, .next).
 - `sh up.sh` — clean + install + fix + check (universal maintenance cycle).
 
 ---
 
+## Code Quality
+
 Code quality bans, single-source-of-truth, canonical-state, bounded waits, codegen integrity.
 
-## MUST
+### MUST
 
 - One definition per piece of data — shared constant defined once, imported everywhere; extract any value appearing in 2+ files. Why: drift surface.
 - Check existing utilities/components FIRST before writing inline logic. Why: avoid duplication.
@@ -130,7 +159,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Fail fast on any missing required input — throw, return non-zero, or refuse to construct. Why: a substituted default turns missing config into a wrong-value bug.
 - Inline styles only for truly dynamic values. Why: colors/static props belong in classes.
 
-## NEVER
+### NEVER
 
 - Write comments (lint-ignore directives are the only allowed comment). Cost: lintmax strips them.
 - `!` non-null assertion, `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`. Cost: type holes — see lintmax never-ignore.
@@ -145,7 +174,7 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 - Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
 - Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 
-## Pitfall
+### Pitfall
 
 - Adding a wrapper div → check parent `gap-*`/`space-*` first.
 - Copy-pasting from another file → extract to a shared utility/component.
@@ -153,26 +182,30 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 
 ---
 
+## Git
+
 Git commit + push conventions.
 
-## MUST
+### MUST
 
 - Commit frequently; push logical groups. Why: small auditable units, easy revert.
 - Commit subject `type: description` — `fix|feat|docs|chore|refactor|test`. Why: conventional-commit parse.
 - Land on `main` directly or via a short-lived feature branch + PR. Why: trunk-based, single `main`.
 
-## NEVER
+### NEVER
 
 - Mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
 - Maintain long-lived `develop` / `release-*` / `feature/*` branch hierarchies. Cost: divergent long branches rot and conflict against trunk.
 
 ---
 
+## Lintmax
+
 lintmax = biome + oxlint + eslint + prettier + sort-package-json in one command; we own it.
 
 Every lintmax version runs configless by default. `lintmax` (TypeScript) is the sole exception — its max-strict default is dense enough that a project needs `lintmax.config.ts` to opt a rule out, so it supports one; every other version (`lintmax-go`, `lintmax-rs`, …) stays config-free. A project config opts a rule out only with documented false-positive evidence, never to dodge a fix.
 
-## MUST
+### MUST
 
 - Run only `bun run fix` for code maintenance. Why: it fixes then verifies internally (all 5 linters twice); a clean run prints `ok` on a single line + exit 0 — `ok` IS the success signal, not silence.
 - Read failure output directly. Why: already grouped file→linter→rule, compressed line numbers, deduped across 5 linters.
@@ -182,7 +215,7 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 - Batch many edits, run `fix` once at the end. Why: `fix` is slow per run.
 - File code-lint gaps upstream against lintmax. Why: it is the only lint tool — domain-specific hand-rolled `tools/*.ts` checks (banned vocab, spec-vs-code diff) are fine; code-lint is not.
 
-## NEVER
+### NEVER
 
 - Run `bun run check` / `lintmax check` for maintenance — `check` is CI-only; `fix` is the agent-side maintenance command. Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
 - `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
@@ -190,14 +223,14 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 - Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax’s curated surface, drifts.
 - Use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
 
-## void replacements
+### void replacements
 
 - Unused promise: `promise.catch(() => {})` or `try { await ... } catch {}`.
 - Async in a `() => void` slot (`onClick`): `() => { mutate().catch(console.error) }`, or widen the prop type to `() => void | Promise<void>`.
 - Async inside a `useEffect` body (slot type can’t be widened): wrap in an IIFE `;(async () => { ... })()` or `.catch(noop)`.
 - Unused var: rename `_x` or remove it.
 
-## Ignore syntax
+### Ignore syntax
 
 | Linter | File-level                                      | Per-line                                    |
 | ------ | ----------------------------------------------- | ------------------------------------------- |
@@ -205,7 +238,7 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 | eslint | `/* eslint-disable rule */`                     | `// eslint-disable-next-line rule`          |
 | biome  | `/** biome-ignore-all lint/cat/rule: reason */` | `/** biome-ignore lint/cat/rule: reason */` |
 
-## Ignore strategy
+### Ignore strategy
 
 - Fix every legit, fixable finding by fixing the code, never the rule; ignore is last resort. Why: a found-and-fixable finding disabled is the severity/effort loophole that lets a real defect rot — the rule stays, the code changes. The only legitimate disable is a documented false-positive-rate, logged as an exception.
 - File-level disable WHEN a file has many unavoidable same-rule violations (sequential DB mutations, standard React patterns, external images); per-line for an isolated one. Why: scale-appropriate.
@@ -216,13 +249,13 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 - NEVER 5+ per-line ignores for one rule. Cost: use file-level instead.
 - Don’t hand-remove dead directives or add one “just in case”. Why: `fix` auto-removes UNUSED file-level `oxlint-disable` / `biome-ignore-all` (both `/**` and `//` forms) by strip-relint-in-place; if a rule doesn’t fire, `fix` drops it and `check` fails on it.
 
-## Cross-linter
+### Cross-linter
 
 - Same rule in 2 linters (biome `noAwaitInLoops` + oxlint `no-await-in-loop`) = double enforcement, not conflict — never disable one. Why: both must pass.
 - Suppress a shared eslint/oxlint rule on eslint’s side. Why: oxlint auto-picks up eslint rules and is faster.
 - oxlint `eslint/sort-keys` is disabled in lintmax. Why: conflicts with perfectionist (ASCII vs natural sort).
 
-## Never-ignore rules
+### Never-ignore rules
 
 `lintmax check` FAILS on these suppressions, used or unused — no suppress-for-now path reaches CI. Fix the code:
 
@@ -238,21 +271,23 @@ Fixes, not suppressions:
 - Non-null (`x[i]!`): null-check (`const v = x[i]; if (v) ...`) or `const`-tuple (`[...] as const`) so fixed indices type as defined.
 - `no-unsafe-*` on a visible-shape stub: `(() => undefined) as never` (bottom type, no visible ops); `((..._: unknown[]) => ({})) as never` still trips. Tighten with `never` / branded / generic.
 
-## Safe-to-ignore
+### Safe-to-ignore
 
 - **oxlint:** `promise/prefer-await-to-then` (Promise.race, ky chaining).
 - **eslint:** `no-await-in-loop`, `max-statements`, `max-depth`, `complexity` (sequential ops) · `no-unnecessary-condition` (narrowing) · `promise-function-async` (thenable returns) · `max-params` · `@next/next/no-img-element` (external images) · `react-hooks/refs`.
 - **biome:** `style/noProcessEnv` (env files) · `performance/noAwaitInLoops` (sequential ops) · `nursery/noForIn` · `performance/noImgElement` · `suspicious/noExplicitAny` (generic boundaries).
 
-## Playbook maintenance
+### Playbook maintenance
 
 - Merge each new lesson into the most relevant existing section immediately; correct rules in place, remove superseded guidance. Why: single source of truth, no append-only “recent lessons” buckets.
 
 ---
 
+## Minimal DOM
+
 Same UI, fewest DOM nodes — every element earns its place. If deleting it breaks nothing (semantics, layout, behavior, required styling), it must not exist.
 
-## MUST
+### MUST
 
 - Keep a node ONLY if it provides one of: semantics/a11y (`ul/li`, `button`, `label`, `form`, `nav`, `section`, ARIA, focus); a layout constraint (own containing block / positioning / clip / scroll / stacking — `relative`, `overflow-*`, `sticky`, `z-*`, `min-w-0`); behavior (measurement ref, observer, portal, event boundary, virtualization); or component API (can’t pass props/classes to the real root after trying `as`/`asChild`/forwarding). Why: every node is render + memory cost.
 - Spacing via parent `gap-*` (flex/grid) or `space-x/y-*`. Why: no wrapper for gaps.
@@ -262,26 +297,28 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 - Group JSX with `<>...</>` fragment, not `<div>`. Why: zero DOM cost.
 - Style mapped components by passing `className` to the item; uniform direct children via `*:` or `[&>tag]:`. Why: props first, selectors second — no repeat-class wrapper.
 
-## NEVER
+### NEVER
 
 - Add a wrapper a `gap`/`space`/`divide`/`className`/`[&>...]:` could replace. Cost: dead node, render + read budget.
 
-## Examples
+### Examples
 
 | Good (selector pushdown)                           | Bad (repeated classes)                                      |
 | -------------------------------------------------- | ----------------------------------------------------------- |
 | `<div className='divide-y [&>p]:px-3 [&>p]:py-2'>` | `<div className='divide-y'>` with `px-3 py-2` on each `<p>` |
 
-## Pitfall
+### Pitfall
 
 - Selector tools: `*:` direct children · `[&>li]:py-2` targeted · `[&_a]:underline` descendant (sparingly) · `group`/`peer` on existing nodes → `group-hover:*`/`peer-focus:*` · `data-[state=open]:*`/`aria-expanded:*`/`disabled:*` · `first:`/`last:`/`odd:`/`even:`/`only:` structural.
 - Review each node: can I delete it → delete; can `gap/space/divide` replace it → do it; can I pass `className` → do it; can `[&>...]:` remove repetition → do it.
 
 ---
 
+## React & Next.js
+
 React 19 + Next.js component conventions.
 
-## MUST
+### MUST
 
 - Server components by default — `layout.tsx`, `loading.tsx`, `error.tsx` are server. Why: minimal client bundle.
 - `'use client'` ONLY when a component uses hooks/interactivity. Why: keep server-rendered by default.
@@ -290,7 +327,7 @@ React 19 + Next.js component conventions.
 - Stable array keys. Why: index keys corrupt reconciliation on reorder.
 - Wrap `useSearchParams()` in `<Suspense>`. Why: else build/runtime bailout.
 
-## NEVER
+### NEVER
 
 - IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
 - Array index as key. Cost: stale reconciliation on reorder/insert.
@@ -298,9 +335,11 @@ React 19 + Next.js component conventions.
 
 ---
 
+## Security
+
 Credential handling, env scoping, server/client boundary, mechanism-asserted invariants.
 
-## MUST
+### MUST
 
 - Route any credentialed client-side work through a server action / API route / Convex action reading the unprefixed var. Why: `NEXT_PUBLIC_*` is inlined into the client bundle, visible in page source.
 - Read server-only vars via `process.env.X` only inside `'use server'`, `'use node'`, `convex/`, `backend/spacetimedb/`, or `app/api/*/route.ts`. Why: server boundary.
@@ -312,45 +351,47 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 - Two independent enforcement points per isolation/security invariant. Why: defense in depth.
 - A regression test flips the mechanism off and asserts the invariant fails. Why: if it passes mechanism-off, it was call-site-asserted.
 
-## NEVER
+### NEVER
 
 - `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
 - `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
 - Read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
 - Log PII unredacted. Cost: privacy + regulatory violation.
 
-## Allowed `NEXT_PUBLIC_*`
+### Allowed `NEXT_PUBLIC_*`
 
 - Public deploy URLs (`NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_SPACETIMEDB_URI`) where auth is via session token, not the URL.
 - Feature flags / build-time constants.
 - Public OAuth client IDs (paired with server-side PKCE / redirect-URI checks).
 
-## Migration
+### Migration
 
 - Found a `NEXT_PUBLIC_*` API key: (1) rename to drop the prefix (`NEXT_PUBLIC_TMDB_API_KEY` → `TMDB_KEY`); (2) move the call into a server action / Convex action; (3) client invokes the server action, never sees the key; (4) add a server-side test-mode stub (`isStdbTestMode()` / `isCvxTestMode()`) so playwright stays hermetic.
 
-## Caught by
+### Caught by
 
 - PR env-var audit: no `NEXT_PUBLIC_*` name with key/secret/token/password/private; new client fetch goes through a server boundary; credential server actions short-circuit in test-mode; `.env.example` marks server-only vars without the prefix.
 
 ---
 
+## shadcn
+
 shadcn components used as-is, native look, semantic classes only.
 
-## MUST
+### MUST
 
 - Use shadcn components as-is. Why: no override drift.
 - Semantic Tailwind colors only — `text-foreground`/`text-muted-foreground`/`text-destructive`, `bg-primary`/`bg-muted`/`bg-destructive`, `text-primary` for links. Why: theme-driven, dark-mode safe.
 - `cn()` for conditional classes. Why: merge precedence + the only composition path.
 
-## NEVER
+### NEVER
 
 - Hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
 - `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
 - Template literal for conditional className. Cost: no merge precedence; use `cn()`.
 - `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
 
-## Examples
+### Examples
 
 | Good                                | Bad                              |
 | ----------------------------------- | -------------------------------- |
@@ -358,31 +399,35 @@ shadcn components used as-is, native look, semantic classes only.
 | `cn('base', v === 'a' ? 'x' : 'y')` | `clsx('base', ...)` / `cva(...)` |
 | `bg-muted` `text-primary`           | `bg-fd-muted` `text-blue-500`    |
 
-## Pitfall
+### Pitfall
 
 - `global.css` aliases `--color-*` → `--color-fd-*` via `@theme inline`, so `bg-muted`/`text-primary`/`border-border` resolve to the same theme as `fd-*` — always use the shadcn name.
 - fumadocs’ own UI (sidebar/search/TOC) keeps `fd-*` internally — that is library code, not yours.
 
 ---
 
+## tsdown
+
 Building + publishing library packages with tsdown.
 
-## MUST
+### MUST
 
 - Build/publish packages with `tsdown`. Why: standard ecosystem build.
 - Emit ESM + declaration files. Why: consumers need types.
 - `prepublishOnly` builds before publish. Why: never ship stale `dist/`.
 - Export every type used in the public API. Why: DTS generation fails on unexported internal types leaking through re-exports.
 
-## NEVER
+### NEVER
 
 - Bundle deps consumers should install themselves. Cost: duplicate/version-conflict in consumer tree.
 
 ---
 
+## TypeScript
+
 TypeScript code style + formatting.
 
-## MUST
+### MUST
 
 - Arrow functions only. Why: one function form.
 - All exports in a single block at end of file. Why: lint-enforced, scan-once.
@@ -400,7 +445,7 @@ TypeScript code style + formatting.
 - `interface` over `type` where possible; properties sorted alphabetically. Why: lint-enforced.
 - `import type` for type-only imports. Why: erased at build.
 
-## NEVER
+### NEVER
 
 - `function` declarations. Cost: violates arrow-only.
 - Duplicate types. Cost: drift; single source of truth.
@@ -408,6 +453,6 @@ TypeScript code style + formatting.
 - Empty lines between statements. Cost: biome deletes them — wasted diff.
 - Trailing comma single-line (keep it multi-line). Cost: format violation.
 
-## Formatting
+### Formatting
 
 - Single quotes, no semicolons; imports sorted alphabetically by source.

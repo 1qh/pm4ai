@@ -72,6 +72,14 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   })
   return issues
 }
+const logIssues = (issues: Issue[]): void => {
+  for (const i of issues) console.log(`  ${i.type} ${i.detail}`)
+}
+/** pm4ai syncs itself too — its sub-packages and its own CLAUDE.md, generated from the same .mdx it ships to everyone, so the manager's own guidance never rots against its source. */
+const syncSelf = async (selfPath: string): Promise<void> => {
+  logIssues(await syncSubPackages(selfPath, selfPath))
+  logIssues(await syncClaudeMd(selfPath, selfPath))
+}
 export { maintain }
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = statePath('fix.lock')
@@ -161,8 +169,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         console.log(`${repo.name}: pulled`)
       })
     )
-    const selfSubPkgIssues = await syncSubPackages(self.path, self.path)
-    if (selfSubPkgIssues.length > 0) for (const i of selfSubPkgIssues) console.log(`  ${i.type} ${i.detail}`)
+    await syncSelf(self.path)
     const allTargets = [cnsync, ...consumers]
     const tasks = allTargets.map(async project => {
       const name = projectName(project.path)

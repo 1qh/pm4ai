@@ -59,10 +59,33 @@ const frontmatterTitle = (content: string): string | undefined => {
   if (endIdx === -1) return
   return FRONTMATTER_TITLE_RE.exec(content.slice(3, endIdx))?.groups?.title?.trim()
 }
+const HEADING_RE = /^#{1,5} /u
+const FENCE_RE = /^\s*```/u
+/** Shift every markdown heading one level deeper, skipping fenced code blocks, so a rule authored at `##` nests under its `##` topic title in the assembled guide instead of competing as another H1. */
+const shiftHeadings = (body: string): string => {
+  let inFence = false
+  return body
+    .split('\n')
+    .map(line => {
+      if (FENCE_RE.test(line)) inFence = !inFence
+      return !inFence && HEADING_RE.test(line) ? `#${line}` : line
+    })
+    .join('\n')
+}
 const ruleBlock = (content: string): string => {
   const title = frontmatterTitle(content)
-  const body = stripFrontmatter(content)
-  return title ? `# ${title}\n\n${body}` : body
+  const body = shiftHeadings(stripFrontmatter(content))
+  return title ? `## ${title}\n\n${body}` : body
+}
+const GUIDE_TITLE = 'pm4ai — Managed Repo Guide'
+const NON_SLUG_RE = /[^a-z0-9]+/gu
+const EDGE_HYPHEN_RE = /^-+|-+$/gu
+const slug = (title: string): string => title.toLowerCase().replaceAll(NON_SLUG_RE, '-').replaceAll(EDGE_HYPHEN_RE, '')
+const buildContents = (titles: string[]): string =>
+  ['## Contents', '', ...titles.map(t => `- [${t}](#${slug(t)})`)].join('\n')
+interface GeneratedGuide {
+  content?: string
+  error?: string
 }
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const managed = await resolveManagedFiles(projectPath)
@@ -101,25 +124,36 @@ const canonicaliseViaLintmax = async (rawContent: string, relName: string, proje
   }
   return formatted
 }
-const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
+/** Single source for the generated CLAUDE.md — one doc title, a Contents list, then each rule as a `##` topic. `fix` writes what this returns; the freshness check diffs against it, so neither can drift from the other. */
+const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<GeneratedGuide> => {
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
-  const rulesDirExists = await pathExists(rulesDir)
-  if (!rulesDirExists) {
-    issues.push({ detail: 'rules directory not found in pm4ai repo', type: 'error' })
-    return issues
-  }
+  if (!(await pathExists(rulesDir))) return { error: 'rules directory not found in pm4ai repo' }
   const inferred = await inferRules(projectPath, rulesDir)
   const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
+  const titles = contents.map(c => frontmatterTitle(c)).filter((t): t is string => Boolean(t))
+  const header = `# ${GUIDE_TITLE}\n\n${buildContents(titles)}`
   const blocks = contents.map(c => ruleBlock(c))
-  const generated = await canonicaliseViaLintmax(`${blocks.join('\n\n---\n\n')}\n`, CLAUDE_MD, projectPath)
+  const raw = `${[header, ...blocks].join('\n\n---\n\n')}\n`
+  return { content: await canonicaliseViaLintmax(raw, CLAUDE_MD, projectPath) }
+}
+const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
+  const result = await generateClaudeMd(selfPath, projectPath)
+  if (result.error !== undefined || result.content === undefined)
+    return [{ detail: result.error ?? 'generate failed', type: 'error' }]
   const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
-  if (generated !== existing) {
-    await write(claudeFile, generated)
-    issues.push({ detail: `${CLAUDE_MD} updated`, type: 'synced' })
-  }
-  return issues
+  if (result.content === existing) return []
+  await write(claudeFile, result.content)
+  return [{ detail: `${CLAUDE_MD} updated`, type: 'synced' }]
+}
+/** Read-only freshness gate for status: regenerate in memory and diff, so a CLAUDE.md that drifted from its source rules fails the gate instead of reading green fleet-wide. */
+const checkClaudeMdFresh = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
+  const result = await generateClaudeMd(selfPath, projectPath)
+  if (result.error !== undefined || result.content === undefined) return []
+  const claudeFile = file(join(projectPath, CLAUDE_MD))
+  const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
+  if (result.content === existing) return []
+  return [{ detail: `${CLAUDE_MD} stale — run pm4ai fix to regenerate from current rules`, type: 'file' }]
 }
 const isLintmaxScriptCanonical = (script: string | undefined, fallback: string, command: 'check' | 'fix'): boolean => {
   const value = script ?? ''
@@ -712,6 +746,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   return results.filter((r): r is Issue => r !== undefined)
 }
 export {
+  checkClaudeMdFresh,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,

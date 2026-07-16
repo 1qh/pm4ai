@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  checkClaudeMdFresh,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,
@@ -398,6 +399,40 @@ describe('syncClaudeMd', () => {
     const content = await file(join(projectDir, 'CLAUDE.md')).text()
     expect(content).toContain('base rules')
     expect(content).toContain('react rules')
+    await rm(selfDir, { recursive: true })
+    await rm(projectDir, { recursive: true })
+  })
+  test('emits one H1, a Contents list, and topics as H2 with shifted bodies', async () => {
+    const selfDir = await makeTmp()
+    const projectDir = await makeTmp()
+    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
+    await mkdir(rulesDir, { recursive: true })
+    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule')
+    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    await syncClaudeMd(selfDir, projectDir)
+    const content = await file(join(projectDir, 'CLAUDE.md')).text()
+    const h1s = content.split('\n').filter(l => l.startsWith('# '))
+    expect(h1s).toEqual(['# pm4ai — Managed Repo Guide'])
+    expect(content).toContain('## Contents')
+    expect(content).toContain('- [Base](#base)')
+    expect(content).toContain('## Base')
+    expect(content).toContain('### MUST')
+    await rm(selfDir, { recursive: true })
+    await rm(projectDir, { recursive: true })
+  })
+})
+describe('checkClaudeMdFresh', () => {
+  test('flags a stale CLAUDE.md and passes a fresh one', async () => {
+    const selfDir = await makeTmp()
+    const projectDir = await makeTmp()
+    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
+    await mkdir(rulesDir, { recursive: true })
+    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule')
+    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    await write(join(projectDir, 'CLAUDE.md'), '# outdated hand-written content')
+    expect(await checkClaudeMdFresh(selfDir, projectDir)).not.toHaveLength(0)
+    await syncClaudeMd(selfDir, projectDir)
+    expect(await checkClaudeMdFresh(selfDir, projectDir)).toHaveLength(0)
     await rm(selfDir, { recursive: true })
     await rm(projectDir, { recursive: true })
   })

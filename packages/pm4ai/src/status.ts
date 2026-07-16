@@ -30,6 +30,7 @@ import {
 } from './checks.js'
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
+import { checkClaudeMdFresh } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
@@ -61,6 +62,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
     const results: Issue[][] = await Promise.all([
       checkGit(project.path),
       checkDrift(selfPath, project.path),
+      checkClaudeMdFresh(selfPath, project.path),
       checkRootPkg(project.path),
       checkConfigs(project.path),
       checkForbidden(project.path),
