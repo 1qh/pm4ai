@@ -123,6 +123,18 @@ const WS_RE = /\s/gu
 /** The generator emits raw markdown; the project's own `bun run fix` (lintmax) then canonicalizes the written file (smart quotes, and it even deletes spaces around inline-code spans). Reduce both to a whitespace-free, quote-folded content signature so a real content drift is caught while any cosmetic reformat — including that space-deletion — is not. */
 const normalizeGuide = (s: string): string =>
   s.replaceAll(SMART_SINGLE_RE, "'").replaceAll(SMART_DOUBLE_RE, '"').replaceAll(WS_RE, '')
+const lintmaxBinOf = (p: string): string => join(p, 'node_modules', '.bin', 'lintmax')
+/** Canonicalize the written CLAUDE.md with lintmax so it is already lint-clean — the project's own lintmax, else self's (for `init`, where the scaffold has no install yet). Otherwise the project's later `bun run fix` reformats it and the "fix produces no changes" scaffold gate fails. */
+const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Promise<void> => {
+  const projectBin = lintmaxBinOf(projectPath)
+  const lintmaxBin = (await pathExists(projectBin))
+    ? projectBin
+    : (await pathExists(lintmaxBinOf(selfPath)))
+      ? lintmaxBinOf(selfPath)
+      : undefined
+  if (lintmaxBin === undefined) return
+  await $`${lintmaxBin} fix ${CLAUDE_MD}`.cwd(projectPath).quiet().nothrow()
+}
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const result = await generateClaudeMd(selfPath, projectPath)
   if (result.error !== undefined || result.content === undefined)
@@ -131,6 +143,7 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
   if (normalizeGuide(result.content) === normalizeGuide(existing)) return []
   await write(claudeFile, result.content)
+  await canonicalizeClaudeMd(projectPath, selfPath)
   return [{ detail: `${CLAUDE_MD} updated`, type: 'synced' }]
 }
 /** Read-only freshness gate for status: regenerate in memory and diff, so a CLAUDE.md that drifted from its source rules fails the gate instead of reading green fleet-wide. */
