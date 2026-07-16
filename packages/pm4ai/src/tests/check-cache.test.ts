@@ -1,7 +1,7 @@
 import { $, file, write } from 'bun'
 import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   getCodeCommitsSince,
@@ -11,6 +11,7 @@ import {
   spawnBackgroundCheck,
   writeCheckResult
 } from '../check-cache.js'
+import { statePath } from '../state-dir.js'
 
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-cc-'))
 const leadingSepRe = /^--/u
@@ -112,7 +113,7 @@ describe('isCheckRunning', () => {
   })
   test('returns true when lock exists with alive PID', async () => {
     const tmp = await makeTmp()
-    const dir = join(homedir(), '.pm4ai', 'checks')
+    const dir = statePath('checks')
     await mkdir(dir, { recursive: true })
     const safeName = toSafeName(tmp)
     const lp = join(dir, `${safeName}.lock`)
@@ -123,7 +124,7 @@ describe('isCheckRunning', () => {
   })
   test('returns false and cleans up stale lock', async () => {
     const tmp = await makeTmp()
-    const dir = join(homedir(), '.pm4ai', 'checks')
+    const dir = statePath('checks')
     await mkdir(dir, { recursive: true })
     const safeName = toSafeName(tmp)
     const lp = join(dir, `${safeName}.lock`)
@@ -134,7 +135,7 @@ describe('isCheckRunning', () => {
   })
   test('returns false and cleans up corrupt lock', async () => {
     const tmp = await makeTmp()
-    const dir = join(homedir(), '.pm4ai', 'checks')
+    const dir = statePath('checks')
     await mkdir(dir, { recursive: true })
     const safeName = toSafeName(tmp)
     const lp = join(dir, `${safeName}.lock`)
@@ -153,7 +154,7 @@ describe('spawnBackgroundCheck', () => {
   })
   test('skips when check already running', async () => {
     const tmp = await makeTmp()
-    const dir = join(homedir(), '.pm4ai', 'checks')
+    const dir = statePath('checks')
     await mkdir(dir, { recursive: true })
     const safeName = toSafeName(tmp)
     const lp = join(dir, `${safeName}.lock`)

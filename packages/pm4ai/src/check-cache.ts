@@ -3,11 +3,10 @@
 import { $, file, spawn, write } from 'bun'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CONFIG_DIR } from './config-dir.js'
 import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
 import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
+import { statePath } from './state-dir.js'
 
 interface CheckResult {
   at: string
@@ -16,7 +15,7 @@ interface CheckResult {
   summary?: string
   violations: number
 }
-const checksDir = () => join(homedir(), CONFIG_DIR, 'checks')
+const checksDir = () => statePath('checks')
 const leadingSepRe = /^--/u
 const safeFileName = (projectPath: string) => projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
 const cachePath = (projectPath: string) => join(checksDir(), `${safeFileName(projectPath)}.json`)

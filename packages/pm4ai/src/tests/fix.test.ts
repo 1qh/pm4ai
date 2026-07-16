@@ -1,9 +1,10 @@
 import { $, file, write } from 'bun'
 import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fix, maintain } from '../fix.js'
+import { stateDir, statePath } from '../state-dir.js'
 
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
@@ -36,7 +37,7 @@ describe('maintain', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const checkFile = statePath('checks', `${safeName}.json`)
     expect(await file(checkFile).exists()).toBe(true)
     const result = (await file(checkFile).json()) as { pass: boolean }
     expect(result.pass).toBe(true)
@@ -47,7 +48,7 @@ describe('maintain', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "5 violations" >&2\nexit 1')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const checkFile = statePath('checks', `${safeName}.json`)
     expect(await file(checkFile).exists()).toBe(true)
     const result = (await file(checkFile).json()) as { pass: boolean; violations: number }
     expect(result.pass).toBe(false)
@@ -59,16 +60,16 @@ describe('maintain', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const logFile = join(homedir(), '.pm4ai', 'logs', `${safeName}.json`)
+    const logFile = statePath('logs', `${safeName}.json`)
     expect(await file(logFile).exists()).toBe(true)
     await rm(tmp, { recursive: true })
   })
 })
 describe('lockfile', () => {
-  const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
+  const lockFile = statePath('fix.lock')
   test('atomic exclusive create prevents double acquisition', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     const fd = await open(lockFile, 'wx')
     await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     await fd.close()
@@ -85,7 +86,7 @@ describe('lockfile', () => {
   })
   test('stale lock with dead PID is removable', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     await write(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
     const lock = (await file(lockFile).json()) as { at: string; pid: number }
     const age = Date.now() - new Date(lock.at).getTime()
@@ -103,7 +104,7 @@ describe('lockfile', () => {
   })
   test('lock contains valid JSON with pid and timestamp', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     const fd = await open(lockFile, 'wx')
     await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     await fd.close()
@@ -114,7 +115,7 @@ describe('lockfile', () => {
   })
   test('stale lock from alive process under 10min blocks', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     await write(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     const lock = (await file(lockFile).json()) as { at: string; pid: number }
     const age = Date.now() - new Date(lock.at).getTime()
@@ -131,7 +132,7 @@ describe('lockfile', () => {
   })
   test('corrupt lock file can be replaced', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     await write(lockFile, 'not json')
     let parsed = false
     try {
@@ -155,7 +156,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "12 errors found" >&2\nexit 1')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const checkFile = statePath('checks', `${safeName}.json`)
     const result = (await file(checkFile).json()) as { violations: number }
     expect(result.violations).toBe(12)
     await rm(tmp, { recursive: true })
@@ -165,7 +166,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "7 problems detected" >&2\nexit 1')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const checkFile = statePath('checks', `${safeName}.json`)
     const result = (await file(checkFile).json()) as { violations: number }
     expect(result.violations).toBe(7)
     await rm(tmp, { recursive: true })
@@ -175,7 +176,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "something broke" >&2\nexit 1')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const checkFile = join(homedir(), '.pm4ai', 'checks', `${safeName}.json`)
+    const checkFile = statePath('checks', `${safeName}.json`)
     const result = (await file(checkFile).json()) as { violations: number }
     expect(result.violations).toBe(1)
     await rm(tmp, { recursive: true })
@@ -185,7 +186,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
     await write(join(tmp, 'bun.lock'), 'lockfile contents')
     await maintain(tmp)
-    const snapshotDir = join(homedir(), '.pm4ai', 'snapshots', tmp.split('/').pop() ?? '')
+    const snapshotDir = statePath('snapshots', tmp.split('/').pop() ?? '')
     expect(await file(join(snapshotDir, 'bun.lock')).exists()).toBe(true)
     await rm(tmp, { recursive: true })
   })
@@ -194,7 +195,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "fatal error" >&2\nexit 1')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const logFile = join(homedir(), '.pm4ai', 'logs', `${safeName}.json`)
+    const logFile = statePath('logs', `${safeName}.json`)
     const entry = (await file(logFile).json()) as { error?: string; pass: boolean }
     expect(entry.pass).toBe(false)
     expect(entry.error).toContain('fatal error')
@@ -205,7 +206,7 @@ describe('maintain edge cases', () => {
     await write(join(tmp, 'up.sh'), '#!/bin/sh\nexit 0')
     await maintain(tmp)
     const safeName = toFileName(tmp)
-    const logFile = join(homedir(), '.pm4ai', 'logs', `${safeName}.json`)
+    const logFile = statePath('logs', `${safeName}.json`)
     const entry = (await file(logFile).json()) as { error?: string; pass: boolean }
     expect(entry.pass).toBe(true)
     expect(entry.error).toBeUndefined()
@@ -214,10 +215,10 @@ describe('maintain edge cases', () => {
 })
 const isCI = Boolean(process.env.CI)
 describe.skipIf(isCI)('fix() function', () => {
-  const lockFile = join(homedir(), '.pm4ai', 'fix.lock')
+  const lockFile = statePath('fix.lock')
   test('blocks when lock held by alive process', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     const fd = await open(lockFile, 'wx')
     await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     await fd.close()
@@ -227,7 +228,7 @@ describe.skipIf(isCI)('fix() function', () => {
   })
   test('recovers stale lock from dead process', async () => {
     await rm(lockFile, { force: true })
-    await mkdir(join(homedir(), '.pm4ai'), { recursive: true })
+    await mkdir(stateDir(), { recursive: true })
     await write(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
     const saved = process.cwd()
     const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')

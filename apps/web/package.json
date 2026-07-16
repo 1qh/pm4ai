@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev --port 4200",
     "start": "next start --port 4200",
-    "test": "PM4AI_SOCKET_DIR=$(mktemp -d) bun test"
+    "test": "PM4AI_STATE_DIR=$(mktemp -d) NEXT_DIST_DIR=node_modules/.cache/next-test-$$ bun test"
   },
   "dependencies": {
     "@a/ui": "workspace:*",

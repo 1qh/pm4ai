@@ -3,7 +3,7 @@
   "tasks": {
     "test": {
       "cache": false,
-      "env": ["CI", "PM4AI_SOCKET_DIR"]
+      "env": ["CI", "PM4AI_STATE_DIR", "NEXT_DIST_DIR"]
     },
     "build": {
       "dependsOn": ["^build"],

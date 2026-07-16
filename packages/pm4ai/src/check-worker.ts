@@ -1,13 +1,12 @@
 import { $, write } from 'bun'
 import { mkdir, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CONFIG_DIR } from './config-dir.js'
+import { statePath } from './state-dir.js'
 
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')
 const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')
-const dir = join(homedir(), CONFIG_DIR, 'checks')
+const dir = statePath('checks')
 const cp = join(dir, `${safeName}.json`)
 const lp = join(dir, `${safeName}.lock`)
 await mkdir(dir, { recursive: true })

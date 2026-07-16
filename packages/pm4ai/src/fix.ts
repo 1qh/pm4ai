@@ -1,16 +1,15 @@
 /* eslint-disable no-console */
 import { $, file } from 'bun'
 import { copyFile, mkdir, open, rm, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { writeCheckResult } from './check-cache.js'
-import { CONFIG_DIR } from './config-dir.js'
 import { READONLY_UI } from './constants.js'
 import { discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { lockSchema, safeParseJson } from './schemas.js'
+import { stateDir, statePath } from './state-dir.js'
 import {
   syncClaudeMd,
   syncConfigs,
@@ -49,7 +48,7 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
   const { exitCode } = result
   const stderr = [result.stdout.toString(), result.stderr.toString()].join('\n').trim()
   if (exitCode === 0) {
-    const snapshotDir = join(homedir(), CONFIG_DIR, 'snapshots', projectName(projectPath))
+    const snapshotDir = statePath('snapshots', projectName(projectPath))
     const lockfile = join(projectPath, 'bun.lock')
     const lockfileExists = await file(lockfile).exists()
     if (lockfileExists) {
@@ -75,8 +74,8 @@ const maintain = async (projectPath: string): Promise<Issue[]> => {
 }
 export { maintain }
 export const fix = async (all = false, excludes: readonly string[] = []) => {
-  const lockFile = join(homedir(), CONFIG_DIR, 'fix.lock')
-  await mkdir(join(homedir(), CONFIG_DIR), { recursive: true })
+  const lockFile = statePath('fix.lock')
+  await mkdir(stateDir(), { recursive: true })
   const lockData = JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
   const tryAcquireLock = async (): Promise<boolean> => {
     try {

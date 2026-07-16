@@ -1,13 +1,12 @@
 import type { z } from 'zod/v4'
 import { file, write } from 'bun'
 import { mkdir, readdir } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CONFIG_DIR } from './config-dir.js'
 import { logEntrySchema, safeParseJson } from './schemas.js'
+import { statePath } from './state-dir.js'
 
 type LogEntry = z.infer<typeof logEntrySchema>
-const logDir = join(homedir(), CONFIG_DIR, 'logs')
+const logDir = statePath('logs')
 const leadingSepRe = /^--/u
 const logPath = (path: string) => join(logDir, `${path.replaceAll('/', '--').replace(leadingSepRe, '')}.json`)
 const readLog = async (): Promise<LogEntry[]> => {

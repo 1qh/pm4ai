@@ -1,8 +1,9 @@
 import { $, file, write } from 'bun'
 import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { statePath } from '../state-dir.js'
 
 const dirExists = async (p: string): Promise<boolean> => {
   try {
@@ -15,7 +16,7 @@ const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-cw-'))
 const workerPath = join(import.meta.dirname, '..', 'check-worker.ts')
 const leadingSepRe = /^--/u
 const safeName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
-const checksDir = join(homedir(), '.pm4ai', 'checks')
+const checksDir = statePath('checks')
 describe('check-worker', () => {
   test('writes passing result for project with passing check', async () => {
     const tmp = await makeTmp()
