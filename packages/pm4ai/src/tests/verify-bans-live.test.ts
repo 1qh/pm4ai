@@ -12,6 +12,7 @@ const checkExists = async (name: string): Promise<boolean> => {
   return res.ok
 }
 test('all banned packages exist on npm', async () => {
+  if (!process.env.PM4AI_LIVE) return
   const names = [...new Set(ALL_BANNED.map(b => extractExactName(b.ban)).filter(Boolean))] as string[]
   const batchSize = 50
   const missing: string[] = []

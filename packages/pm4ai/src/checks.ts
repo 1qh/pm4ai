@@ -666,6 +666,45 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
     issues.push(issue('missing', `SITE_URL required for Convex auth callbacks in ${rel(envHit.p, projectPath)}`))
   return issues
 }
+const HERMETIC_TEST_GLOBS = [
+  '-g',
+  '*.test.ts',
+  '-g',
+  '*.test.tsx',
+  '-g',
+  '*.spec.ts',
+  '-g',
+  '*.e2e.ts',
+  '-g',
+  '!*-live.test.ts',
+  '-g',
+  '!*.live.test.ts'
+]
+const HERMETIC_TEST_PATTERNS = [
+  String.raw`git\s+(clone|fetch|pull|push|ls-remote)\b[^\n]*(https?://|git@)`,
+  '(fetch|\\.goto|got|axios\\.[a-z]+|\\.request)\\(([\'"`])https?://'
+]
+const LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal/u
+const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
+  const rgArgs = HERMETIC_TEST_PATTERNS.flatMap(p => ['-e', p])
+  const result = await $`rg -n ${rgArgs} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow()
+  const offenders = result.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .filter(line => !LOCAL_HOST_RE.test(line))
+    .map(line => {
+      const [path, lineNo] = line.split(':')
+      return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
+    })
+  if (offenders.length === 0) return []
+  return [
+    forbidden(
+      `non-hermetic network in test — use a local bare repo, mock the call, or gate a live test behind a credential: ${offenders.join(', ')}`
+    )
+  ]
+}
 export {
   checkActionRunsTests,
   checkAppTsconfigs,
@@ -680,6 +719,7 @@ export {
   checkFumadocsBuild,
   checkFumadocsGithubUrl,
   checkGit,
+  checkHermeticTests,
   checkLayouts,
   checkMergeMarkers,
   checkNextConfigs,

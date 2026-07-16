@@ -10,6 +10,7 @@ import {
   checkDrift,
   checkForbidden,
   checkGit,
+  checkHermeticTests,
   checkMergeMarkers,
   checkRootPkg,
   checkVercel
@@ -160,6 +161,62 @@ describe('checkGit', () => {
     expect(issues).toEqual([])
     await rm(remote, { recursive: true })
     await rm(local, { recursive: true })
+  })
+})
+describe('checkHermeticTests', () => {
+  const REMOTE = 'https://github.com/x/y.git'
+  const EXT = 'https://api.example.com/v1'
+  const localhostUrl = ['http:/', '/localhost:3000/api'].join('')
+  const dataUrl = 'https://api.openai.com/v1'
+  const writeFileIn = async (name: string, body: string): Promise<string> => {
+    const tmp = await makeTmp()
+    await mkdir(join(tmp, 'src'), { recursive: true })
+    await write(join(tmp, 'src', name), body)
+    return tmp
+  }
+  test('flags a real remote git clone in a test file', async () => {
+    const tmp = await writeFileIn('a.test.ts', `await $\`git clone ${REMOTE} dest\`\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues.some(i => i.type === 'forbidden' && i.detail.includes('non-hermetic'))).toBe(true)
+    await rm(tmp, { recursive: true })
+  })
+  test('flags an external fetch in a test file', async () => {
+    const tmp = await writeFileIn('b.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues.some(i => i.type === 'forbidden')).toBe(true)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not flag a local git clone from a filesystem path', async () => {
+    const tmp = await writeFileIn('c.test.ts', 'await $`git clone /tmp/local-bare.git dest`\n')
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not flag a localhost fetch (own spawned server)', async () => {
+    const tmp = await writeFileIn('d.test.ts', `await fetch(${JSON.stringify(localhostUrl)})\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not flag a URL passed as data to a pure function', async () => {
+    const tmp = await writeFileIn('e.test.ts', `expect(normalizeBaseUrl(${JSON.stringify(dataUrl)})).toBeDefined()\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not scan non-test source files', async () => {
+    const tmp = await makeTmp()
+    await mkdir(join(tmp, 'src'), { recursive: true })
+    await write(join(tmp, 'src', 'prod.ts'), `await fetch(${JSON.stringify(EXT)})\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('exempts a deliberate -live test file', async () => {
+    const tmp = await writeFileIn('x-live.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
   })
 })
 describe('checkDrift', () => {
