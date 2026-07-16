@@ -31,5 +31,5 @@ describe('list', () => {
     }
     expect(rows.some(row => row.includes(projectA))).toBe(true)
     expect(rows.every(row => !row.includes(projectB))).toBe(true)
-  }, 15_000)
+  })
 })
