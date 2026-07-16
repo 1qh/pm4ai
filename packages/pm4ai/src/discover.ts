@@ -42,15 +42,17 @@ const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   const url = r.stdout.toString().trim()
   return url.includes(`${GH_ORG}/cnsync`)
 }
+// biome-ignore lint/style/noProcessEnv: PM4AI_CLONE_BASE is a deliberate configurable clone-source seam (tests point it at a local bare repo; a mirror can be set in prod)
+const cloneBase = (): string => process.env.PM4AI_CLONE_BASE ?? `https://github.com/${GH_ORG}`
 const ensureSourceRepo = async (repo: string, dest: string) => {
   const destExists = await dirExists(dest)
   if (!destExists) {
     debug('cloning', repo, 'to', dest)
     await mkdir(dirname(dest), { recursive: true })
-    await $`git clone https://github.com/${GH_ORG}/${repo}.git ${dest}`.quiet().nothrow()
+    await $`GIT_TERMINAL_PROMPT=0 git clone ${cloneBase()}/${repo}.git ${dest}`.quiet().nothrow()
     return dest
   }
-  await $`git fetch --quiet --prune`.cwd(dest).quiet().nothrow()
+  await $`GIT_TERMINAL_PROMPT=0 git fetch --quiet --prune`.cwd(dest).quiet().nothrow()
   await $`git reset --hard @{u}`.cwd(dest).quiet().nothrow()
   await $`git clean -fd`.cwd(dest).quiet().nothrow()
   return dest

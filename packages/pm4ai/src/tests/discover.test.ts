@@ -255,9 +255,18 @@ describe('discoverSources', () => {
   test('falls back to clone path when repos not found', async () => {
     const root = await makeTmp()
     const reposDir = join(root, '.pm4ai', 'repos')
-    const result = await discoverSources(root)
-    expect(result.self.path).toBe(join(reposDir, 'pm4ai'))
-    expect(result.cnsync.path).toBe(join(reposDir, 'cnsync'))
-    await rm(root, { recursive: true })
-  }, 30_000)
+    const cloneSrc = await makeTmp()
+    await $`git init --bare ${join(cloneSrc, 'pm4ai.git')}`.quiet().nothrow()
+    await $`git init --bare ${join(cloneSrc, 'cnsync.git')}`.quiet().nothrow()
+    process.env.PM4AI_CLONE_BASE = cloneSrc
+    try {
+      const result = await discoverSources(root)
+      expect(result.self.path).toBe(join(reposDir, 'pm4ai'))
+      expect(result.cnsync.path).toBe(join(reposDir, 'cnsync'))
+    } finally {
+      delete process.env.PM4AI_CLONE_BASE
+      await rm(root, { recursive: true })
+      await rm(cloneSrc, { recursive: true })
+    }
+  })
 })
