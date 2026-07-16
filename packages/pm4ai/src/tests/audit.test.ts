@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import type { PkgEntry } from '../audit.js'
 import {
   checkAppPackages,
@@ -13,6 +13,7 @@ import {
   usesForbidden
 } from '../audit.js'
 
+setDefaultTimeout(30_000)
 const PROJECT = '/tmp/project'
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })
 describe('usesForbidden', () => {

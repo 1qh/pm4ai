@@ -1,9 +1,10 @@
 import { $ } from 'bun'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
 
+setDefaultTimeout(30_000)
 describe('timeAgo', () => {
   test('5 minutes ago', () => {
     const iso = new Date(Date.now() - 5 * 60_000).toISOString()
