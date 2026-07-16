@@ -11,7 +11,7 @@
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
-    "postinstall": "sherif",
+    "postinstall": "sherif -i typescript",
     "prepare": "bunx simple-git-hooks"
   },
   "simple-git-hooks": {
@@ -24,7 +24,7 @@
     "simple-git-hooks": "latest",
     "tsdown": "latest",
     "turbo": "latest",
-    "typescript": "latest",
+    "typescript": "~6.0.3",
     "unrun": "latest"
   },
   "packageManager": "__PACKAGE_MANAGER__",

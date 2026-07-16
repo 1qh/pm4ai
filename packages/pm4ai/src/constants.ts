@@ -37,7 +37,7 @@ const DEFAULT_SCRIPTS = {
   check: `${LINTMAX_PKG} check`,
   clean: 'sh clean.sh',
   fix: `${LINTMAX_PKG} fix`,
-  postinstall: 'sherif',
+  postinstall: 'sherif -i typescript',
   prepare: EXPECTED.prepare
 }
 const FORBIDDEN_LOCKFILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc', '.yarnrc.yml']
