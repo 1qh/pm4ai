@@ -687,6 +687,7 @@ const HERMETIC_TEST_PATTERNS = [
 const LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal/u
 const HOME_READ_RG = String.raw`(?:os\.)?homedir\(\)|process\.env(?:\.HOME\b|\[['"]HOME)`
 const HOME_SWAP_RE = /process\.env(?:\.HOME|\[['"]HOME['"]\])\s*=[^=]/u
+const PERF_TIME_RG = String.raw`performance\.now\(\)|process\.hrtime\b`
 const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const rgArgs = HERMETIC_TEST_PATTERNS.flatMap(p => ['-e', p])
@@ -720,6 +721,24 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
     issues.push(
       forbidden(
         `non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
+      )
+    )
+  const timeResult = await $`rg -n -e ${PERF_TIME_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
+    .quiet()
+    .nothrow()
+  const timing = timeResult.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map(line => {
+      const [path, lineNo] = line.split(':')
+      return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
+    })
+  if (timing.length > 0)
+    issues.push(
+      forbidden(
+        `non-hermetic timing in test — a wall-clock micro-benchmark (performance.now/hrtime) flakes on a loaded runner; assert the outcome, not the elapsed time: ${timing.join(', ')}`
       )
     )
   return issues

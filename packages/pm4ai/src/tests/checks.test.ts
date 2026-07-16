@@ -170,6 +170,7 @@ describe('checkHermeticTests', () => {
   const dataUrl = 'https://api.openai.com/v1'
   const HOMEDIR = 'homedir'
   const PENV = 'process.env'
+  const PERFNOW = ['performance', '.now()'].join('')
   const writeFileIn = async (name: string, body: string): Promise<string> => {
     const tmp = await makeTmp()
     await mkdir(join(tmp, 'src'), { recursive: true })
@@ -228,6 +229,18 @@ describe('checkHermeticTests', () => {
   })
   test('exempts a test that swaps the HOME env var to an isolated dir', async () => {
     const tmp = await writeFileIn('i.test.ts', `${PENV}.HOME = tmpDir\nconst d = ${HOMEDIR}()\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('flags a wall-clock micro-benchmark (performance.now) in a test', async () => {
+    const tmp = await writeFileIn('t.test.ts', `const start = ${PERFNOW}\nexpect(start).toBeGreaterThan(0)\n`)
+    const issues = await checkHermeticTests(tmp)
+    expect(issues.some(i => i.detail.includes('non-hermetic timing'))).toBe(true)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not flag Date.now used for a unique name', async () => {
+    const tmp = await writeFileIn('u.test.ts', 'const name = "x-" + Date.now()\n')
     const issues = await checkHermeticTests(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
