@@ -8,6 +8,14 @@ import { clients, emit, SOCKET_PATH, socketExists, startEmitter, stopEmitter } f
 import { createEvent } from '../watch-types.js'
 
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
+/** Polls to a deadline instead of sleeping a fixed span: a loaded runner needs longer than any constant a green local run would pick, and a constant tuned for it wastes that span on every pass. */
+const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`condition still false after ${String(timeoutMs)}ms`)
+    await wait(10)
+  }
+}
 const connectClient = async (): Promise<Socket> =>
   new Promise((resolve, reject) => {
     const sock = createConnection(SOCKET_PATH)
@@ -96,9 +104,9 @@ describe('event delivery', () => {
     sock.on('data', chunk => raw.push(chunk.toString()))
     emit(ev('test', 'sync', 'start'))
     emit(ev('test', 'sync', 'ok'))
-    await wait(50)
-    const combined = raw.join('')
-    const lines = combined.split('\n').filter(Boolean)
+    const linesSoFar = () => raw.join('').split('\n').filter(Boolean)
+    await waitFor(() => linesSoFar().length >= 2)
+    const lines = linesSoFar()
     expect(lines).toHaveLength(2)
     for (const line of lines)
       expect(() => {
@@ -161,7 +169,7 @@ describe('client disconnect', () => {
     const sock = await connectClient()
     expect(clients.size).toBe(1)
     sock.destroy()
-    await wait(50)
+    await waitFor(() => clients.size === 0)
     expect(clients.size).toBe(0)
   })
 })
