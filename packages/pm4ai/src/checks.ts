@@ -417,15 +417,20 @@ const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
     issues.push(drift(`redundant ${rel(f, projectPath)}, remove it`))
   return issues
 }
+const DOT_DIR_RE = /(?:^|\/)\.[^/]/u
+/** TypeScript's default glob skips dot-directories, so naming one is the only way to type it — and naming any entry replaces the defaults, forcing the rest to be restated. */
+const namesADotDir = (include: unknown): boolean =>
+  Array.isArray(include) && include.some(entry => typeof entry === 'string' && DOT_DIR_RE.test(entry))
 const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const files = await glob('**/apps/*/tsconfig.json', projectPath)
   await Promise.all(
     files.map(async tsconfigFile => {
-      const content = await file(tsconfigFile).text()
+      const ts = await readJson(tsconfigFile)
       const r = rel(tsconfigFile, projectPath)
-      if (!content.includes('"extends"')) issues.push(drift(`${r} should extend lintmax/tsconfig`))
-      if (content.includes('"include"')) issues.push(drift(`${r} should not have "include"`))
+      if (!ts) return
+      if (!ts.extends) issues.push(drift(`${r} should extend lintmax/tsconfig`))
+      if (ts.include && !namesADotDir(ts.include)) issues.push(drift(`${r} should not have "include"`))
     })
   )
   return issues
