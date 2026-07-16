@@ -8,17 +8,20 @@ TypeScript code style + formatting.
 
 ## MUST
 
+#### Functions, exports, and control flow
 - Arrow functions only. Why: one function form.
 - All exports in a single block at end of file. Why: lint-enforced, scan-once.
 - `.tsx` single component → `export default`; utilities/backend → named exports. Why: convention.
 - ANY file with JSX uses `.tsx` — even a context provider `<Ctx value={...}>`. Why: biome parses `.ts` as non-JSX, misreads `<Foo>` as comparison/regex, fixer infinite-loops (90-min hang).
 - `for` loops over `reduce()`/`forEach()`. Why: readability + perf.
 - Exhaustive `switch` with `default: never`. Why: compile-time case coverage.
+#### Naming and imports
 - Descriptive `catch (error)` state-var names (`chatError`, `formError`). Why: oxlint shadow rule.
 - Short map callback names (`t`, `m`, `i`). Why: convention.
 - Destructured object for 4+ args (max 3 positional). Why: call-site clarity.
 - Co-locate components with their page; move to `~/components` only when reused. Why: locality.
 - Explicit imports from exact file paths; no barrel `index.ts` in app code (library packages use barrels for public API). Why: avoids barrel cycle + bloat.
+#### Dependencies and types
 - Prefer existing libraries over new dependencies. Why: minimize surface.
 - `node:` prefix for Node builtins (`import { join } from 'node:path'`). Why: explicit builtin.
 - `interface` over `type` where possible; properties sorted alphabetically. Why: lint-enforced.

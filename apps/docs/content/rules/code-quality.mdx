@@ -8,15 +8,18 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 
 ## MUST
 
+#### SSOT and reuse
 - One definition per piece of data — shared constant defined once, imported everywhere; extract any value appearing in 2+ files. Why: drift surface.
 - Check existing utilities/components FIRST before writing inline logic. Why: avoid duplication.
 - Land any reusable script/helper/harness/probe as a tracked file (`scripts/*.ts`, a test, a `package.json` script), never throwaway `/tmp` scratch. Why: a `/tmp` probe is re-discovered next session; in-repo evidence re-runs.
 - Extract a shared util/component/factory on its second use, never a speculative first. Why: a one-call abstraction guesses the wrong shape and rots as unmaintained surface.
+#### Correctness and change management
 - Fix every known bug the moment it surfaces — lint, type error, audit, review, or your own reading — regardless of severity, blast radius, or whether it fires on current data. Why: a latent bug is one input from a live one; the discovery cost is already paid, so the same pass that found it fixes it.
 - Name things for what they ARE, not their lineage. Why: code reads as the single intended design, authored fully-formed.
 - When reworking, rename in place + delete the old, zero transitional duplicate. Why: result reads as if always so.
 - One declarative present-tense schema definition. Why: a numbered migration chain (`001_*`) encodes history in the repo.
 - Land a breaking change expand-contract — add the new shape, dual-write/backfill, drop the old in a later release; applies to DB schema, wire format, Convex tables, exported types, and public API signatures. Why: no destructive change ships in the same release as the code still depending on the old shape.
+#### Timeouts, types, and fail-fast
 - `AbortSignal.timeout(ms)` (or SDK timeout) on every `await` on network/IPC/subprocess. Why: bare `await` on external state can hang silently.
 - Bounded polling — compute a deadline once, exit with a specific stderr reason on timeout (`"api healthz timeout 60s"`). Why: `while(!ready){}` hangs with no clue.
 - Change source + regenerate for any codegen output; regenerate-and-diff gate fails on staleness. Why: committed output must equal a fresh regen; don’t trust the pre-commit hook alone.
