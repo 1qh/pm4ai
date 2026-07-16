@@ -14,9 +14,8 @@ const ensureStarted = async () => {
   started = true
   const { createConnection } = await import('node:net')
   const { access } = await import('node:fs/promises')
-  const { homedir } = await import('node:os')
-  const { join } = await import('node:path')
-  const socketPath = join(homedir(), '.pm4ai', 'watch.sock')
+  /** Imported, never re-derived: the emitter owns where the socket lives, so a second copy of the path here drifts the moment that one moves. */
+  const { SOCKET_PATH: socketPath } = await import('pm4ai/watch-socket')
   const socketExists = async () => {
     try {
       await access(socketPath)

@@ -2,9 +2,12 @@ import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
+import { freePort } from './free-port.js'
 
 const dashboardDir = join(import.meta.dirname, '..', '..')
 setDefaultTimeout(60_000)
+/** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
+const PORT = await freePort()
 let server: ChildProcess
 let baseUrl: string
 /** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
@@ -12,7 +15,7 @@ const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
     let output = ''
     const fail = (why: string) => reject(new Error(`${why}\n--- server output ---\n${output.trim() || '(silent)'}`))
-    const timeout = setTimeout(() => fail('server did not print "Ready" within 30s on port 4201'), 30_000)
+    const timeout = setTimeout(() => fail(`server did not print "Ready" within 30s on port ${String(PORT)}`), 30_000)
     const check = (chunk: Buffer) => {
       output += chunk.toString()
       if (output.includes('Ready')) {
@@ -32,8 +35,8 @@ const waitForReady = async (): Promise<void> =>
     })
   })
 beforeAll(async () => {
-  baseUrl = 'http://localhost:4201'
-  server = spawn('bun', ['run', 'next', 'dev', '--port', '4201'], {
+  baseUrl = `http://localhost:${String(PORT)}`
+  server = spawn('bun', ['run', 'next', 'dev', '--port', String(PORT)], {
     cwd: dashboardDir,
     stdio: ['pipe', 'pipe', 'pipe']
   })

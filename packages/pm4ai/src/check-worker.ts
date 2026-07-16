@@ -2,7 +2,7 @@ import { $, write } from 'bun'
 import { mkdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CONFIG_DIR } from './constants.js'
+import { CONFIG_DIR } from './config-dir.js'
 
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')

@@ -33,6 +33,10 @@
     "./watch-state": {
       "types": "./dist/watch-state.d.mts",
       "import": "./dist/watch-state.mjs"
+    },
+    "./watch-socket": {
+      "types": "./dist/watch-socket.d.mts",
+      "import": "./dist/watch-socket.mjs"
     }
   },
   "bin": {
@@ -45,7 +49,7 @@
     "build": "tsdown",
     "prepublishOnly": "bun run build",
     "postpublish": "bun ../../tools/prune-versions.ts",
-    "test": "bun test"
+    "test": "PM4AI_SOCKET_DIR=$(mktemp -d) bun test"
   },
   "dependencies": {
     "ink": "latest",

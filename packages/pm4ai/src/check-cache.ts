@@ -5,7 +5,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { CLAUDE_MD, CONFIG_DIR, VERBATIM_FILES } from './constants.js'
+import { CONFIG_DIR } from './config-dir.js'
+import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
 import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
 
 interface CheckResult {

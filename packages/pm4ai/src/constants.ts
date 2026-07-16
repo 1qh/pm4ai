@@ -21,7 +21,6 @@ const DEFAULT_FILES = [TSDOWN_BASE.outDir]
 const REQUIRED_ROOT_DEVDEPS = (selfPkg as { requiredDevDeps?: string[] }).requiredDevDeps ?? []
 const DEFAULT_DEP_VERSION = 'latest'
 const CLAUDE_MD = 'CLAUDE.md'
-const CONFIG_DIR = '.pm4ai'
 const EXPECTED = {
   preCommit: 'sh up.sh && git add -u',
   prepare: 'bunx simple-git-hooks',
@@ -97,7 +96,6 @@ export {
   CLAUDE_MD,
   CONDITIONAL_MUST_EXIST_FILES,
   CONDITIONAL_VERBATIM_FILES,
-  CONFIG_DIR,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
   DEFAULT_LICENSE,

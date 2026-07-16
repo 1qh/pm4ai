@@ -2,7 +2,8 @@ import { $, file } from 'bun'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { CONFIG_DIR, GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { CONFIG_DIR } from './config-dir.js'
+import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { debug, projectName } from './utils.js'
 
 interface Project {

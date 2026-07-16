@@ -10,8 +10,9 @@ import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { createEvent } from 'pm4ai'
 import { emit, startEmitter, stopEmitter } from '../../../../packages/pm4ai/src/watch-emitter.js'
-
-const PORT = 4202
+import { freePort } from './free-port.js'
+/** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
+const PORT = await freePort()
 const BASE = `http://localhost:${PORT}`
 setDefaultTimeout(60_000)
 const dashboardDir = join(import.meta.dirname, '..', '..')

@@ -5,14 +5,10 @@ import type { Server, Socket } from 'node:net'
 import { unlinkSync } from 'node:fs'
 import { access, mkdir, unlink } from 'node:fs/promises'
 import { createConnection, createServer } from 'node:net'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { WatchEvent } from './watch-types.js'
-import { CONFIG_DIR } from './constants.js'
 import { safeParseJson, watchEventSchema } from './schemas.js'
+import { SOCKET_DIR, SOCKET_PATH } from './watch-socket.js'
 
-const SOCKET_DIR = join(homedir(), CONFIG_DIR)
-const SOCKET_PATH = join(SOCKET_DIR, 'watch.sock')
 type Listener = (event: WatchEvent) => void
 const clients = new Set<Socket>()
 const listeners = new Set<Listener>()
