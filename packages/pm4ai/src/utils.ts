@@ -5,7 +5,7 @@ import { $, file, Glob, write } from 'bun'
 import { access } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
-import { CONDITIONAL_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
+import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 
 const pathExists = async (path: string): Promise<boolean> => {
   try {
@@ -125,7 +125,7 @@ interface ManagedFile {
 }
 const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> => {
   const caps = await detectCapabilities(projectPath)
-  const verbatim = VERBATIM_FILES.map(path => ({ extendable: false, path }))
+  const verbatim = VERBATIM_FILES.map(path => ({ extendable: EXTENDABLE_VERBATIM_FILES.has(path), path }))
   const conditional = CONDITIONAL_VERBATIM_FILES.filter(c => caps[c.when]).map(c => ({
     extendable: c.extendable ?? false,
     path: c.path

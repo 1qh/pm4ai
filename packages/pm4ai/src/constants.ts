@@ -72,6 +72,8 @@ html > body[data-scroll-locked] {
 }`
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+/** A purely additive list, so a consumer's own ignores append after the canonical head — unlike the executable canon of clean.sh/up.sh, which admits no local edit. */
+const EXTENDABLE_VERBATIM_FILES = new Set(['.gitignore'])
 interface ConditionalFile {
   extendable?: boolean
   path: string
@@ -101,6 +103,7 @@ export {
   DEFAULT_LICENSE,
   DEFAULT_SCRIPTS,
   EXPECTED,
+  EXTENDABLE_VERBATIM_FILES,
   filterTurboWorkspaceWarning,
   FORBIDDEN_LOCKFILES,
   FORBIDDEN_PM_PREFIXES,
