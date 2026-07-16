@@ -135,6 +135,18 @@ describe('syncPackageJson', () => {
     expect(pkg.scripts?.action).toBe(preStepAction)
     await rm(tmp, { recursive: true })
   })
+  test('preserves a clean script that starts with the default plus a suffix', async () => {
+    const tmp = await makeTmp()
+    const suffixedClean = 'sh clean.sh && rm -rf .turbo'
+    await write(
+      join(tmp, 'package.json'),
+      JSON.stringify({ name: 'test', private: true, scripts: { clean: suffixedClean } })
+    )
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.clean).toBe(suffixedClean)
+    await rm(tmp, { recursive: true })
+  })
   test('canonicalizes existing build/check/fix scripts', async () => {
     const tmp = await makeTmp()
     await write(

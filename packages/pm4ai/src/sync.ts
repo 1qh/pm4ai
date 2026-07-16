@@ -169,7 +169,11 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
         issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
       }
     } else if (
-      name === 'fix' || name === 'check' ? !isLintmaxScriptCanonical(scripts[name], value, name) : scripts[name] !== value
+      name === 'fix' || name === 'check'
+        ? !isLintmaxScriptCanonical(scripts[name], value, name)
+        : name === 'clean'
+          ? !scripts[name]?.startsWith(value)
+          : scripts[name] !== value
     ) {
       const action = scripts[name] ? 'updated' : 'added'
       scripts[name] = value
