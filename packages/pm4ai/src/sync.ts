@@ -260,10 +260,10 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
     changed = true
     issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
   }
-  if (!scripts.action?.startsWith('sh up.sh')) {
+  if (!scripts.action?.includes('sh up.sh')) {
     scripts.action = scripts.action ? `sh up.sh && ${scripts.action}` : 'sh up.sh'
     changed = true
-    issues.push({ detail: 'action must start with "sh up.sh"', type: 'synced' })
+    issues.push({ detail: 'action must run "sh up.sh"', type: 'synced' })
   }
   if (changed) {
     pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})

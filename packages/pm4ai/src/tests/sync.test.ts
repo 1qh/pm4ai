@@ -113,6 +113,28 @@ describe('syncPackageJson', () => {
     expect(pkg.scripts?.fix).toBe('lintmax fix')
     await rm(tmp, { recursive: true })
   })
+  test('adds an sh up.sh action when none exists', async () => {
+    const tmp = await makeTmp()
+    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.action).toBe('sh up.sh')
+    await rm(tmp, { recursive: true })
+  })
+  test('leaves an action that already runs sh up.sh after a pre-step untouched', async () => {
+    const tmp = await makeTmp()
+    const preStepAction =
+      '[ -f apps/backend/.env ] || cp apps/backend/.env.example apps/backend/.env; sh up.sh && bun run test'
+    await write(
+      join(tmp, 'package.json'),
+      JSON.stringify({ name: 'test', private: true, scripts: { action: preStepAction } })
+    )
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
+    expect(issues.some(i => i.detail.includes('action'))).toBe(false)
+    const pkg = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
+    expect(pkg.scripts?.action).toBe(preStepAction)
+    await rm(tmp, { recursive: true })
+  })
   test('canonicalizes existing build/check/fix scripts', async () => {
     const tmp = await makeTmp()
     await write(
