@@ -105,25 +105,6 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
   )
   return results.filter((r): r is Issue => r !== undefined)
 }
-const canonicaliseViaLintmax = async (rawContent: string, relName: string, projectPath: string): Promise<string> => {
-  const lintmaxBin = join(projectPath, 'node_modules', '.bin', 'lintmax')
-  const lintmaxBinExists = await pathExists(lintmaxBin)
-  if (!lintmaxBinExists) return rawContent
-  const cacheDir = join(projectPath, 'node_modules', '.cache', 'canon')
-  const cacheDirExists = await pathExists(cacheDir)
-  if (!cacheDirExists) await mkdir(cacheDir, { recursive: true })
-  const tmpRel = join('node_modules', '.cache', 'canon', relName.replaceAll('/', '_'))
-  const tmpPath = join(projectPath, tmpRel)
-  await write(file(tmpPath), rawContent)
-  await $`${lintmaxBin} fix ${tmpRel}`.cwd(projectPath).quiet().nothrow()
-  const formatted = await file(tmpPath).text()
-  try {
-    await rm(tmpPath)
-  } catch {
-    /* leftover lives under node_modules/.cache/ — invisible to git + cleaned with node_modules */
-  }
-  return formatted
-}
 /** Single source for the generated CLAUDE.md — one doc title, a Contents list, then each rule as a `##` topic. `fix` writes what this returns; the freshness check diffs against it, so neither can drift from the other. */
 const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<GeneratedGuide> => {
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
@@ -134,15 +115,21 @@ const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<
   const header = `# ${GUIDE_TITLE}\n\n${buildContents(titles)}`
   const blocks = contents.map(c => ruleBlock(c))
   const raw = `${[header, ...blocks].join('\n\n---\n\n')}\n`
-  return { content: await canonicaliseViaLintmax(raw, CLAUDE_MD, projectPath) }
+  return { content: raw }
 }
+const SMART_SINGLE_RE = /[‘’]/gu
+const SMART_DOUBLE_RE = /[“”]/gu
+const WS_RE = /\s/gu
+/** The generator emits raw markdown; the project's own `bun run fix` (lintmax) then canonicalizes the written file (smart quotes, and it even deletes spaces around inline-code spans). Reduce both to a whitespace-free, quote-folded content signature so a real content drift is caught while any cosmetic reformat — including that space-deletion — is not. */
+const normalizeGuide = (s: string): string =>
+  s.replaceAll(SMART_SINGLE_RE, "'").replaceAll(SMART_DOUBLE_RE, '"').replaceAll(WS_RE, '')
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const result = await generateClaudeMd(selfPath, projectPath)
   if (result.error !== undefined || result.content === undefined)
     return [{ detail: result.error ?? 'generate failed', type: 'error' }]
   const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
-  if (result.content === existing) return []
+  if (normalizeGuide(result.content) === normalizeGuide(existing)) return []
   await write(claudeFile, result.content)
   return [{ detail: `${CLAUDE_MD} updated`, type: 'synced' }]
 }
@@ -152,7 +139,7 @@ const checkClaudeMdFresh = async (selfPath: string, projectPath: string): Promis
   if (result.error !== undefined || result.content === undefined) return []
   const claudeFile = file(join(projectPath, CLAUDE_MD))
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
-  if (result.content === existing) return []
+  if (normalizeGuide(result.content) === normalizeGuide(existing)) return []
   return [{ detail: `${CLAUDE_MD} stale — run pm4ai fix to regenerate from current rules`, type: 'file' }]
 }
 const isLintmaxScriptCanonical = (script: string | undefined, fallback: string, command: 'check' | 'fix'): boolean => {
