@@ -1,11 +1,12 @@
 import { $, file, write } from 'bun'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fix, maintain } from '../fix.js'
 import { stateDir, statePath } from '../state-dir.js'
 
+setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
 const toFileName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')

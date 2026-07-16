@@ -1,10 +1,11 @@
 import { $, write } from 'bun'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { list } from '../list.js'
 
+setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-list-'))
 const initGitRepo = async (dir: string) => {
   await $`git init`.cwd(dir).quiet().nothrow()

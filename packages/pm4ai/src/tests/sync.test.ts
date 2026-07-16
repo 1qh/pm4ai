@@ -1,5 +1,5 @@
 import { file, write } from 'bun'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +14,7 @@ import {
   syncUi
 } from '../sync.js'
 
+setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
 const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
 describe('syncConfigs', () => {

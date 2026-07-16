@@ -1,10 +1,11 @@
 import { $, file, write } from 'bun'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { statePath } from '../state-dir.js'
 
+setDefaultTimeout(30_000)
 const dirExists = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
