@@ -4,6 +4,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { checkSherifScope, checkTypescriptPin } from '../checks.js'
 import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
 
@@ -139,6 +140,10 @@ describe('init scaffold', () => {
     for (const dep of rootPkg.trustedDependencies ?? []) expect(trusted).toContain(dep)
     expect(tplPkg.private).toBe(true)
     expect(tplPkg.name).toBeUndefined()
+  })
+  test('scaffold satisfies the checks the manager enforces on every managed repo', async () => {
+    expect(await checkTypescriptPin(TEST_DIR)).toEqual([])
+    expect(await checkSherifScope(TEST_DIR)).toEqual([])
   })
   test.skipIf(!process.env.CI)(
     'bun install succeeds',
