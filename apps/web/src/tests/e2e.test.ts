@@ -18,17 +18,29 @@ const dashboardDir = join(import.meta.dirname, '..', '..')
 let server: ChildProcess
 let browser: Browser
 let page: Page
+/** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
 const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('server did not start in 30s')), 30_000)
+    let output = ''
+    const fail = (why: string) => reject(new Error(`${why}\n--- server output ---\n${output.trim() || '(silent)'}`))
+    const timeout = setTimeout(() => fail(`server did not print "Ready" within 30s on port ${String(PORT)}`), 30_000)
     const check = (chunk: Buffer) => {
-      if (chunk.toString().includes('Ready')) {
+      output += chunk.toString()
+      if (output.includes('Ready')) {
         clearTimeout(timeout)
         resolve()
       }
     }
     server.stderr?.on('data', check)
     server.stdout?.on('data', check)
+    server.on('error', spawnError => {
+      clearTimeout(timeout)
+      fail(`server failed to spawn: ${spawnError.message}`)
+    })
+    server.on('exit', (code, signal) => {
+      clearTimeout(timeout)
+      fail(`server exited before becoming ready (code ${String(code)}, signal ${String(signal)})`)
+    })
   })
 beforeAll(async () => {
   server = spawn('bun', ['run', 'next', 'dev', '--port', String(PORT)], {
