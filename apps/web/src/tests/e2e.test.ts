@@ -5,11 +5,11 @@
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { createEvent } from 'pm4ai'
 import { emit, startEmitter, stopEmitter } from '../../../../packages/pm4ai/src/watch-emitter.js'
+import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
 /** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
 const PORT = await freePort()
@@ -19,6 +19,7 @@ const dashboardDir = join(import.meta.dirname, '..', '..')
 let server: ChildProcess
 let browser: Browser
 let page: Page
+let distDir: string
 /** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
 const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -44,10 +45,7 @@ const waitForReady = async (): Promise<void> =>
     })
   })
 beforeAll(async () => {
-  server = spawn('bun', ['run', 'next', 'dev', '--port', String(PORT)], {
-    cwd: dashboardDir,
-    stdio: ['pipe', 'pipe', 'pipe']
-  })
+  ;({ distDir, server } = spawnDevServer(dashboardDir, PORT))
   await waitForReady()
   browser = await chromium.launch()
   page = await browser.newPage()
@@ -57,6 +55,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close()
   server?.kill()
+  await cleanDistDir(dashboardDir, distDir)
 })
 describe('dashboard e2e', () => {
   test('page loads and shows pm4ai heading', async () => {

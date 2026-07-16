@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { spawn } from 'node:child_process'
 import { join } from 'node:path'
+import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
 
 const dashboardDir = join(import.meta.dirname, '..', '..')
@@ -10,6 +10,7 @@ setDefaultTimeout(60_000)
 const PORT = await freePort()
 let server: ChildProcess
 let baseUrl: string
+let distDir: string
 /** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
 const waitForReady = async (): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -34,22 +35,41 @@ const waitForReady = async (): Promise<void> =>
       fail(`server exited before becoming ready (code ${String(code)}, signal ${String(signal)})`)
     })
   })
+const isJson = (body: string): boolean => {
+  try {
+    JSON.parse(body)
+    return true
+  } catch {
+    return false
+  }
+}
+/** `next dev` compiles a route on its FIRST request, so a warmup that swallows its own result lets the first real test hit a route mid-compile and read an HTML error page as JSON. Waits until the route actually answers with JSON, and fails loud with the last body when it never does. */
+const warmRoute = async (): Promise<void> => {
+  const deadline = Date.now() + 90_000
+  let last = '(no response)'
+  while (Date.now() < deadline) {
+    const body = await fetch(`${baseUrl}/api/rpc/projects`, {
+      body: '{}',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST'
+    })
+      .then(async res => res.text())
+      .catch((error: unknown) => `fetch failed: ${String(error)}`)
+    last = body
+    if (isJson(body)) return
+    await Bun.sleep(500)
+  }
+  throw new Error(`/api/rpc/projects never returned JSON within 90s\n--- last body ---\n${last.slice(0, 500)}`)
+}
 beforeAll(async () => {
   baseUrl = `http://localhost:${String(PORT)}`
-  server = spawn('bun', ['run', 'next', 'dev', '--port', String(PORT)], {
-    cwd: dashboardDir,
-    stdio: ['pipe', 'pipe', 'pipe']
-  })
+  ;({ distDir, server } = spawnDevServer(dashboardDir, PORT))
   await waitForReady()
-  await fetch(`${baseUrl}/api/rpc/projects`, {
-    body: '{}',
-    headers: { 'content-type': 'application/json' },
-    method: 'POST'
-  }).catch(() => undefined)
-  await fetch(baseUrl).catch(() => undefined)
+  await warmRoute()
 }, 120_000)
-afterAll(() => {
+afterAll(async () => {
   server.kill()
+  await cleanDistDir(dashboardDir, distDir)
 })
 interface ProjectEntry {
   checkResult: null | { at: string; pass: boolean; violations: number }
