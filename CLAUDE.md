@@ -34,8 +34,8 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 
 ### NEVER
 
-- Edit a synced managed file directly — `CLAUDE.md`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
-- Alter the canonical prefix of an extendable file (`.github/workflows/ci.yml`) or interleave custom steps inside it. Cost: breaks the starts-with check, so `fix` overwrites the whole file and drops your steps.
+- Never edit a synced managed file directly — `CLAUDE.md`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
+- Never alter the canonical prefix of an extendable file (`.github/workflows/ci.yml`) or interleave custom steps inside it. Cost: breaks the starts-with check, so `fix` overwrites the whole file and drops your steps.
 
 ### Key repos
 
@@ -91,17 +91,21 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 
 ### NEVER
 
-- Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
-- Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
-- Treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
-- Propose dropping scope to simplify — deleting an enum case/type/prop, removing a UI affordance, replacing a control with a label, collapsing screens, or hiding behind a flag. Cost: ONLY MORE, NEVER LESS — a surface shipped narrower than approved makes the absence the new baseline; fix the cause, never amputate the feature.
-- Ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
-- Invent a file path, export name, config key, version pin, or API signature, or pattern-match against what similar projects “usually” do — read to confirm first, quote verbatim or do not cite. Cost: a fabricated identifier or assumed convention ships as a real bug.
-- Idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
-- Delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
-- Orchestrate other AI providers in the dev loop (GPT/Gemini juries, cross-provider supervisors). Cost: Claude-Code subagents are the parallelism primitive; multi-provider adds coordination cost without gain.
-- `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
-- Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
+- Never stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
+- Never enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
+- Never treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
+- Never propose dropping scope to simplify — deleting an enum case/type/prop, removing a UI affordance, replacing a control with a label, collapsing screens, or hiding behind a flag. Cost: ONLY MORE, NEVER LESS — a surface shipped narrower than approved makes the absence the new baseline; fix the cause, never amputate the feature.
+- Never ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
+- Never invent a file path, export name, config key, version pin, or API signature, or pattern-match against what similar projects “usually” do — read to confirm first, quote verbatim or do not cite. Cost: a fabricated identifier or assumed convention ships as a real bug.
+- Never idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
+- Never delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
+- Never orchestrate other AI providers in the dev loop (GPT/Gemini juries, cross-provider supervisors). Cost: Claude-Code subagents are the parallelism primitive; multi-provider adds coordination cost without gain.
+- Never `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
+- Never read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
+
+### Fleet inventory
+
+- Reconcile `pm4ai list` against the filesystem before treating it as the fleet: it returns the projects it manages, which is NOT every repo in the workspace — it omits pm4ai itself, cnsync, and lintmax-go. Why: a repo no sync reaches keeps whatever it had forever and is invisible to anyone trusting the list — lintmax-go silently held two pre-fix CI scripts every managed sibling had fixed, because nothing enumerates it. `status --all` reports drift across the projects it knows, never the fleet’s membership; a tool-listed set trusted as complete is the same broken probe as a memory-listed one.
 
 ### Valid stops — only these
 
@@ -135,10 +139,10 @@ Bun is the only runtime + package manager.
 
 ### NEVER
 
-- yarn / npm / npx / pnpm. Cost: toolchain drift.
-- `bun update`. Cost: rewrites `"latest"` to resolved versions.
-- Commit `bun.lock` (keep in `.gitignore`). Cost: lockfile drift across machines.
-- `git clean`. Cost: deletes `.env` + uncommitted files — use explicit `rm -rf`.
+- Never use yarn / npm / npx / pnpm. Cost: toolchain drift.
+- Never run `bun update`. Cost: rewrites `"latest"` to resolved versions.
+- Never commit `bun.lock` (keep in `.gitignore`). Cost: lockfile drift across machines.
+- Never run `git clean`. Cost: deletes `.env` + uncommitted files — use explicit `rm -rf`.
 
 ### Scripts
 
@@ -180,18 +184,18 @@ Code quality bans, single-source-of-truth, canonical-state, bounded waits, codeg
 
 ### NEVER
 
-- Write comments (lint-ignore directives are the only allowed comment). Cost: lintmax strips them.
-- `!` non-null assertion, `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`. Cost: type holes — see lintmax never-ignore.
-- Erase types at a boundary — `any`/`string` for JSON/array/blob, `Map<string, unknown>` for a structured payload, a closed set as `string`/`number` instead of a union, a bare id string where a typed `Id<X>`/branded id exists, an unchecked cast where the compiler warned. Cost: slowest class of bug to debug.
-- Duplicate types. Cost: drift; single source of truth.
-- Disable lint rules globally/per-directory. Cost: hides real bugs — fix the code.
-- Ignore written source from linters — only auto-generated (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`). Cost: source escapes the gate.
-- Reduce lintmax strictness. Cost: removing a rule needs false-positive evidence, adding needs none — WHEN upstream drops a rule, find a replacement.
-- Skip, defer, or “note” a known bug via severity/occurrence framing — “latent”, “won’t fire on current data”, “low-severity”, “backstopped elsewhere”, “the source already guards it”, “fix when that path ships”, “improvement not a bug”. Cost: the severity twin of effort-framing — the exact loophole that lets a found bug rot into an incident; severity sets ordering within the pass, never whether it is fixed. The only non-fix is an unobtainable credential, a shared-blast-radius irreversible op, or a fix that would corrupt correct data — and each still fixes the code path and files a tracked task, never a silent “noted”.
-- Touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
-- Copy a shared-package primitive (cnsync `readonly/ui`, a lintmax or published-package export) into a consumer repo — import it. Cost: copies drift from the substrate and skip its upstream fixes.
-- Hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
-- Lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
+- Never write comments (lint-ignore directives are the only allowed comment). Cost: lintmax strips them.
+- Never use `!` non-null assertion, `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`. Cost: type holes — see lintmax never-ignore.
+- Never erase types at a boundary — `any`/`string` for JSON/array/blob, `Map<string, unknown>` for a structured payload, a closed set as `string`/`number` instead of a union, a bare id string where a typed `Id<X>`/branded id exists, an unchecked cast where the compiler warned. Cost: slowest class of bug to debug.
+- Never duplicate types. Cost: drift; single source of truth.
+- Never disable lint rules globally/per-directory. Cost: hides real bugs — fix the code.
+- Never ignore written source from linters — only auto-generated (`_generated/`, `generated/`, `module_bindings/`, `readonly/ui/`). Cost: source escapes the gate.
+- Never reduce lintmax strictness. Cost: removing a rule needs false-positive evidence, adding needs none — WHEN upstream drops a rule, find a replacement.
+- Never skip, defer, or “note” a known bug via severity/occurrence framing — “latent”, “won’t fire on current data”, “low-severity”, “backstopped elsewhere”, “the source already guards it”, “fix when that path ships”, “improvement not a bug”. Cost: the severity twin of effort-framing — the exact loophole that lets a found bug rot into an incident; severity sets ordering within the pass, never whether it is fixed. The only non-fix is an unobtainable credential, a shared-blast-radius irreversible op, or a fix that would corrupt correct data — and each still fixes the code path and files a tracked task, never a silent “noted”.
+- Never touch `readonly/ui/` manually. Cost: overwritten by cnsync sync.
+- Never copy a shared-package primitive (cnsync `readonly/ui`, a lintmax or published-package export) into a consumer repo — import it. Cost: copies drift from the substrate and skip its upstream fixes.
+- Never hand-edit codegen output (`_generated/`, `.source/`, `*.generated.ts`, typed-query records). Cost: lost on next regen.
+- Never use lineage in names (`legacy`, `old`, `deprecated`, `v2`, `-new`, `-rewrite`) or history narrative in comments/commits/logs/docs ("previously", “we switched”, “used to”, “instead of X”, “no longer”, “as of [date]”, defining a thing by what it is NOT). Cost: filler the agent re-reads forever; a `Why:` may give a timeless reason, never a past-incident story.
 
 ### Pitfall
 
@@ -213,8 +217,8 @@ Git commit + push conventions.
 
 ### NEVER
 
-- Mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
-- Maintain long-lived `develop` / `release-*` / `feature/*` branch hierarchies. Cost: divergent long branches rot and conflict against trunk.
+- Never mention AI / Claude / coauthor / “generated with” in commits. Cost: AI attribution unwanted in history.
+- Never maintain long-lived `develop` / `release-*` / `feature/*` branch hierarchies. Cost: divergent long branches rot and conflict against trunk.
 
 ---
 
@@ -236,11 +240,11 @@ Every lintmax version runs configless by default. `lintmax` (TypeScript) is the 
 
 ### NEVER
 
-- Run `bun run check` / `lintmax check` for maintenance — `check` is CI-only; `fix` is the agent-side maintenance command. Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
-- `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
-- `lintmax check --human` to “see violations”. Cost: run `bun run fix` and read its failure output.
-- Add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax’s curated surface, drifts.
-- Use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
+- Never run `bun run check` / `lintmax check` for maintenance — `check` is CI-only; `fix` is the agent-side maintenance command. Cost: redundant after `fix`, wastes 2+ min re-running 5 linters.
+- Never use `| tail` / `| head` on any lintmax command. Cost: empty output IS success; failure output is already agent-formatted — truncation hides violations.
+- Never run `lintmax check --human` to “see violations”. Cost: run `bun run fix` and read its failure output.
+- Never add a second code-lint tool — extra eslint plugins, stylelint, knip, depcheck, dependency-cruiser, size-limit. Cost: fragments lintmax’s curated surface, drifts.
+- Never use the `void` operator. Cost: `fix` auto-deletes it (`no-void`) — `void promise()` → bare expr → `noUnusedExpressions`; `() => { void mutate() }` → `() => { undefined }`, dropping the call.
 
 ### void replacements
 
@@ -331,6 +335,7 @@ Fixes, not suppressions:
 - A dogfood/integration test that writes a code FIXTURE and runs the gate on it breaks when a newer lintmax adds a rule the fixture trips UNFIXABLY (`readFileSync`/`existsSync` in the fixture now fails `node/no-sync`, which `fix` cannot auto-resolve → `fix` exits 1 → the “fix should exit 0” assert fails). The fixture must only hold dirt the gate fully auto-fixes (comments, `function`→arrow, formatting) — strip constructs needing a manual disable, especially since such tests often assert NO disable comments survive in the fixed output. Also delete any stale fixture a prior failed run left in `src/` (not gitignored → the next gate lints it).
 - A no-unsafe wall confined to ONE test/file that persists across a clean reinstall is NOT a missing build artifact — it is either (a) the package has NO `tsconfig.json`, so eslint’s typed-linting projectService cannot type it and every import resolves to `any` (fix: add a `tsconfig.json` extending the shared base, mirroring a sibling package that lints clean), or (b) a STALE test importing names absent from the module under test’s current export surface — the missing imports are `undefined`/`any`, manufacturing the wall (fix: rewrite the test against the module’s CURRENT exports; the wall is a real dead-test bug wearing a lint disguise, not a suppression target). Also: a dot-directory (e.g. `.well-known/`) is skipped by TypeScript’s default include glob, so eslint hits a `parse-error: file not in project` on it — add an explicit `include` entry for the dot-dir path in the project `tsconfig.json`.
 - A wall of `@typescript-eslint/no-unsafe-*` (assignment/member-access/argument/call/return) clustered in one app or file is usually NOT real debt — it is a MISSING BUILD ARTIFACT erasing a typed import to `any`: a workspace package with no `dist/` (its `exports` point at absent `.d.ts`), an unbuilt fumadocs `.source/`, or a removed `.next/types` (so `PageProps`/route types resolve to `any`). A `bun clean` (which nukes `dist`/`.next`/`.source`/`node_modules`) manufactures the whole wall. Fix by REBUILDING (`bun run build` to regenerate the artifacts) BEFORE trusting any no-unsafe finding — never paper over it with local type-redeclarations or `as unknown as` casts; the cast is a band-aid that hides the missing build. Order the gate `build` before `fix` (or pre-build) so the linter sees real types, since `fix` alone does not regenerate them.
+- Refresh the toolchain BEFORE reading the gate on a stale install (`bun clean && bun i`, then `fix`) — an OLDER lintmax reformats the vendored read-only paths a current one ignores, so the gate returns a huge diff across files the run never touched, and the churn reads as real work the edit caused. Recover with `git checkout --` on the vendored path, refresh, re-run. The same staleness is the real fix for a wrapper that aborts on muddied `node_modules`: reinstall it, never fall back to a raw `oxlint -c node_modules/lintmax/oxlintrc.json` run — that bypasses the allow-list and path excludes and over-reports by 10×, sending you after phantom rules.
 - The orchestrated `bun run fix` re-adds `async` to a synchronous method that NO single linter (`biome`/`oxlint`/`eslint`) re-adds when run alone — eslint’s `@typescript-eslint/promise-function-async` autofix fires only in the multi-pass pipeline, then biome `useAwait` fails the now-async-but-awaitless body, an oscillation a naive remove-async loses every gate. For a method that MUST stay sync (a React class `render()` — an async render returns a Promise and crashes at runtime), stop the adder with `// eslint-disable-next-line @typescript-eslint/promise-function-async` above it; suppressing `useAwait` instead would leave the runtime-breaking `async` in place. Isolate which child linter mutates a file by running each `--fix` alone before assuming it’s the gate’s pipeline.
 - `node/no-sync`, `noProcessEnv`, `noAwaitInLoops`, `noUndeclaredClasses` are good rules in the wrong CONTEXT when they hit CLI scripts / codegen / e2e / env-modules / tailwind-v4 classes: there sync/sequential/env/unresolvable-class are idiomatic, so a documented per-line disable is the sanctioned false-positive exception — but it stays per-CASE with a reason, never a blanket lintmax scope, and `max-nested-calls` on a Convex `defineTable`/zod schema gets one file-level disable (the whole file is declarative), while on real logic it gets the var extracted.
 - The TS gate runs TWO class-member-order rules that conflict on accessors: oxlint `perfectionist/sort-classes` puts `get-method` before private fields, `@typescript-eslint/member-ordering` wants fields first — no arrangement satisfies both. Expose accessors as plain methods (`foo(): T` not `get foo(): T`) so they fall in the method group both rules sort alphabetically; update call sites from `.foo` to `.foo()`.
@@ -365,7 +370,7 @@ Same UI, fewest DOM nodes — every element earns its place. If deleting it brea
 
 ### NEVER
 
-- Add a wrapper a `gap`/`space`/`divide`/`className`/`[&>...]:` could replace. Cost: dead node, render + read budget.
+- Never add a wrapper a `gap`/`space`/`divide`/`className`/`[&>...]:` could replace. Cost: dead node, render + read budget.
 
 ### Examples
 
@@ -395,9 +400,9 @@ React 19 + Next.js component conventions.
 
 ### NEVER
 
-- IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
-- Array index as key. Cost: stale reconciliation on reorder/insert.
-- `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.
+- Never write an IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
+- Never use an array index as key. Cost: stale reconciliation on reorder/insert.
+- Never call `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.
 
 ---
 
@@ -419,10 +424,10 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 
 ### NEVER
 
-- `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
-- `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
-- Read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
-- Log PII unredacted. Cost: privacy + regulatory violation.
+- Never use `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
+- Never write `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
+- Never read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
+- Never log PII unredacted. Cost: privacy + regulatory violation.
 
 ### Allowed `NEXT_PUBLIC_*`
 
@@ -452,10 +457,10 @@ shadcn components used as-is, native look, semantic classes only.
 
 ### NEVER
 
-- Hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
-- `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
-- Template literal for conditional className. Cost: no merge precedence; use `cn()`.
-- `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
+- Never hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
+- Never use `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
+- Never use a template literal for conditional className. Cost: no merge precedence; use `cn()`.
+- Never use `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
 
 ### Examples
 
@@ -485,7 +490,7 @@ Building + publishing library packages with tsdown.
 
 ### NEVER
 
-- Bundle deps consumers should install themselves. Cost: duplicate/version-conflict in consumer tree.
+- Never bundle deps consumers should install themselves. Cost: duplicate/version-conflict in consumer tree.
 
 ---
 
@@ -521,11 +526,11 @@ TypeScript code style + formatting.
 
 ### NEVER
 
-- `function` declarations. Cost: violates arrow-only.
-- Duplicate types. Cost: drift; single source of truth.
-- `import as` aliases. Cost: rename the variable instead.
-- Empty lines between statements. Cost: biome deletes them — wasted diff.
-- Trailing comma single-line (keep it multi-line). Cost: format violation.
+- Never write `function` declarations. Cost: violates arrow-only.
+- Never duplicate types. Cost: drift; single source of truth.
+- Never use `import as` aliases. Cost: rename the variable instead.
+- Never leave empty lines between statements. Cost: biome deletes them — wasted diff.
+- Never add a trailing comma single-line (keep it multi-line). Cost: format violation.
 
 ### Formatting
 
