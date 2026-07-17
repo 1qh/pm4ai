@@ -16,6 +16,16 @@ import {
 
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
+const makeProject = async (rootPkg: Record<string, unknown>, subPkgs: Record<string, Record<string, unknown>>) => {
+  const tmp = await makeTmp()
+  await write(join(tmp, 'package.json'), JSON.stringify(rootPkg))
+  for (const [rel, pkg] of Object.entries(subPkgs)) {
+    const dir = join(tmp, rel.replace('/package.json', ''))
+    await mkdir(dir, { recursive: true })
+    await write(join(tmp, rel), JSON.stringify(pkg))
+  }
+  return tmp
+}
 const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
@@ -238,16 +248,6 @@ describe('syncPackageJson', () => {
 })
 describe('syncSubPackages', () => {
   const selfPath = join(import.meta.dirname, '..', '..')
-  const makeProject = async (rootPkg: Record<string, unknown>, subPkgs: Record<string, Record<string, unknown>>) => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify(rootPkg))
-    for (const [rel, pkg] of Object.entries(subPkgs)) {
-      const dir = join(tmp, rel.replace('/package.json', ''))
-      await mkdir(dir, { recursive: true })
-      await write(join(tmp, rel), JSON.stringify(pkg))
-    }
-    return tmp
-  }
   test('sets apps to private', async () => {
     const tmp = await makeProject(
       { private: true, workspaces: ['apps/*'] },
@@ -505,16 +505,6 @@ describe('syncUi', () => {
 })
 describe('syncSubPackages edge cases', () => {
   const selfPath = join(import.meta.dirname, '..', '..')
-  const makeProject = async (rootPkg: Record<string, unknown>, subPkgs: Record<string, Record<string, unknown>>) => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify(rootPkg))
-    for (const [rel, pkg] of Object.entries(subPkgs)) {
-      const dir = join(tmp, rel.replace('/package.json', ''))
-      await mkdir(dir, { recursive: true })
-      await write(join(tmp, rel), JSON.stringify(pkg))
-    }
-    return tmp
-  }
   test('preserves workspace devDeps during hoisting', async () => {
     const tmp = await makeProject(
       { devDependencies: {}, private: true, workspaces: ['packages/*'] },
@@ -577,7 +567,7 @@ describe('syncPackageJson edge cases', () => {
     await syncPackageJson(tmp, pm4aiRoot)
     const parsed = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
     const keys = Object.keys(parsed.devDependencies ?? {})
-    const sorted = [...keys].toSorted()
+    const sorted = [...keys].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
     expect(keys).toEqual(sorted)
     await rm(tmp, { recursive: true })
   })

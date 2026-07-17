@@ -1,5 +1,6 @@
 import { $ } from 'bun'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
@@ -41,7 +42,7 @@ describe('timeAgo', () => {
 })
 describe('getUiSyncTime', () => {
   test('returns ? for paths without readonly/ui', async () => {
-    const result = await getUiSyncTime(['/tmp/nonexistent'])
+    const result = await getUiSyncTime([join(tmpdir(), 'nonexistent')])
     expect(result).toBe('?')
   })
   test('returns time for real pm4ai repo', async () => {

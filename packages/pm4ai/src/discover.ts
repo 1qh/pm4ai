@@ -94,7 +94,7 @@ const discover = async (
   const stdout = result.stdout.toString().trim()
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
-  const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted()
+  const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
   const turboRoots = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
   const candidates = await Promise.all(
     turboRoots.map(async dir => {
@@ -127,6 +127,7 @@ const discover = async (
   const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))
   return { cnsync, consumers, self }
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- sequential source-repo resolution with layered fallbacks
 const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
   const home = searchRoot ?? homedir()
   const reposDir = join(home, CONFIG_DIR, 'repos')

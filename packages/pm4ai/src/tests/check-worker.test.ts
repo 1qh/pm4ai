@@ -69,7 +69,7 @@ describe('check-worker', () => {
     await $`bun ${workerPath} ${tmp}`.quiet().nothrow()
     const resultFile = join(checksDir, `${safeName(tmp)}.json`)
     const result = (await file(resultFile).json()) as { commit: string }
-    expect(result.commit.length).toBe(40)
+    expect(result.commit).toHaveLength(40)
     await rm(tmp, { recursive: true })
   })
   test('throws when no project path provided', async () => {

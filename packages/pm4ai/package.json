@@ -16,6 +16,7 @@
   },
   "license": "MIT",
   "author": "1qh",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -30,13 +31,13 @@
       "types": "./dist/schemas.d.mts",
       "import": "./dist/schemas.mjs"
     },
-    "./watch-state": {
-      "types": "./dist/watch-state.d.mts",
-      "import": "./dist/watch-state.mjs"
-    },
     "./watch-socket": {
       "types": "./dist/watch-socket.d.mts",
       "import": "./dist/watch-socket.mjs"
+    },
+    "./watch-state": {
+      "types": "./dist/watch-state.d.mts",
+      "import": "./dist/watch-state.mjs"
     }
   },
   "bin": {

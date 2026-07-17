@@ -30,6 +30,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
   })
   const spawnWatchJson = async (): Promise<{ lines: string[]; process: ChildProcess }> => {
     const lines: string[] = []
+    // eslint-disable-next-line sonarjs/no-os-command-from-path -- e2e test invoking a trusted PATH tool
     const p = spawn('bun', ['run', cliPath, 'watch', '--json'], { stdio: ['pipe', 'pipe', 'pipe'] })
     proc = p
     let buffer = ''
@@ -63,7 +64,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ project: 'p2', status: 'ok', step: 'check' }))
     await emitToSocket(createEvent({ detail: 'clean', project: 'p1', status: 'ok', step: 'done' }))
     await wait(500)
-    expect(lines.length).toBe(3)
+    expect(lines).toHaveLength(3)
     for (const line of lines) {
       const e = JSON.parse(line) as WatchEvent
       expect(e).toHaveProperty('at')
@@ -78,7 +79,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     for (let i = 0; i < 20; i += 1)
       await emitToSocket(createEvent({ project: `proj-${i}`, status: 'start', step: 'sync' }))
     await wait(1000)
-    expect(lines.length).toBe(20)
+    expect(lines).toHaveLength(20)
     const projects = new Set(lines.map(l => (JSON.parse(l) as WatchEvent).project))
     expect(projects.size).toBe(20)
   })
@@ -96,7 +97,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     for (const [project, step, status, detail] of lifecycle)
       await emitToSocket(createEvent({ detail, project, status, step }))
     await wait(500)
-    expect(lines.length).toBe(7)
+    expect(lines).toHaveLength(7)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)
     expect(events[0]?.step).toBe('sync')
     expect(events[0]?.status).toBe('start')
@@ -114,7 +115,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }))
     await emitToSocket(createEvent({ detail: 'clean', project: 'b', status: 'ok', step: 'done' }))
     await wait(500)
-    expect(lines.length).toBe(6)
+    expect(lines).toHaveLength(6)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)
     const aEvents = events.filter(e => e.project === 'a')
     const bEvents = events.filter(e => e.project === 'b')
@@ -127,7 +128,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'check' }))
     await emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'done' }))
     await wait(500)
-    expect(lines.length).toBe(3)
+    expect(lines).toHaveLength(3)
     const events = lines.map(l => JSON.parse(l) as WatchEvent)
     expect(events[1]?.status).toBe('fail')
     expect(events[1]?.detail).toBe('5 violations')

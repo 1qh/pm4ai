@@ -133,8 +133,9 @@ describe('no-client behavior', () => {
   })
   test('no errors on burst with no clients', async () => {
     await startEmitter()
-    for (let i = 0; i < 1000; i += 1) emit(ev('test', 'sync', 'start'))
-    expect(true).toBe(true)
+    expect(() => {
+      for (let i = 0; i < 1000; i += 1) emit(ev('test', 'sync', 'start'))
+    }).not.toThrow()
   })
   test('10k emits with no client complete without error and keep the emitter healthy', async () => {
     await startEmitter()

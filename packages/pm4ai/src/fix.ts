@@ -32,10 +32,11 @@ const dirExists = async (p: string): Promise<boolean> => {
   }
 }
 const hasHandwrittenTsx = async (projectPath: string): Promise<boolean> => {
-  const r = await $`rg --files -g ${'*.tsx'} -g ${`!${READONLY_UI}/**`}`.cwd(projectPath).quiet().nothrow()
+  const ignoreUi = `!${READONLY_UI}/**`
+  const r = await $`rg --files -g ${'*.tsx'} -g ${ignoreUi}`.cwd(projectPath).quiet().nothrow()
   return r.stdout.toString().trim().length > 0
 }
-const violationRe = /(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
+const violationRe = /(?<!\d)(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const upSh = join(projectPath, 'up.sh')
@@ -81,6 +82,7 @@ const syncSelf = async (selfPath: string): Promise<void> => {
   logIssues(await syncClaudeMd(selfPath, selfPath))
 }
 export { maintain }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- top-level fix orchestrator: lock, discover, gate git state, sync/audit/maintain pipeline
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = statePath('fix.lock')
   await mkdir(stateDir(), { recursive: true })

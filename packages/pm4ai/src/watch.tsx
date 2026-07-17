@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function */
+import type { ReactNode } from 'react'
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
@@ -39,11 +40,13 @@ const safeReadCheck = (path: string) => {
 const mkIdleFn = (p: ProjectInfo): ProjectState => {
   const cached = safeReadCheck(p.path)
   if (!cached) return { completedSteps: new Set(), elapsed: 0, status: 'idle' }
-  const label = `${cached.pass ? 'clean' : `${cached.violations} issues`} ${timeAgo(cached.at)}`
+  const summary = cached.pass ? 'clean' : `${cached.violations} issues`
+  const label = `${summary} ${timeAgo(cached.at)}`
   return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
 const safeSpawn = (args: string[], cwd?: string): boolean => {
   try {
+    // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev/fleet tool invoking a trusted PATH tool
     const proc = spawn('bunx', args, { cwd, detached: true, stdio: 'ignore' })
     proc.on('error', () => {})
     proc.unref()
@@ -73,10 +76,11 @@ const ProjectRow = ({
   const padded = name.padEnd(pad)
   const cursor = focused ? '›' : ' '
   const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
+  const idleColor = state.cachedPass ? 'green' : 'red'
   const colorMap: Record<string, 'green' | 'red' | 'yellow' | undefined> = {
     done: 'green',
     failed: 'red',
-    idle: state.cachedPass ? 'green' : state.cachedPass ? undefined : 'red',
+    idle: idleColor,
     running: 'yellow'
   }
   const icon = iconMap[state.status]
@@ -112,6 +116,11 @@ const ProjectRow = ({
   )
 }
 ProjectRow.displayName = 'ProjectRow'
+const deltaDisplay = (delta: number): { color?: 'green' | 'red'; label: string } => {
+  if (delta > 0) return { color: 'red', label: `+${delta}s` }
+  if (delta < 0) return { color: 'green', label: `${delta}s` }
+  return { label: '' }
+}
 const DoneFooter = ({
   done,
   elapsed,
@@ -130,8 +139,7 @@ const DoneFooter = ({
   slowestName: string
 }) => {
   const delta = lastElapsed > 0 ? elapsed - lastElapsed : 0
-  const deltaLabel = delta > 0 ? `+${delta}s` : delta < 0 ? `${delta}s` : ''
-  const deltaColor = delta > 0 ? 'red' : delta < 0 ? 'green' : undefined
+  const { color: deltaColor, label: deltaLabel } = deltaDisplay(delta)
   return (
     <Box flexDirection='column' paddingLeft={1}>
       {failed > 0 ? (
@@ -385,6 +393,25 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const fraction = totalSteps > 0 ? stats.completedStepCount / totalSteps : 0
   const pct = Math.round(fraction * 100)
   const sepWidth = Math.max(0, cols - 4)
+  let footer: ReactNode
+  if (state.phase === 'running')
+    footer = <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={stats.eta} fraction={fraction} pct={pct} />
+  else if (state.phase === 'done')
+    footer = (
+      <DoneFooter
+        done={stats.done}
+        elapsed={state.elapsed}
+        failed={stats.failed}
+        history={state.history}
+        lastElapsed={state.lastElapsed}
+        slowestElapsed={stats.slowestElapsed}
+        slowestName={stats.slowestName}
+      />
+    )
+  else
+    footer = (
+      <IdleFooter lastElapsed={state.lastElapsed} lastFailed={state.lastFailed} lastTime={state.lastTime} toast={toast} />
+    )
   return (
     <Box flexDirection='column'>
       <Box gap={1} marginBottom={1} paddingLeft={1}>
@@ -410,26 +437,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         <Text dimColor>{'─'.repeat(sepWidth)}</Text>
       </Box>
       <Box flexDirection='column' marginTop={1}>
-        {state.phase === 'running' ? (
-          <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={stats.eta} fraction={fraction} pct={pct} />
-        ) : state.phase === 'done' ? (
-          <DoneFooter
-            done={stats.done}
-            elapsed={state.elapsed}
-            failed={stats.failed}
-            history={state.history}
-            lastElapsed={state.lastElapsed}
-            slowestElapsed={stats.slowestElapsed}
-            slowestName={stats.slowestName}
-          />
-        ) : (
-          <IdleFooter
-            lastElapsed={state.lastElapsed}
-            lastFailed={state.lastFailed}
-            lastTime={state.lastTime}
-            toast={toast}
-          />
-        )}
+        {footer}
       </Box>
     </Box>
   )

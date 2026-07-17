@@ -7,6 +7,7 @@ const runDistDir = (): string => `.next/test-${String(process.pid)}`
 /** Spawns `next dev` with a run-owned dist dir. Returns the child plus the dist path so the caller can remove exactly what it created — never a glob. */
 const spawnDevServer = (dashboardDir: string, port: number): { distDir: string; server: ChildProcess } => {
   const distDir = runDistDir()
+  // eslint-disable-next-line sonarjs/no-os-command-from-path -- e2e test invoking a trusted PATH tool
   const server = spawn('bun', ['run', 'next', 'dev', '--port', String(port)], {
     cwd: dashboardDir,
     // biome-ignore lint/style/noProcessEnv: NEXT_DIST_DIR is the deliberate run-owned build-dir seam next.config.ts reads

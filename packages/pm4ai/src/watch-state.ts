@@ -92,11 +92,13 @@ const formatTime = (seconds: number): string => {
   if (seconds < 3600) {
     const m = Math.floor(seconds / 60)
     const s = seconds % 60
-    return `${m}m${s > 0 ? `${s}s` : ''}`
+    const sPart = s > 0 ? `${s}s` : ''
+    return `${m}m${sPart}`
   }
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  return `${h}h${m > 0 ? `${m}m` : ''}`
+  const mPart = m > 0 ? `${m}m` : ''
+  return `${h}h${mPart}`
 }
 const timeAgo = (iso: string): string => {
   const ms = Date.now() - new Date(iso).getTime()
@@ -171,6 +173,7 @@ const tickProjects = (projects: Record<string, ProjectState>): Record<string, Pr
   }
   return changed ? next : projects
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- central run-state reducer dispatching every watch action; splitting fragments the state transition
 const runReducer = (state: RunState, action: RunAction): RunState => {
   if (action.type === 'tick') {
     if (!state.startTime) return state
@@ -219,10 +222,14 @@ const runReducer = (state: RunState, action: RunAction): RunState => {
     if (s.status === 'running') hasRunning = true
   }
   const wasRunning = state.phase === 'running'
-  const phase = finished === total && total > 0 ? 'done' : hasRunning ? 'running' : state.phase
+  let { phase } = state
+  if (finished === total && total > 0) phase = 'done'
+  else if (hasRunning) phase = 'running'
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
-  const bellPending = wasRunning && phase === 'done' ? true : phase === 'running' ? false : state.bellPending
+  let { bellPending } = state
+  if (wasRunning && phase === 'done') bellPending = true
+  else if (phase === 'running') bellPending = false
   const focused =
     shouldResort && !sortSnapshot.includes(state.focused) ? (sortSnapshot[0] ?? state.focused) : state.focused
   return { ...state, bellPending, focused, phase, projects: next, sortSnapshot, startTime }
@@ -237,6 +244,7 @@ const deriveStats = ({
   history: number[]
   lastElapsed: number
   projects: Record<string, ProjectState>
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- single accumulation pass over the project map computing all derived stats
 }): DerivedStats => {
   let runningCount = 0
   let doneCount = 0

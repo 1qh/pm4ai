@@ -32,6 +32,6 @@ const list = async (
       return `${c.path}\t${flags}`
     })
   )
-  for (const r of rows.toSorted()) write(r)
+  for (const r of rows.toSorted((a, b) => (a < b ? -1 : Number(a > b)))) write(r)
 }
 export { list }

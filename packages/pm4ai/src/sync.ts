@@ -52,7 +52,7 @@ const stripFrontmatter = (content: string): string => {
   if (endIdx === -1) return content
   return content.slice(endIdx + 3).trim()
 }
-const FRONTMATTER_TITLE_RE = /^title:\s*(?<title>.+)$/mu
+const FRONTMATTER_TITLE_RE = /^title:\s*(?<title>\S.*)$/mu
 const frontmatterTitle = (content: string): string | undefined => {
   if (!content.startsWith('---')) return
   const endIdx = content.indexOf('---', 3)
@@ -79,7 +79,7 @@ const ruleBlock = (content: string): string => {
 }
 const GUIDE_TITLE = 'pm4ai — Managed Repo Guide'
 const NON_SLUG_RE = /[^a-z0-9]+/gu
-const EDGE_HYPHEN_RE = /^-+|-+$/gu
+const EDGE_HYPHEN_RE = /^-|-$/gu
 const slug = (title: string): string => title.toLowerCase().replaceAll(NON_SLUG_RE, '-').replaceAll(EDGE_HYPHEN_RE, '')
 const buildContents = (titles: string[]): string =>
   ['## Contents', '', ...titles.map(t => `- [${t}](#${slug(t)})`)].join('\n')
@@ -127,11 +127,10 @@ const lintmaxBinOf = (p: string): string => join(p, 'node_modules', '.bin', 'lin
 /** Canonicalize the written CLAUDE.md with lintmax so it is already lint-clean — the project's own lintmax, else self's (for `init`, where the scaffold has no install yet). Otherwise the project's later `bun run fix` reformats it and the "fix produces no changes" scaffold gate fails. */
 const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Promise<void> => {
   const projectBin = lintmaxBinOf(projectPath)
-  const lintmaxBin = (await pathExists(projectBin))
-    ? projectBin
-    : (await pathExists(lintmaxBinOf(selfPath)))
-      ? lintmaxBinOf(selfPath)
-      : undefined
+  const selfBin = lintmaxBinOf(selfPath)
+  let lintmaxBin: string | undefined
+  if (await pathExists(projectBin)) lintmaxBin = projectBin
+  else if (await pathExists(selfBin)) lintmaxBin = selfBin
   if (lintmaxBin === undefined) return
   await $`${lintmaxBin} fix ${CLAUDE_MD}`.cwd(projectPath).quiet().nothrow()
 }
@@ -159,27 +158,13 @@ const isLintmaxScriptCanonical = (script: string | undefined, fallback: string, 
   const value = script ?? ''
   return value.endsWith(fallback) || value.endsWith(`cli.js ${command}`) || value.endsWith(`cli.mjs ${command}`)
 }
-const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+const rootScriptNeedsUpdate = (scripts: Record<string, string>, name: string, value: string): boolean => {
+  if (name === 'fix' || name === 'check') return !isLintmaxScriptCanonical(scripts[name], value, name)
+  if (name === 'clean') return !scripts[name]?.startsWith(value)
+  return scripts[name] !== value
+}
+const syncTurboWarningFilter = (scripts: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
-  for (const [name, value] of Object.entries(DEFAULT_SCRIPTS))
-    if (name === 'postinstall') {
-      if (!scripts.postinstall?.includes('sherif')) {
-        scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
-        changed = true
-        issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
-      }
-    } else if (
-      name === 'fix' || name === 'check'
-        ? !isLintmaxScriptCanonical(scripts[name], value, name)
-        : name === 'clean'
-          ? !scripts[name]?.startsWith(value)
-          : scripts[name] !== value
-    ) {
-      const action = scripts[name] ? 'updated' : 'added'
-      scripts[name] = value
-      changed = true
-      issues.push({ detail: `${action} ${name} script`, type: 'synced' })
-    }
   for (const [name, cmd] of Object.entries(scripts))
     if (
       !name.startsWith('dev') &&
@@ -193,6 +178,24 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
     }
   return changed
 }
+const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+  let changed = false
+  for (const [name, value] of Object.entries(DEFAULT_SCRIPTS))
+    if (name === 'postinstall') {
+      if (!scripts.postinstall?.includes('sherif')) {
+        scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
+        changed = true
+        issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
+      }
+    } else if (rootScriptNeedsUpdate(scripts, name, value)) {
+      const action = scripts[name] ? 'updated' : 'added'
+      scripts[name] = value
+      changed = true
+      issues.push({ detail: `${action} ${name} script`, type: 'synced' })
+    }
+  const turboChanged = syncTurboWarningFilter(scripts, issues)
+  return changed || turboChanged
+}
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   const allDeps = { ...pkg.dependencies, ...devDeps }
@@ -204,6 +207,7 @@ const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issu
     }
   return changed
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- root package.json sync: private, hooks, scripts, devdeps, dedupe, packageManager, trusted, action
 const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const pkgPath = join(projectPath, 'package.json')
@@ -260,7 +264,7 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
   }
   const missingTrusted = requiredTrusted.filter(d => !trusted.includes(d))
   if (missingTrusted.length > 0) {
-    pkg.trustedDependencies = [...trusted, ...missingTrusted].toSorted()
+    pkg.trustedDependencies = [...trusted, ...missingTrusted].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
     changed = true
     issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
   }
@@ -325,6 +329,7 @@ interface TsdownConfig {
   copy?: string[]
   entry: string[]
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- derives tsdown entry/copy set from exports, bin, and index fallbacks
 const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<TsdownConfig | undefined> => {
   const entry: string[] = []
   const copy: string[] = []
@@ -364,15 +369,16 @@ const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<Tsdo
   if (copy.length > 0) config.copy = copy
   return config
 }
+const quoteList = (items: readonly string[]): string => items.map(i => `'${i}'`).join(', ')
 const serializeTsdownConfig = (config: TsdownConfig): string => {
   const fields = [
     `  clean: ${TSDOWN_BASE.clean},`,
-    `  deps: { neverBundle: [${TSDOWN_BASE.deps.neverBundle.map(d => `'${d}'`).join(', ')}] },`,
+    `  deps: { neverBundle: [${quoteList(TSDOWN_BASE.deps.neverBundle)}] },`,
     `  dts: ${TSDOWN_BASE.dts},`
   ]
-  if (config.copy) fields.push(`  copy: [${config.copy.map(c => `'${c}'`).join(', ')}],`)
+  if (config.copy) fields.push(`  copy: [${quoteList(config.copy)}],`)
   fields.push(
-    `  entry: [${config.entry.map(e => `'${e}'`).join(', ')}],`,
+    `  entry: [${quoteList(config.entry)}],`,
     `  format: '${TSDOWN_BASE.format}',`,
     `  outDir: '${TSDOWN_BASE.outDir}'`
   )
@@ -411,6 +417,7 @@ const syncReadmeSymlink = async ({
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- published-package normalizer: type, files, license, repo, build/tsdown, readme, publish scripts
 const fixPublishedPkg = async ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): Promise<boolean> => {
   let changed = false
   if (pkg.type !== 'module') {
@@ -557,6 +564,7 @@ const hoistSubEntry = ({
   if (changed) entry.pkg.devDependencies = remaining
   return { changed, hoisted, pkg: entry.pkg, pkgPath: entry.path }
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- workspace sub-package orchestrator: fix, dedupe, hoist devdeps across every entry
 const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)

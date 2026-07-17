@@ -1,4 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { PkgEntry } from '../audit.js'
 import {
   checkAppPackages,
@@ -14,7 +16,7 @@ import {
 } from '../audit.js'
 
 setDefaultTimeout(30_000)
-const PROJECT = '/tmp/project'
+const PROJECT = join(tmpdir(), 'project')
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })
 describe('usesForbidden', () => {
   test('npm publish is forbidden', () => {

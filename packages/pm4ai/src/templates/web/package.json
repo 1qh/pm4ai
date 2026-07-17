@@ -2,6 +2,11 @@
   "name": "web",
   "version": "0.0.0",
   "private": true,
+  "description": "pkgname web",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1qh/pkgname.git"
+  },
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbo",

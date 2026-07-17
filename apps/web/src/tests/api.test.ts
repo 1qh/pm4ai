@@ -126,6 +126,7 @@ describe('API endpoints', () => {
   test('projects exclude /tmp paths', async () => {
     const { json } = await rpc('projects')
     const projects = json.json ?? []
+    // eslint-disable-next-line sonarjs/publicly-writable-directories -- asserting the product excludes /tmp project paths
     expect(projects.every(p => !p.path.startsWith('/tmp/'))).toBe(true)
   })
   test('socketStatus returns connected boolean', async () => {

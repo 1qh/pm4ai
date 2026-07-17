@@ -1,26 +1,28 @@
 import { describe, expect, test } from 'bun:test'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from '../types.js'
 import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
 
+const projPath = join(tmpdir(), 'pm4ai-fmt-proj')
 describe('formatIssues', () => {
   test('no issues prints ok (ok-on-success)', () => {
-    expect(formatIssues('/tmp/test', [])).toBe('/tmp/test\n  ok')
+    expect(formatIssues(projPath, [])).toBe(`${projPath}\n  ok`)
   })
   test('info-only issues print ok (success info is not verbose)', () => {
     const issues: Issue[] = [
       { detail: 'CI passed 2024-01-01', type: 'info' },
       { detail: 'CI history clean (1 run)', type: 'info' }
     ]
-    expect(formatIssues('/tmp/test', issues)).toBe('/tmp/test\n  ok')
+    expect(formatIssues(projPath, issues)).toBe(`${projPath}\n  ok`)
   })
   test('with issues returns formatted output', () => {
     const issues: Issue[] = [
       { detail: 'missing turbo.json', type: 'missing' },
       { detail: 'drift in tsconfig', type: 'drift' }
     ]
-    const result = formatIssues('/tmp/test', issues)
-    expect(result).toContain('/tmp/test')
+    const result = formatIssues(projPath, issues)
+    expect(result).toContain(projPath)
     expect(result).toContain('missing missing turbo.json')
     expect(result).toContain('drift drift in tsconfig')
   })
@@ -129,7 +131,6 @@ describe('formatSwiftBar', () => {
   })
   test('handles multiple projects', async () => {
     const { mkdtemp, rm } = await import('node:fs/promises')
-    const { tmpdir } = await import('node:os')
     const tmp = await mkdtemp(join(tmpdir(), 'pm4ai-fmt-'))
     const issues = new Map<string, Issue[]>()
     issues.set(testPath, [{ detail: 'passed 2026-01-01T00:00:00Z', type: 'info' }])

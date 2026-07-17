@@ -69,7 +69,7 @@ const copyTemplateDir = async (tplDir: string, dstDir: string, projectName: stri
       } else {
         const content = await file(s).text()
         await mkdir(dirname(d), { recursive: true })
-        await write(d, content.replaceAll('__NAME__', projectName))
+        await write(d, content.replaceAll('pkgname', projectName))
       }
     })
   )
@@ -108,7 +108,7 @@ const init = async (name: string) => {
   const rootPkgRaw = await file(join(templateDir, 'root-package.txt')).text()
   const rootPkgText = rootPkgRaw
     .replace('__PACKAGE_MANAGER__', `bun@${bunVersion}`)
-    .replace('__NAME__', `${projectName}-workspace`)
+    .replace('pkgname', `${projectName}-workspace`)
   await Promise.all([
     write(join(dir, 'package.json'), rootPkgText),
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'shared.ts'), [['pm4ai', projectName]]),

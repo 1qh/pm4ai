@@ -236,7 +236,7 @@ describe('tickProjects', () => {
 describe('utility functions', () => {
   test('smoothBar at 0%', () => {
     const bar = smoothBar(0, 10)
-    expect(bar.length).toBe(10)
+    expect(bar).toHaveLength(10)
     expect(bar).not.toContain('█')
   })
   test('smoothBar at 100%', () => {
@@ -251,7 +251,7 @@ describe('utility functions', () => {
   })
   test('sparkline with values', () => {
     const s = sparkline([1, 5, 3, 8, 2])
-    expect(s.length).toBe(5)
+    expect(s).toHaveLength(5)
     expect(s).toContain('█')
   })
   test('sparkline with zeros', () => {
@@ -306,7 +306,7 @@ describe('createInitState', () => {
 })
 describe('progressDots', () => {
   test('all empty', () => {
-    expect(progressDots(new Set(), undefined)).toBe('····')
+    expect(progressDots(new Set())).toBe('····')
   })
   test('current step highlighted', () => {
     expect(progressDots(new Set(), 'sync')).toBe('◌···')
@@ -315,7 +315,7 @@ describe('progressDots', () => {
     expect(progressDots(new Set(['audit', 'sync']), 'maintain')).toBe('●●◌·')
   })
   test('all completed', () => {
-    expect(progressDots(new Set(['audit', 'check', 'maintain', 'sync']), undefined)).toBe('●●●●')
+    expect(progressDots(new Set(['audit', 'check', 'maintain', 'sync']))).toBe('●●●●')
   })
 })
 describe('timeAgo', () => {

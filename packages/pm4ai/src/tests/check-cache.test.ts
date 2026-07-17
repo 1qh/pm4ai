@@ -68,7 +68,7 @@ describe('getHeadCommit', () => {
     await $`git init`.cwd(tmp).quiet().nothrow()
     await $`git -c user.name=test -c user.email=test@test commit --allow-empty -m init`.cwd(tmp).quiet().nothrow()
     const commit = await getHeadCommit(tmp)
-    expect(commit.length).toBe(40)
+    expect(commit).toHaveLength(40)
     await rm(tmp, { recursive: true })
   })
   test('returns empty string for non-git directory', async () => {

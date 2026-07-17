@@ -48,7 +48,10 @@ const inferRules = async (projectPath: string, rulesDir?: string): Promise<strin
   const deps = await getAllDeps(projectPath)
   const mdxFiles = (await readdir(dir)).filter(f => f.endsWith('.mdx'))
   const indexFile = mdxFiles.find(f => f === 'index.mdx')
-  const sorted = [...(indexFile ? [indexFile] : []), ...mdxFiles.filter(f => f !== 'index.mdx').toSorted()]
+  const sorted = [
+    ...(indexFile ? [indexFile] : []),
+    ...mdxFiles.filter(f => f !== 'index.mdx').toSorted((a, b) => (a < b ? -1 : Number(a > b)))
+  ]
   const parsed = await Promise.all(
     sorted.map(async mdxFile => ({ fm: parseFrontmatter(await file(join(dir, mdxFile)).text()), mdxFile }))
   )

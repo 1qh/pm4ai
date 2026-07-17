@@ -9,6 +9,11 @@ const listeners = new Set<Listener>()
 let buffer = ''
 let connected = false
 let started = false
+const scheduleReconnect = (connect: () => Promise<void>): void => {
+  setTimeout(() => {
+    connect().catch(() => {})
+  }, 1000)
+}
 const ensureStarted = async () => {
   if (started) return
   started = true
@@ -26,9 +31,7 @@ const ensureStarted = async () => {
   }
   const doConnect = async () => {
     if (!(await socketExists())) {
-      setTimeout(() => {
-        doConnect().catch(() => {})
-      }, 1000)
+      scheduleReconnect(doConnect)
       return
     }
     const sock = createConnection(socketPath).on('error', () => {})
@@ -46,9 +49,7 @@ const ensureStarted = async () => {
     })
     sock.on('close', () => {
       connected = false
-      setTimeout(() => {
-        doConnect().catch(() => {})
-      }, 1000)
+      scheduleReconnect(doConnect)
     })
   }
   doConnect().catch(() => {})

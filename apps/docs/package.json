@@ -2,6 +2,7 @@
   "name": "docs",
   "version": "0.0.0",
   "private": true,
+  "description": "pm4ai documentation site",
   "scripts": {
     "build": "bunx --bun fumadocs-mdx && bunx --bun next build",
     "dev": "next dev",

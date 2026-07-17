@@ -1,5 +1,6 @@
 {
   "private": true,
+  "description": "pm4ai monorepo — the fleet manager that syncs configs, generates CLAUDE.md, and runs maintenance across managed repos",
   "workspaces": [
     "packages/*",
     "apps/*",
@@ -24,7 +25,7 @@
     "@tailwindcss/postcss": "latest",
     "@types/mdx": "latest",
     "@types/node": "latest",
-    "lintmax": "latest",
+    "lintmax": "^0.1.82",
     "sherif": "latest",
     "simple-git-hooks": "latest",
     "tsdown": "latest",

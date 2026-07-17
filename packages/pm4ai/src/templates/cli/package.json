@@ -1,9 +1,14 @@
 {
-  "name": "__NAME__",
+  "name": "pkgname",
   "version": "0.0.1",
-  "description": "__NAME__ CLI",
+  "description": "pkgname CLI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1qh/pkgname.git"
+  },
   "license": "MIT",
   "author": "1qh",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -14,7 +19,7 @@
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
   "bin": {
-    "__NAME__": "dist/cli.mjs"
+    "pkgname": "dist/cli.mjs"
   },
   "files": [
     "dist"

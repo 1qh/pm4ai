@@ -1,9 +1,17 @@
 import { describe, expect, test } from 'bun:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { readLog, updateLog } from '../log.js'
 
+const overwritePath = join(tmpdir(), 'overwrite-test')
 describe('updateLog + readLog', () => {
   test('writes and reads back a log entry', async () => {
-    const entry = { at: new Date().toISOString(), pass: true, path: '/tmp/test-project', project: 'test-project' }
+    const entry = {
+      at: new Date().toISOString(),
+      pass: true,
+      path: join(tmpdir(), 'test-project'),
+      project: 'test-project'
+    }
     await updateLog(entry)
     const logs = await readLog()
     const found = logs.find(e => e.project === 'test-project')
@@ -11,18 +19,18 @@ describe('updateLog + readLog', () => {
     expect(found?.pass).toBe(true)
   })
   test('overwrites entry for same project path', async () => {
-    const entry1 = { at: new Date().toISOString(), pass: true, path: '/tmp/overwrite-test', project: 'overwrite-test' }
+    const entry1 = { at: new Date().toISOString(), pass: true, path: overwritePath, project: 'overwrite-test' }
     await updateLog(entry1)
     const entry2 = {
       at: new Date().toISOString(),
       error: 'failed',
       pass: false,
-      path: '/tmp/overwrite-test',
+      path: overwritePath,
       project: 'overwrite-test'
     }
     await updateLog(entry2)
     const logs = await readLog()
-    const found = logs.filter(e => e.path === '/tmp/overwrite-test')
+    const found = logs.filter(e => e.path === overwritePath)
     expect(found).toHaveLength(1)
     expect(found[0]?.pass).toBe(false)
   })
@@ -42,7 +50,7 @@ describe('updateLog + readLog', () => {
       at: new Date().toISOString(),
       error: 'lint failed with 3 errors',
       pass: false,
-      path: '/tmp/error-log-test',
+      path: join(tmpdir(), 'error-log-test'),
       project: 'error-log-test'
     }
     await updateLog(entry)
@@ -51,7 +59,7 @@ describe('updateLog + readLog', () => {
     expect(found?.error).toBe('lint failed with 3 errors')
   })
   test('entry has valid ISO timestamp', async () => {
-    const entry = { at: new Date().toISOString(), pass: true, path: '/tmp/ts-test', project: 'ts-test' }
+    const entry = { at: new Date().toISOString(), pass: true, path: join(tmpdir(), 'ts-test'), project: 'ts-test' }
     await updateLog(entry)
     const logs = await readLog()
     const found = logs.find(e => e.project === 'ts-test')

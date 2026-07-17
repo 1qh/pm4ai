@@ -64,6 +64,7 @@ const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
   }
   return result
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- flat per-package convention checks; splitting hides the single audit surface
 const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const filtered = pkgs.filter(p => !isSkippedPath(p.path) && p.path !== join(projectPath, 'package.json'))
@@ -115,6 +116,7 @@ const isLintmaxScript = (script: string | undefined, command: 'check' | 'fix'): 
   )
 }
 const turboRe = /\bturbo\b/u
+// eslint-disable-next-line sonarjs/cognitive-complexity -- flat per-script convention checks over each package
 const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   const issues: Issue[] = []
   const rootPkgPath = join(projectPath, 'package.json')

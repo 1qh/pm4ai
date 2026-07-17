@@ -24,7 +24,8 @@ describe('projectName', () => {
 })
 describe('readJson', () => {
   test('nonexistent file returns undefined', async () => {
-    expect(await readJson('/tmp/does-not-exist-xyz.json')).toBeUndefined()
+    const missing = join(tmpdir(), 'does-not-exist-xyz.json')
+    expect(await readJson(missing)).toBeUndefined()
   })
   test('valid JSON file returns parsed object', async () => {
     const p = join(tmpdir(), `test-${Date.now()}.json`)
@@ -53,7 +54,7 @@ describe('readPkg', () => {
     await rm(tmp, { recursive: true })
   })
   test('missing file returns undefined', async () => {
-    const pkg = await readPkg('/tmp/nonexistent/package.json')
+    const pkg = await readPkg(join(tmpdir(), 'nonexistent', 'package.json'))
     expect(pkg).toBeUndefined()
   })
 })

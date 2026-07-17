@@ -48,12 +48,14 @@ const shell = async (projectPath: string, ...args: string[]) => {
 const importPattern = (ban: string): string => {
   const exact = ban.endsWith('"')
   const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
-  return `(from|import|require)[\\s(]+['"]${name}${exact ? `['"]` : ''}`
+  const quote = exact ? `['"]` : ''
+  return `(from|import|require)[\\s(]+['"]${name}${quote}`
 }
 const importSpecifierPattern = (ban: string): RegExp => {
   const exact = ban.endsWith('"')
   const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
-  return new RegExp(`(?:from|import|require)[\\s(]+['"](${name}${exact ? '' : `[^'"]*`})['"]`, 'gu')
+  const tail = exact ? '' : `[^'"]*`
+  return new RegExp(`(?:from|import|require)[\\s(]+['"](${name}${tail})['"]`, 'gu')
 }
 const temporaryAllowedPackages = (ban: string): readonly string[] => TEMPORARY_ALLOWED_PACKAGES[ban] ?? []
 const isTemporarilyAllowedPackage = (ban: string, packageName: string): boolean =>
@@ -289,7 +291,7 @@ const checkPages = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const FD_CLASS_RE =
-  /\b(?<util>bg|text|border|ring|fill|stroke|from|to|via|outline|divide|placeholder|decoration|caret|accent|shadow)-fd-/u
+  /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|divide|placeholder|decoration|caret|accent|shadow)-fd-/u
 const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const files = await glob('**/*.tsx', projectPath)
@@ -302,20 +304,23 @@ const checkShadcnClasses = async (projectPath: string): Promise<Issue[]> => {
   )
   return issues
 }
-const PINNED_VERSION_RE = /\d+\.\d+/u
+const PINNED_VERSION_RE = /\d\.\d/u
 const ALLOWED_VERSION_RE = /^(?:workspace:|catalog:|npm:|link:|file:)/u
 const PIN_EXCEPTIONS = new Map([['typescript', '~6.0.']])
 const isPinExempt = (name: string, version: string): boolean => {
   const allowed = PIN_EXCEPTIONS.get(name)
   return allowed !== undefined && version.startsWith(allowed)
 }
-const VERSION_RE = /(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?/u
+const VERSION_RE = /(?<!\d)(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?/u
 const versionTriple = (v: string): [number, number, number] => {
   const g = VERSION_RE.exec(v)?.groups
   return [Number(g?.major ?? 0), Number(g?.minor ?? 0), Number(g?.patch ?? 0)]
 }
-const gteVersion = (a: [number, number, number], b: [number, number, number]): boolean =>
-  a[0] === b[0] ? (a[1] === b[1] ? a[2] >= b[2] : a[1] > b[1]) : a[0] > b[0]
+const gteVersion = (a: [number, number, number], b: [number, number, number]): boolean => {
+  if (a[0] !== b[0]) return a[0] > b[0]
+  if (a[1] !== b[1]) return a[1] > b[1]
+  return a[2] >= b[2]
+}
 const fetchLatest = async (name: string): Promise<string | undefined> => {
   try {
     const res = await fetch(`https://registry.npmjs.org/${name}/latest`, { signal: AbortSignal.timeout(10_000) })
@@ -505,8 +510,10 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
   const bunGlobals = bunGlobalResult.stdout.toString().trim()
   if (bunGlobals && !hasNext) {
     const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
-    if (fixable.length > 0)
-      issues.push(forbidden(`use named imports: ${fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')}`))
+    if (fixable.length > 0) {
+      const named = fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')
+      issues.push(forbidden(`use named imports: ${named}`))
+    }
   }
   const deepUi = await shell(projectPath, `${UI_PACKAGE_NAME}/lib/`)
   if (deepUi)
@@ -548,6 +555,7 @@ const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
         issues.push(drift(`${rel(entry.path, projectPath)} script "${name}" missing bunx --bun prefix`))
   return issues
 }
+// eslint-disable-next-line regexp/no-contradiction-with-assertion -- \b anchors the nav attribute to a word boundary inside the tag; the assertion is satisfiable via attribute whitespace and intended
 const FUMADOCS_INLINE_NAV_RE = /<(?:DocsLayout|HomeLayout)[^>]*\bnav=\{/u
 const ALIAS_TRIM_TAIL_RE = /\/\*$/u
 const ALIAS_DOT_SLASH_RE = /^\.\//u
@@ -602,7 +610,7 @@ const checkMergeMarkers = async (projectPath: string): Promise<Issue[]> => {
   if (!out) return []
   return [forbidden(`unresolved merge markers in: ${relList(out, projectPath)}`)]
 }
-const ENV_LINE_RE = /^\s*(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*=/u
+const ENV_LINE_RE = /^\s*(?<key>[A-Za-z_]\w*)\s*=/u
 const GENERATED_API_RE = /\/_generated\/api\.d\.ts$/u
 const ENV_CANDIDATES = ['apps/backend/.env', '.env', 'apps/convex/.env']
 const parseEnvKeys = (text: string): Set<string> => {

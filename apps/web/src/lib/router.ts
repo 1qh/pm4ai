@@ -5,7 +5,7 @@
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
 import { z } from 'zod/v4'
@@ -42,7 +42,7 @@ const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null
         const name = path.split('/').pop() ?? ''
         const result = await readCheckResult(path)
         const projExists = await pathExists(path)
-        return { checkResult: result, keep: projExists && !path.startsWith('/tmp/'), name, path }
+        return { checkResult: result, keep: projExists && !path.startsWith(`${tmpdir()}/`), name, path }
       })
   )
   return mapped

@@ -29,8 +29,10 @@ const dashboard = async () => {
   const url = `http://localhost:4200/auth/${token}`
   console.log(`dashboard: ${url}`)
   console.log('(token is one-time use — copy URL if port-forwarding)')
+  // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev/fleet tool invoking a trusted PATH tool
   const proc = spawn('bun', ['run', 'dev'], { cwd: dashboardDir, stdio: 'inherit' })
   setTimeout(() => {
+    // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev/fleet tool invoking a trusted PATH tool
     if (process.platform === 'darwin') spawn('open', [url], { stdio: 'ignore' }).unref()
   }, 2000)
   await new Promise<void>((resolve, reject) => {

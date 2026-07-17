@@ -1,9 +1,14 @@
 {
-  "name": "@__NAME__/lib",
+  "name": "@pkgname/lib",
   "version": "0.0.1",
   "description": "Shared utilities",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1qh/pkgname.git"
+  },
   "license": "MIT",
   "author": "1qh",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {

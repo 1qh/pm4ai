@@ -132,8 +132,7 @@ const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> 
   }))
   return [...verbatim, ...conditional]
 }
-const TRAILING_WS_RE = /\s+$/u
-const normalizeTail = (content: string): string => content.replace(TRAILING_WS_RE, '')
+const normalizeTail = (content: string): string => content.trimEnd()
 const isExtended = (canonical: string, consumer: string): boolean =>
   normalizeTail(consumer).startsWith(normalizeTail(canonical))
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {

@@ -38,6 +38,7 @@ const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
   const out = r.stdout.toString().trim()
   return out ? timeAgo(new Date(out).toISOString()) : '?'
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- single SwiftBar menu render assembling per-project lines
 const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
   const anyReal = [...allIssues.values()].some(hasRealIssues)
   const total = allIssues.size

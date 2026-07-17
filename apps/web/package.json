@@ -2,6 +2,7 @@
   "name": "web",
   "version": "0.0.0",
   "private": true,
+  "description": "pm4ai dashboard web app",
   "scripts": {
     "build": "next build",
     "dev": "next dev --port 4200",

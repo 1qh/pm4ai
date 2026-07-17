@@ -37,7 +37,8 @@ interface ApiProject {
 const mkIdleFromApi = (_p: ProjectInfo, apiData?: ApiProject): ProjectState => {
   const cr = apiData?.checkResult
   if (!cr) return { completedSteps: new Set(), elapsed: 0, status: 'idle' }
-  const label = `${cr.pass ? 'clean' : `${cr.violations} issues`} ${timeAgo(cr.at)}`
+  const summary = cr.pass ? 'clean' : `${cr.violations} issues`
+  const label = `${summary} ${timeAgo(cr.at)}`
   return { cachedPass: cr.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
 const statusColor = (s: ProjectState['status'], pass?: boolean) => {
@@ -55,6 +56,73 @@ const statusIcon = (s: ProjectState['status'], pass?: boolean) => {
   if (pass !== undefined) return '●'
   return '·'
 }
+const cardTone = (status: ProjectState['status'], isRunning: boolean): string => {
+  if (isRunning) return 'border-yellow-700 bg-yellow-950/20'
+  if (status === 'failed') return 'border-destructive/30 bg-destructive/5'
+  if (status === 'done') return 'border-green-900 bg-green-950/10'
+  return 'border-border bg-muted'
+}
+const nameTone = (status: ProjectState['status'], isRunning: boolean): string => {
+  if (isRunning) return 'text-foreground'
+  if (status === 'idle') return 'text-muted-foreground'
+  return ''
+}
+const eventStatusTone = (status: string): string => {
+  if (status === 'fail') return 'text-destructive'
+  if (status === 'ok') return 'text-green-400'
+  return 'text-yellow-400'
+}
+const CardDetail = ({ p, ps }: { p: ProjectInfo; ps: ProjectState }) => {
+  const isRunning = ps.status === 'running'
+  return (
+    <div className='flex items-center gap-4 text-sm'>
+      {isRunning && ps.elapsed > 0 ? <span className='text-muted-foreground'>{ps.elapsed}s</span> : null}
+      {ps.status === 'done' ? <span className='text-green-400'>{ps.detail}</span> : null}
+      {ps.status === 'failed' ? <span className='text-destructive'>{ps.detail}</span> : null}
+      {ps.status === 'idle' && ps.detail ? <span className='text-muted-foreground'>{ps.detail}</span> : null}
+      {ps.status === 'idle' && !ps.detail ? <span className='text-muted-foreground/40'>never checked</span> : null}
+      {ps.status === 'done' || ps.status === 'failed' ? (
+        <span className='text-xs text-muted-foreground/60'>{ps.elapsed > 0 ? `${ps.elapsed}s` : ''}</span>
+      ) : null}
+      <a
+        className='text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors'
+        href={`https://github.com/1qh/${p.name}`}
+        rel='noopener noreferrer'
+        target='_blank'>
+        GitHub
+      </a>
+      <a
+        className='text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors'
+        href={`vscode://file${p.path}`}>
+        VS Code
+      </a>
+    </div>
+  )
+}
+CardDetail.displayName = 'CardDetail'
+const ProjectCard = ({ p, ps }: { p: ProjectInfo; ps: ProjectState }) => {
+  const icon = statusIcon(ps.status, ps.cachedPass)
+  const color = statusColor(ps.status, ps.cachedPass)
+  const isRunning = ps.status === 'running'
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const stepLabel = isRunning ? (STEP_LABELS[ps.step as keyof typeof STEP_LABELS] ?? '⚡ working') : ''
+  const dots = isRunning ? progressDots(ps.completedSteps, ps.step) : ''
+  return (
+    <div className={cn('p-4 rounded-lg border transition-colors', cardTone(ps.status, isRunning))}>
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-3'>
+          <span className={cn('text-lg', color)}>{icon}</span>
+          <span className={cn('font-medium', nameTone(ps.status, isRunning))}>{p.name}</span>
+          {isRunning ? <span className='text-yellow-400 text-sm'>{stepLabel}</span> : null}
+          {isRunning ? <span className='text-muted-foreground text-sm font-mono tracking-wider'>{dots}</span> : null}
+        </div>
+        <CardDetail p={p} ps={ps} />
+      </div>
+      <div className='mt-1 text-xs text-muted-foreground/40 truncate font-mono'>{p.path}</div>
+    </div>
+  )
+}
+ProjectCard.displayName = 'ProjectCard'
 const ElapsedDelta = ({ elapsed, lastElapsed }: { elapsed: number; lastElapsed: number }) => {
   const delta = elapsed - lastElapsed
   if (delta === 0) return null
@@ -65,6 +133,7 @@ const ElapsedDelta = ({ elapsed, lastElapsed }: { elapsed: number; lastElapsed: 
     </span>
   )
 }
+// eslint-disable-next-line sonarjs/cognitive-complexity -- top-level dashboard: query, SSE wiring, reducer state, and the full run/idle/done render
 const Dashboard = () => {
   const queryClient = useQueryClient()
   const { data: apiProjects, isLoading } = useQuery({
@@ -104,6 +173,7 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false
     let retry: ReturnType<typeof setTimeout> | undefined
+    // eslint-disable-next-line sonarjs/cognitive-complexity -- SSE read loop: chunk framing, event/data parsing, and reconnect
     const run = async () => {
       try {
         const res = await fetch('/api/rpc/events', {
@@ -265,71 +335,9 @@ const Dashboard = () => {
         </div>
       ) : null}
       <section className='grid gap-3 mb-6'>
-        {sorted.map(p => {
-          const ps = state.projects[p.name] ?? IDLE_FALLBACK
-          const icon = statusIcon(ps.status, ps.cachedPass)
-          const color = statusColor(ps.status, ps.cachedPass)
-          const isRunning = ps.status === 'running'
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          const stepLabel = isRunning ? (STEP_LABELS[ps.step as keyof typeof STEP_LABELS] ?? '⚡ working') : ''
-          const dots = isRunning ? progressDots(ps.completedSteps, ps.step) : ''
-          return (
-            <div
-              className={cn(
-                'p-4 rounded-lg border transition-colors',
-                isRunning
-                  ? 'border-yellow-700 bg-yellow-950/20'
-                  : ps.status === 'failed'
-                    ? 'border-destructive/30 bg-destructive/5'
-                    : ps.status === 'done'
-                      ? 'border-green-900 bg-green-950/10'
-                      : 'border-border bg-muted'
-              )}
-              key={p.name}>
-              <div className='flex items-center justify-between'>
-                <div className='flex items-center gap-3'>
-                  <span className={cn('text-lg', color)}>{icon}</span>
-                  <span
-                    className={cn(
-                      'font-medium',
-                      isRunning ? 'text-foreground' : ps.status === 'idle' ? 'text-muted-foreground' : ''
-                    )}>
-                    {p.name}
-                  </span>
-                  {isRunning ? <span className='text-yellow-400 text-sm'>{stepLabel}</span> : null}
-                  {isRunning ? (
-                    <span className='text-muted-foreground text-sm font-mono tracking-wider'>{dots}</span>
-                  ) : null}
-                </div>
-                <div className='flex items-center gap-4 text-sm'>
-                  {isRunning && ps.elapsed > 0 ? <span className='text-muted-foreground'>{ps.elapsed}s</span> : null}
-                  {ps.status === 'done' ? <span className='text-green-400'>{ps.detail}</span> : null}
-                  {ps.status === 'failed' ? <span className='text-destructive'>{ps.detail}</span> : null}
-                  {ps.status === 'idle' && ps.detail ? <span className='text-muted-foreground'>{ps.detail}</span> : null}
-                  {ps.status === 'idle' && !ps.detail ? (
-                    <span className='text-muted-foreground/40'>never checked</span>
-                  ) : null}
-                  {ps.status === 'done' || ps.status === 'failed' ? (
-                    <span className='text-xs text-muted-foreground/60'>{ps.elapsed > 0 ? `${ps.elapsed}s` : ''}</span>
-                  ) : null}
-                  <a
-                    className='text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors'
-                    href={`https://github.com/1qh/${p.name}`}
-                    rel='noopener noreferrer'
-                    target='_blank'>
-                    GitHub
-                  </a>
-                  <a
-                    className='text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors'
-                    href={`vscode://file${p.path}`}>
-                    VS Code
-                  </a>
-                </div>
-              </div>
-              <div className='mt-1 text-xs text-muted-foreground/40 truncate font-mono'>{p.path}</div>
-            </div>
-          )
-        })}
+        {sorted.map(p => (
+          <ProjectCard key={p.name} p={p} ps={state.projects[p.name] ?? IDLE_FALLBACK} />
+        ))}
       </section>
       {state.lastTime && state.phase === 'idle' ? (
         <div className='text-sm text-muted-foreground/60 mb-4'>
@@ -345,10 +353,7 @@ const Dashboard = () => {
             <div className='flex gap-3 text-muted-foreground' key={`${e.at}-${String(i)}`}>
               <span className='text-muted-foreground/60 w-20 shrink-0'>{new Date(e.at).toLocaleTimeString()}</span>
               <span className='w-28 shrink-0'>{e.project}</span>
-              <span
-                className={cn(
-                  e.status === 'fail' ? 'text-destructive' : e.status === 'ok' ? 'text-green-400' : 'text-yellow-400'
-                )}>
+              <span className={cn(eventStatusTone(e.status))}>
                 {e.step}.{e.status}
               </span>
               {e.detail ? <span className='text-muted-foreground/60'>{e.detail}</span> : null}
