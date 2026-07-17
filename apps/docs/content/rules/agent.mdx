@@ -47,6 +47,10 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 - `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
 - Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
 
+## Fleet inventory
+
+- Reconcile `pm4ai list` against the filesystem before treating it as the fleet: it returns the projects it manages, which is NOT every repo in the workspace — it omits pm4ai itself, cnsync, and lintmax-go. Why: a repo no sync reaches keeps whatever it had forever and is invisible to anyone trusting the list — lintmax-go silently held two pre-fix CI scripts every managed sibling had fixed, because nothing enumerates it. `status --all` reports drift across the projects it knows, never the fleet's membership; a tool-listed set trusted as complete is the same broken probe as a memory-listed one.
+
 ## Valid stops — only these
 
 - The user says stop or pivots.
