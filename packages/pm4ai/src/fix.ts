@@ -137,7 +137,9 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
-    const allRepos = [self, cnsync, ...consumers]
+    // Run from inside pm4ai itself, `self` and the discovered consumer are the same checkout, so a
+    // naive concat git-checks and reports one repo twice. Address each repo once, by path.
+    const allRepos = [...new Map([self, cnsync, ...consumers].map(r => [r.path, r])).values()]
     const blocked: string[] = []
     const pullable: { name: string; path: string }[] = []
     const checkResults = await Promise.all(
@@ -161,6 +163,9 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     if (blocked.length > 0) {
       console.log('fix requires clean git state:')
       for (const msg of blocked) console.log(`  ${msg}`)
+      // A refusal that exits 0 is indistinguishable from a completed run, so anything gating on
+      // this command reads green while nothing was synced.
+      process.exitCode = 1
       return
     }
     await Promise.all(
@@ -245,8 +250,13 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         console.log(lines.join('\n'))
         console.log()
       }
+      return issues
     })
-    await Promise.all(tasks)
+    const allIssues = (await Promise.all(tasks)).flat()
+    // `synced` and `info` are routine writes; every other type is a finding. Printing findings
+    // and exiting 0 makes a failing gate report success to any caller that reads the exit code.
+    const findings = allIssues.filter(i => i.type !== 'synced' && i.type !== 'info')
+    if (findings.length > 0) process.exitCode = 1
     console.log('--- changes ---')
     const summaries = await Promise.all(
       allTargets.map(async project => {

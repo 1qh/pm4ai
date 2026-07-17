@@ -271,4 +271,18 @@ describe('fix() via CLI', () => {
     const out = (await $`bun ${cliPath} fixxx`.quiet().nothrow().text()).trim()
     expect(out).toContain('commands:')
   })
+  // A refusal that exits 0 is indistinguishable from a completed sync to any caller reading the
+  // exit code, so the refusal MUST carry a non-zero status, not just a printed message.
+  test('refusing a dirty repo exits non-zero', async () => {
+    const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
+    const repo = await makeTmp()
+    await $`git init -q .`.cwd(repo).quiet().nothrow()
+    await write(join(repo, 'package.json'), JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe' }))
+    await $`git add -A`.cwd(repo).quiet().nothrow()
+    await $`git -c user.email=t@t -c user.name=t commit -qm init`.cwd(repo).quiet().nothrow()
+    await write(join(repo, 'package.json'), JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe', x: 1 }))
+    const result = await $`bun ${cliPath} fix`.cwd(repo).quiet().nothrow()
+    expect(result.exitCode).not.toBe(0)
+    await rm(repo, { recursive: true })
+  }, 60_000)
 })
