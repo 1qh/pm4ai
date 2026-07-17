@@ -98,7 +98,11 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
   if (!(await tryAcquireLock())) {
     try {
       const lock = safeParseJson(lockSchema, await file(lockFile).text())
-      if (!lock) return
+      if (!lock) {
+        console.log('fix.lock is unreadable, so another run cannot be ruled out')
+        process.exitCode = 1
+        return
+      }
       const age = Date.now() - new Date(lock.at).getTime()
       let alive = false
       try {
@@ -109,6 +113,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
       }
       if (alive && age < 600_000) {
         console.log('another fix is already running')
+        process.exitCode = 1
         return
       }
     } catch {
@@ -117,6 +122,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     await rm(lockFile, { force: true })
     if (!(await tryAcquireLock())) {
       console.log('another fix is already running')
+      process.exitCode = 1
       return
     }
   }
@@ -137,8 +143,6 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     const { cnsync, consumers, self } = await resolveTargets()
     console.log(`found ${consumers.length} projects`)
     console.log()
-    // Run from inside pm4ai itself, `self` and the discovered consumer are the same checkout, so a
-    // naive concat git-checks and reports one repo twice. Address each repo once, by path.
     const allRepos = [...new Map([self, cnsync, ...consumers].map(r => [r.path, r])).values()]
     const blocked: string[] = []
     const pullable: { name: string; path: string }[] = []
@@ -163,8 +167,6 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     if (blocked.length > 0) {
       console.log('fix requires clean git state:')
       for (const msg of blocked) console.log(`  ${msg}`)
-      // A refusal that exits 0 is indistinguishable from a completed run, so anything gating on
-      // this command reads green while nothing was synced.
       process.exitCode = 1
       return
     }
@@ -253,8 +255,6 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
       return issues
     })
     const allIssues = (await Promise.all(tasks)).flat()
-    // `synced` and `info` are routine writes; every other type is a finding. Printing findings
-    // and exiting 0 makes a failing gate report success to any caller that reads the exit code.
     const findings = allIssues.filter(i => i.type !== 'synced' && i.type !== 'info')
     if (findings.length > 0) process.exitCode = 1
     console.log('--- changes ---')

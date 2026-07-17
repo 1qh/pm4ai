@@ -86,6 +86,7 @@ const init = async (name: string) => {
   const dir = resolve(process.cwd(), name)
   if (await pathExists(dir)) {
     console.log(`${dir} already exists`)
+    process.exitCode = 1
     return
   }
   const { self } = await discover()

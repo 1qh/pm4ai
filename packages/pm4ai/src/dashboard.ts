@@ -20,6 +20,7 @@ const dashboard = async () => {
   if (!dashboardExists) {
     console.log('dashboard app not found at', dashboardDir)
     console.log('run from pm4ai monorepo or ensure apps/web exists')
+    process.exitCode = 1
     return
   }
   const token = randomUUID()
