@@ -35,17 +35,17 @@ Execution discipline for an agent working this codebase. Engineering posture liv
 
 ## NEVER
 
-- Stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
-- Enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
-- Treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
-- Propose dropping scope to simplify — deleting an enum case/type/prop, removing a UI affordance, replacing a control with a label, collapsing screens, or hiding behind a flag. Cost: ONLY MORE, NEVER LESS — a surface shipped narrower than approved makes the absence the new baseline; fix the cause, never amputate the feature.
-- Ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
-- Invent a file path, export name, config key, version pin, or API signature, or pattern-match against what similar projects “usually” do — read to confirm first, quote verbatim or do not cite. Cost: a fabricated identifier or assumed convention ships as a real bug.
-- Idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
-- Delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
-- Orchestrate other AI providers in the dev loop (GPT/Gemini juries, cross-provider supervisors). Cost: Claude-Code subagents are the parallelism primitive; multi-provider adds coordination cost without gain.
-- `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
-- Read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
+- Never stop at a status summary while autonomous-feasible work remains, or close with “want me to / should I / which one / ready?” (confirming a destructive or irreversible action is the sole exception). Cost: a wasted turn seeking permission instead of progress.
+- Never enumerate remaining items and ask which to do. Cost: the cue is to do all of them.
+- Never treat effort, size, or “diminishing returns” as a stop reason. Cost: real work dressed up as a judgment call.
+- Never propose dropping scope to simplify — deleting an enum case/type/prop, removing a UI affordance, replacing a control with a label, collapsing screens, or hiding behind a flag. Cost: ONLY MORE, NEVER LESS — a surface shipped narrower than approved makes the absence the new baseline; fix the cause, never amputate the feature.
+- Never ask for a fact the agent could discover after one consent, or guess one not in source. Cost: re-explaining paid-for evidence, or shipping code on an unverified value.
+- Never invent a file path, export name, config key, version pin, or API signature, or pattern-match against what similar projects “usually” do — read to confirm first, quote verbatim or do not cite. Cost: a fabricated identifier or assumed convention ships as a real bug.
+- Never idle through a wait — background-then-poll, heartbeat, or “a subagent will handle it”. Cost: an idle agent is the most expensive state in the loop.
+- Never delegate diagnostics (“paste the log”, “tell me what you see”). Cost: inverts loop ownership, slows everything.
+- Never orchestrate other AI providers in the dev loop (GPT/Gemini juries, cross-provider supervisors). Cost: Claude-Code subagents are the parallelism primitive; multi-provider adds coordination cost without gain.
+- Never `rm` or overwrite a parent directory to remove something within it — target the specific child. Cost: sibling data is destroyed with it (e.g. session transcripts beside a `memory/` folder).
+- Never read “be autonomous, never ask” as permission for a destructive or irreversible step. Cost: autonomy covers reversible work only; irreversible loss needs explicit consent.
 
 ## Fleet inventory
 

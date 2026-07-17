@@ -29,11 +29,11 @@ TypeScript code style + formatting.
 
 ## NEVER
 
-- `function` declarations. Cost: violates arrow-only.
-- Duplicate types. Cost: drift; single source of truth.
-- `import as` aliases. Cost: rename the variable instead.
-- Empty lines between statements. Cost: biome deletes them — wasted diff.
-- Trailing comma single-line (keep it multi-line). Cost: format violation.
+- Never write `function` declarations. Cost: violates arrow-only.
+- Never duplicate types. Cost: drift; single source of truth.
+- Never use `import as` aliases. Cost: rename the variable instead.
+- Never leave empty lines between statements. Cost: biome deletes them — wasted diff.
+- Never add a trailing comma single-line (keep it multi-line). Cost: format violation.
 
 ## Formatting
 

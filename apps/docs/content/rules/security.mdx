@@ -20,10 +20,10 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 
 ## NEVER
 
-- `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
-- `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
-- Read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
-- Log PII unredacted. Cost: privacy + regulatory violation.
+- Never use `NEXT_PUBLIC_*` for a credential — API keys, tokens, DB secrets, anything `*_SECRET`/`*_PASSWORD`/`*_PRIVATE_KEY`. Cost: shipped to browser.
+- Never write `process.env.X ?? 'fallback'` / `|| 'default'` on a config read. Cost: silent wrong-value behavior.
+- Never read server-only vars from a `'use client'` component. Cost: leaks to bundle or is undefined.
+- Never log PII unredacted. Cost: privacy + regulatory violation.
 
 ## Allowed `NEXT_PUBLIC_*`
 

@@ -15,5 +15,5 @@ Self-hosted Convex env + auth conventions. Applies WHEN a project has `**/convex
 
 ## NEVER
 
-- `convex env set` literal outside `**/sync.ts`. Cost: drift; `sync` silently overwrites it.
-- Branch on `process.env.NODE_ENV` inside `**/convex/**/*.ts`. Cost: always `'production'`, branch is dead.
+- Never write a `convex env set` literal outside `**/sync.ts`. Cost: drift; `sync` silently overwrites it.
+- Never branch on `process.env.NODE_ENV` inside `**/convex/**/*.ts`. Cost: always `'production'`, branch is dead.

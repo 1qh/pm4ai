@@ -22,10 +22,10 @@ Bun is the only runtime + package manager.
 
 ## NEVER
 
-- yarn / npm / npx / pnpm. Cost: toolchain drift.
-- `bun update`. Cost: rewrites `"latest"` to resolved versions.
-- Commit `bun.lock` (keep in `.gitignore`). Cost: lockfile drift across machines.
-- `git clean`. Cost: deletes `.env` + uncommitted files — use explicit `rm -rf`.
+- Never use yarn / npm / npx / pnpm. Cost: toolchain drift.
+- Never run `bun update`. Cost: rewrites `"latest"` to resolved versions.
+- Never commit `bun.lock` (keep in `.gitignore`). Cost: lockfile drift across machines.
+- Never run `git clean`. Cost: deletes `.env` + uncommitted files — use explicit `rm -rf`.
 
 ## Scripts
 

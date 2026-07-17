@@ -17,6 +17,6 @@ React 19 + Next.js component conventions.
 
 ## NEVER
 
-- IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
-- Array index as key. Cost: stale reconciliation on reorder/insert.
-- `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.
+- Never write an IIFE in JSX — extract to a named component. Cost: re-creates on every render, unreadable.
+- Never use an array index as key. Cost: stale reconciliation on reorder/insert.
+- Never call `Date.now()` / `Math.random()` in render. Cost: hydration mismatch / nondeterminism.

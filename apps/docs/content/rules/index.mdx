@@ -19,8 +19,8 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 
 ## NEVER
 
-- Edit a synced managed file directly — `CLAUDE.md`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
-- Alter the canonical prefix of an extendable file (`.github/workflows/ci.yml`) or interleave custom steps inside it. Cost: breaks the starts-with check, so `fix` overwrites the whole file and drops your steps.
+- Never edit a synced managed file directly — `CLAUDE.md`, `clean.sh`, `up.sh`, `bunfig.toml`, `.gitignore`, `readonly/ui/`. Cost: next `pm4ai fix` overwrites it.
+- Never alter the canonical prefix of an extendable file (`.github/workflows/ci.yml`) or interleave custom steps inside it. Cost: breaks the starts-with check, so `fix` overwrites the whole file and drops your steps.
 
 ## Key repos
 

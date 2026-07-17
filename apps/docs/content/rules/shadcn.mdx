@@ -14,10 +14,10 @@ shadcn components used as-is, native look, semantic classes only.
 
 ## NEVER
 
-- Hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
-- `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
-- Template literal for conditional className. Cost: no merge precedence; use `cn()`.
-- `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
+- Never hardcode hex / palette colors in `className` or `style` — `text-red-500`, `bg-blue-500`, `text-green-500`. Cost: bypasses theme.
+- Never use `fd-*` aliases (`bg-fd-muted`, `text-fd-muted-foreground`, `bg-fd-primary`). Cost: fumadocs internals; use the shadcn name.
+- Never use a template literal for conditional className. Cost: no merge precedence; use `cn()`.
+- Never use `cva` / bare `clsx` / bare `twMerge`. Cost: fragments the single `cn()` composition path.
 
 ## Examples
 
