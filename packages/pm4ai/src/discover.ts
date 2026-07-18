@@ -89,9 +89,19 @@ const discover = async (
   consumers: Project[]
   self: Project
 }> => {
-  const home = searchRoot ?? homedir()
-  const result = await $`rg --files ${home} -g turbo.json -g turbo.jsonc ${rgExcludes}`.quiet().nothrow()
-  const stdout = result.stdout.toString().trim()
+  // biome-ignore lint/style/noProcessEnv: PM4AI_HOME is a deliberate search-root seam so tests (and constrained hosts) can bound discovery to an isolated dir instead of scanning the real home
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: PM4AI_HOME is supplied at runtime by tests and constrained hosts, not declared in a repo .env
+  const home = searchRoot ?? process.env.PM4AI_HOME ?? homedir()
+  const rg = Bun.spawn(
+    ['rg', '--files', home, '-g', 'turbo.json', '-g', 'turbo.jsonc', '--max-depth', '8', ...rgExcludes],
+    {
+      stderr: 'ignore',
+      stdout: 'pipe',
+      timeout: 15_000
+    }
+  )
+  const stdout = (await new Response(rg.stdout).text()).trim()
+  await rg.exited
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
   const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
