@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import { getMDXComponents } from '@/components/mdx'
 import { source } from '@/lib/source'
 
-const Page = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>) => {
+const Page = async ({ params: paramsPromise }: { params: Promise<{ slug?: string[] }> }) => {
   const params = await paramsPromise
   const page = source.getPage(params.slug)
   if (!page) notFound()
@@ -26,7 +26,11 @@ const Page = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>) =
 }
 export default Page
 export const generateStaticParams = () => source.generateParams()
-export const generateMetadata = async ({ params: paramsPromise }: PageProps<'/docs/[[...slug]]'>): Promise<Metadata> => {
+export const generateMetadata = async ({
+  params: paramsPromise
+}: {
+  params: Promise<{ slug?: string[] }>
+}): Promise<Metadata> => {
   const params = await paramsPromise
   const page = source.getPage(params.slug)
   if (!page) notFound()

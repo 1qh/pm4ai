@@ -1,5 +1,6 @@
 {
   "private": true,
+  "description": "Monorepo scaffolded by pm4ai.",
   "workspaces": [
     "packages/*",
     "apps/*",
