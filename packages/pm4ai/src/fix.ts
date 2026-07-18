@@ -6,7 +6,7 @@ import type { Issue } from './types.js'
 import { audit } from './audit.js'
 import { writeCheckResult } from './check-cache.js'
 import { READONLY_UI } from './constants.js'
-import { discover, discoverSources } from './discover.js'
+import { boundedRg, discover, discoverSources } from './discover.js'
 import { updateLog } from './log.js'
 import { lockSchema, safeParseJson } from './schemas.js'
 import { stateDir, statePath } from './state-dir.js'
@@ -33,8 +33,8 @@ const dirExists = async (p: string): Promise<boolean> => {
 }
 const hasHandwrittenTsx = async (projectPath: string): Promise<boolean> => {
   const ignoreUi = `!${READONLY_UI}/**`
-  const r = await $`rg --files -g ${'*.tsx'} -g ${ignoreUi}`.cwd(projectPath).quiet().nothrow()
-  return r.stdout.toString().trim().length > 0
+  const out = await boundedRg(['--files', '-g', '*.tsx', '-g', ignoreUi], projectPath)
+  return out.length > 0
 }
 const violationRe = /(?<!\d)(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {

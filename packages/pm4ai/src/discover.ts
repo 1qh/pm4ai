@@ -81,8 +81,8 @@ const rgExcludes = [
   '-g',
   '!**/.git/**'
 ]
-const boundedRg = async (args: readonly string[]): Promise<string> => {
-  const rg = Bun.spawn(['rg', ...args, '--max-depth', '8'], { stderr: 'ignore', stdout: 'pipe', timeout: 15_000 })
+const boundedRg = async (args: readonly string[], cwd?: string): Promise<string> => {
+  const rg = Bun.spawn(['rg', ...args], { cwd, stderr: 'ignore', stdout: 'pipe', timeout: 15_000 })
   const out = await new Response(rg.stdout).text()
   await rg.exited
   return out.trim()
@@ -96,7 +96,17 @@ const discover = async (
   self: Project
 }> => {
   const home = searchRoot ?? pm4aiHome() ?? homedir()
-  const stdout = await boundedRg(['--files', home, '-g', 'turbo.json', '-g', 'turbo.jsonc', ...rgExcludes])
+  const stdout = await boundedRg([
+    '--files',
+    home,
+    '-g',
+    'turbo.json',
+    '-g',
+    'turbo.jsonc',
+    '--max-depth',
+    '8',
+    ...rgExcludes
+  ])
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
   const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
@@ -161,6 +171,8 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
       '!**/node_modules/**',
       '-g',
       '!**/.cache/**',
+      '--max-depth',
+      '8',
       '--max-count',
       '1'
     ])
@@ -196,4 +208,4 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
   return { cnsync, self }
 }
 export type { Project }
-export { discover, discoverSources, isCnsyncRepo }
+export { boundedRg, discover, discoverSources, isCnsyncRepo }
