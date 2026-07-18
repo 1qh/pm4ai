@@ -285,8 +285,19 @@ describe('fix() via CLI', () => {
       join(repo, 'package.json'),
       JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe', x: 1 })
     )
-    const result = await $`bun ${cliPath} fix`.cwd(repo).quiet().nothrow()
+    const fakeHome = await makeTmp()
+    for (const name of ['pm4ai', 'cnsync']) {
+      const src = join(fakeHome, '.pm4ai', 'repos', name)
+      await mkdir(src, { recursive: true })
+      await $`git init -q .`.cwd(src).quiet().nothrow()
+    }
+    const result = await $`bun ${cliPath} fix`
+      .cwd(repo)
+      .env({ ...process.env, PM4AI_HOME: fakeHome })
+      .quiet()
+      .nothrow()
     expect(result.exitCode).not.toBe(0)
     await rm(repo, { recursive: true })
+    await rm(fakeHome, { recursive: true })
   }, 60_000)
 })

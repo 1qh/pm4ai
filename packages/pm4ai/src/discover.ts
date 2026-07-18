@@ -129,7 +129,9 @@ const discover = async (
 }
 // eslint-disable-next-line sonarjs/cognitive-complexity -- sequential source-repo resolution with layered fallbacks
 const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
-  const home = searchRoot ?? homedir()
+  // biome-ignore lint/style/noProcessEnv: PM4AI_HOME is a deliberate search-root seam so tests (and constrained hosts) can bound discovery to an isolated dir instead of scanning the real home
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: PM4AI_HOME is supplied at runtime by tests and constrained hosts, not declared in a repo .env
+  const home = searchRoot ?? process.env.PM4AI_HOME ?? homedir()
   const reposDir = join(home, CONFIG_DIR, 'repos')
   const selfDir = join(reposDir, PKG_NAME)
   const cnsyncDir = join(reposDir, 'cnsync')
@@ -146,12 +148,28 @@ const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; 
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
   }
   if (!(self && cnsync)) {
-    const result =
-      await $`rg -l '"${PKG_NAME}"' ${home} -g package.json -g '!**/node_modules/**' -g '!**/.cache/**' --max-count 1`
-        .quiet()
-        .nothrow()
-    const found = result.stdout
-      .toString()
+    const rg = Bun.spawn(
+      [
+        'rg',
+        '-l',
+        `"${PKG_NAME}"`,
+        home,
+        '-g',
+        'package.json',
+        '-g',
+        '!**/node_modules/**',
+        '-g',
+        '!**/.cache/**',
+        '--max-depth',
+        '8',
+        '--max-count',
+        '1'
+      ],
+      { stderr: 'ignore', stdout: 'pipe', timeout: 15_000 }
+    )
+    const stdout = await new Response(rg.stdout).text()
+    await rg.exited
+    const found = stdout
       .trim()
       .split('\n')
       .filter(Boolean)
