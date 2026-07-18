@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { CONFIG_DIR } from './config-dir.js'
 import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
+import { pm4aiCloneBase, pm4aiHome } from './env.js'
 import { debug, projectName } from './utils.js'
 
 interface Project {
@@ -42,8 +43,7 @@ const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   const url = r.stdout.toString().trim()
   return url.includes(`${GH_ORG}/cnsync`)
 }
-// biome-ignore lint/style/noProcessEnv: PM4AI_CLONE_BASE is a deliberate configurable clone-source seam (tests point it at a local bare repo; a mirror can be set in prod)
-const cloneBase = (): string => process.env.PM4AI_CLONE_BASE ?? `https://github.com/${GH_ORG}`
+const cloneBase = (): string => pm4aiCloneBase() ?? `https://github.com/${GH_ORG}`
 const ensureSourceRepo = async (repo: string, dest: string) => {
   const destExists = await dirExists(dest)
   if (!destExists) {
@@ -95,9 +95,7 @@ const discover = async (
   consumers: Project[]
   self: Project
 }> => {
-  // biome-ignore lint/style/noProcessEnv: PM4AI_HOME is a deliberate search-root seam so tests (and constrained hosts) can bound discovery to an isolated dir instead of scanning the real home
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: PM4AI_HOME is supplied at runtime by tests and constrained hosts, not declared in a repo .env
-  const home = searchRoot ?? process.env.PM4AI_HOME ?? homedir()
+  const home = searchRoot ?? pm4aiHome() ?? homedir()
   const stdout = await boundedRg(['--files', home, '-g', 'turbo.json', '-g', 'turbo.jsonc', ...rgExcludes])
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
@@ -136,9 +134,7 @@ const discover = async (
 }
 // eslint-disable-next-line sonarjs/cognitive-complexity -- sequential source-repo resolution with layered fallbacks
 const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
-  // biome-ignore lint/style/noProcessEnv: PM4AI_HOME is a deliberate search-root seam so tests (and constrained hosts) can bound discovery to an isolated dir instead of scanning the real home
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: PM4AI_HOME is supplied at runtime by tests and constrained hosts, not declared in a repo .env
-  const home = searchRoot ?? process.env.PM4AI_HOME ?? homedir()
+  const home = searchRoot ?? pm4aiHome() ?? homedir()
   const reposDir = join(home, CONFIG_DIR, 'repos')
   const selfDir = join(reposDir, PKG_NAME)
   const cnsyncDir = join(reposDir, 'cnsync')
