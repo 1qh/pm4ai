@@ -15,6 +15,7 @@
     "@base-ui/react": "latest",
     "@radix-ui/react-use-controllable-state": "latest",
     "@rive-app/react-webgl2": "latest",
+    "@shadcn/react": "latest",
     "@streamdown/cjk": "latest",
     "@streamdown/code": "latest",
     "@streamdown/math": "latest",
@@ -34,7 +35,7 @@
     "nanoid": "latest",
     "next-themes": "latest",
     "react": "latest",
-    "react-day-picker": "9",
+    "react-day-picker": "latest",
     "react-dom": "latest",
     "react-jsx-parser": "latest",
     "react-resizable-panels": "latest",
@@ -47,18 +48,17 @@
     "tokenlens": "latest",
     "tw-animate-css": "latest",
     "use-stick-to-bottom": "latest",
-    "vaul": "latest",
     "zod": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
     "@tailwindcss/typography": "latest",
     "@turbo/gen": "latest",
-    "@types/node": "latest",
+    "@types/node": "^20",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "eslint": "^9.39.2",
+    "eslint": "^9",
     "tailwindcss": "latest",
-    "typescript": "^5.9.3"
+    "typescript": "^5"
   }
 }
