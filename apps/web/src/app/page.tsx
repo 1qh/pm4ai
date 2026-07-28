@@ -104,8 +104,8 @@ const ProjectCard = ({ p, ps }: { p: ProjectInfo; ps: ProjectState }) => {
   const icon = statusIcon(ps.status, ps.cachedPass)
   const color = statusColor(ps.status, ps.cachedPass)
   const isRunning = ps.status === 'running'
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const stepLabel = isRunning ? (STEP_LABELS[ps.step as keyof typeof STEP_LABELS] ?? '⚡ working') : ''
+  const labels: Record<string, string | undefined> = STEP_LABELS
+  const stepLabel = isRunning ? (labels[ps.step ?? ''] ?? '⚡ working') : ''
   const dots = isRunning ? progressDots(ps.completedSteps, ps.step) : ''
   return (
     <div className={cn('p-4 rounded-lg border transition-colors', cardTone(ps.status, isRunning))}>
