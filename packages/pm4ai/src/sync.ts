@@ -196,23 +196,35 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
   const turboChanged = syncTurboWarningFilter(scripts, issues)
   return changed || turboChanged
 }
-const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
+/** Ask the registry whether any PUBLISHED version satisfies the spec. A deliberate pin that still resolves is left alone; only a spec nothing can satisfy — the shape a single-present-release package leaves behind when its pinned version is pruned — is rewritten. */
+const resolvesOnRegistry = async (dep: string, spec: string): Promise<boolean> => {
+  const target = `${dep}@${spec}`
+  const res = await $`npm view ${target} version`.quiet().nothrow()
+  return res.exitCode === 0 && res.stdout.toString().trim().length > 0
+}
+const syncRootDevDeps = async (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): Promise<boolean> => {
   let changed = false
   const allDeps = { ...pkg.dependencies, ...devDeps }
-  for (const dep of REQUIRED_ROOT_DEVDEPS) {
+  const verdicts = await Promise.all(
+    REQUIRED_ROOT_DEVDEPS.map(async dep => {
+      const spec = allDeps[dep]
+      const candidate =
+        Boolean(spec) &&
+        spec !== DEFAULT_DEP_VERSION &&
+        !spec.startsWith('workspace:') &&
+        Boolean(pkg.devDependencies?.[dep])
+      return candidate && !(await resolvesOnRegistry(dep, spec))
+    })
+  )
+  for (const [index, dep] of REQUIRED_ROOT_DEVDEPS.entries()) {
     const spec = allDeps[dep]
-    const ranged =
-      spec !== undefined &&
-      spec.length > 0 &&
-      spec !== DEFAULT_DEP_VERSION &&
-      !spec.startsWith('workspace:') &&
-      Boolean(pkg.devDependencies?.[dep])
-    if (!spec || ranged) {
+    const unresolvable = verdicts[index] ?? false
+    if (!spec || unresolvable) {
       devDeps[dep] = DEFAULT_DEP_VERSION
       changed = true
       issues.push({
-        detail: ranged
-          ? `pinned ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
+        detail: unresolvable
+          ? `unresolvable ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
           : `added ${dep} to devDependencies`,
         type: 'synced'
       })
@@ -241,7 +253,7 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
   let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps
-  changed = syncRootDevDeps(pkg, devDeps, issues) || changed
+  changed = (await syncRootDevDeps(pkg, devDeps, issues)) || changed
   const allRootDeps = { ...pkg.dependencies, ...devDeps }
   const allRootDepNames = Object.keys(allRootDeps)
   const required = new Set(REQUIRED_ROOT_DEVDEPS)
