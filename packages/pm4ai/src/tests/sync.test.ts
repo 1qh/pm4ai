@@ -68,6 +68,29 @@ describe('syncPackageJson', () => {
     expect(pkg.devDependencies?.sherif).toBe('latest')
     await rm(tmp, { recursive: true })
   })
+  test('rewrites a ranged required devdep spec to latest', async () => {
+    const tmp = await makeTmp()
+    await write(
+      join(tmp, 'package.json'),
+      JSON.stringify({ devDependencies: { sherif: '^0.1.82' }, name: 'test', private: true })
+    )
+    const issues = await syncPackageJson(tmp, pm4aiRoot)
+    expect(issues.some(i => i.detail.includes('pinned sherif "^0.1.82" rewritten'))).toBe(true)
+    const pkg = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
+    expect(pkg.devDependencies?.sherif).toBe('latest')
+    await rm(tmp, { recursive: true })
+  })
+  test('leaves a workspace spec alone', async () => {
+    const tmp = await makeTmp()
+    await write(
+      join(tmp, 'package.json'),
+      JSON.stringify({ devDependencies: { sherif: 'workspace:*' }, name: 'test', private: true })
+    )
+    await syncPackageJson(tmp, pm4aiRoot)
+    const pkg = (await file(join(tmp, 'package.json')).json()) as Record<string, Record<string, string>>
+    expect(pkg.devDependencies?.sherif).toBe('workspace:*')
+    await rm(tmp, { recursive: true })
+  })
   test('adds lintmax to trustedDependencies', async () => {
     const tmp = await makeTmp()
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))

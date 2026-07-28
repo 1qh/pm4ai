@@ -153,6 +153,20 @@ const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
     issues.push({ detail: 'root "fix" should end with "lintmax fix"', type: 'drift' })
   return issues
 }
+/** The spec must be exactly "latest": lintmax keeps a single present release, so a range stops resolving the moment its pinned version is pruned, and a fresh install then fails where the developer's own node_modules still holds the old copy. An empty `bun why` is that failure, so it is reported rather than skipped. */
+const checkLintmaxSpec = async (spec: string | undefined, projectPath: string): Promise<Issue[]> => {
+  if (spec === undefined || spec.startsWith('workspace:')) return []
+  const issues: Issue[] = []
+  if (spec !== 'latest') issues.push({ detail: `spec "${spec}" is a range, must be "latest"`, type: LINTMAX_PKG })
+  const latest = await getLatestNpmVersion(LINTMAX_PKG)
+  if (!latest) return issues
+  const result = await $`bun why ${LINTMAX_PKG}`.cwd(projectPath).quiet().nothrow()
+  const resolved = result.stdout.toString().trim()
+  if (resolved.length === 0) issues.push({ detail: `spec "${spec}" resolves to nothing installed`, type: LINTMAX_PKG })
+  else if (!resolved.includes(latest))
+    issues.push({ detail: `resolved version behind latest ${latest}`, type: LINTMAX_PKG })
+  return issues
+}
 const checkRootWorkspacesAndDevDeps = (rootPkg: PackageJson): Issue[] => {
   const issues: Issue[] = []
   if (!rootPkg.workspaces || rootPkg.workspaces.length === 0)
@@ -221,17 +235,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     const latest = await getLatestBunVersion()
     if (latest && bunVersion !== latest) issues.push({ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' })
   }
-  const rootDeps = getDepsFromPkg(rootPkg ?? {})
-  const lintmaxVersion = rootDeps.get(LINTMAX_PKG)
-  if (lintmaxVersion && !lintmaxVersion.startsWith('workspace:')) {
-    const lintmaxLatest = await getLatestNpmVersion(LINTMAX_PKG)
-    if (lintmaxLatest) {
-      const result = await $`bun why ${LINTMAX_PKG}`.cwd(projectPath).quiet().nothrow()
-      const resolved = result.stdout.toString().trim()
-      if (resolved && !resolved.includes(lintmaxLatest))
-        issues.push({ detail: `resolved version behind latest ${lintmaxLatest}`, type: LINTMAX_PKG })
-    }
-  }
+  issues.push(...(await checkLintmaxSpec(getDepsFromPkg(rootPkg ?? {}).get(LINTMAX_PKG), projectPath)))
   if (rootPkg) {
     issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
     const selfPkgFile = file(join(import.meta.dirname, '..', '..', '..', 'package.json'))
@@ -280,6 +284,7 @@ export {
   audit,
   checkAppPackages,
   checkDuplicates,
+  checkLintmaxSpec,
   checkPackageConventions,
   checkPublishedPkgConventions,
   checkRootScripts,

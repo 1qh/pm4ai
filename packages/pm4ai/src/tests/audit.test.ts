@@ -5,6 +5,7 @@ import type { PkgEntry } from '../audit.js'
 import {
   checkAppPackages,
   checkDuplicates,
+  checkLintmaxSpec,
   checkPackageConventions,
   checkPublishedPkgConventions,
   checkRootScripts,
@@ -287,5 +288,14 @@ describe('checkSubPkgScripts', () => {
     ]
     const issues = checkSubPkgScripts(pkgs, PROJECT)
     expect(issues).toHaveLength(0)
+  })
+})
+describe('checkLintmaxSpec', () => {
+  test('flags a range spec', async () => {
+    const issues = await checkLintmaxSpec('^0.1.82', process.cwd())
+    expect(issues.some(i => i.detail.includes('is a range, must be "latest"'))).toBe(true)
+  })
+  test('accepts a workspace spec', async () => {
+    expect(await checkLintmaxSpec('workspace:*', process.cwd())).toEqual([])
   })
 })

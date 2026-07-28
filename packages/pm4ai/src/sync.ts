@@ -199,12 +199,25 @@ const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): bool
 const syncRootDevDeps = (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): boolean => {
   let changed = false
   const allDeps = { ...pkg.dependencies, ...devDeps }
-  for (const dep of REQUIRED_ROOT_DEVDEPS)
-    if (!allDeps[dep]) {
+  for (const dep of REQUIRED_ROOT_DEVDEPS) {
+    const spec = allDeps[dep]
+    const ranged =
+      spec !== undefined &&
+      spec.length > 0 &&
+      spec !== DEFAULT_DEP_VERSION &&
+      !spec.startsWith('workspace:') &&
+      Boolean(pkg.devDependencies?.[dep])
+    if (!spec || ranged) {
       devDeps[dep] = DEFAULT_DEP_VERSION
       changed = true
-      issues.push({ detail: `added ${dep} to devDependencies`, type: 'synced' })
+      issues.push({
+        detail: ranged
+          ? `pinned ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
+          : `added ${dep} to devDependencies`,
+        type: 'synced'
+      })
     }
+  }
   return changed
 }
 // eslint-disable-next-line sonarjs/cognitive-complexity -- root package.json sync: private, hooks, scripts, devdeps, dedupe, packageManager, trusted, action
