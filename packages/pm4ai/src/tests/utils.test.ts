@@ -178,3 +178,19 @@ describe('isInsideProject', () => {
     await rm(tmp, { recursive: true })
   })
 })
+describe('mergeExtendable', () => {
+  test('keeps a project entry when the canonical prefix itself changes', async () => {
+    const { mergeExtendable } = await import('../utils.js')
+    const before = 'node_modules\ndist\n'
+    const after = 'node_modules\ndist\nreadonly/ui/**/*.d.ts\n'
+    const consumer = `${before}project.config.d.ts\n`
+    const merged = mergeExtendable(after, consumer)
+    expect(merged).toContain('readonly/ui/**/*.d.ts')
+    expect(merged).toContain('project.config.d.ts')
+  })
+  test('adds nothing when the project carries no entry of its own', async () => {
+    const { mergeExtendable } = await import('../utils.js')
+    const canonical = 'node_modules\ndist\n'
+    expect(mergeExtendable(canonical, canonical)).toBe(canonical)
+  })
+})

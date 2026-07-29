@@ -135,6 +135,26 @@ const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> 
 const normalizeTail = (content: string): string => content.trimEnd()
 const isExtended = (canonical: string, consumer: string): boolean =>
   normalizeTail(consumer).startsWith(normalizeTail(canonical))
+/** Rewrite an extendable file's canonical part while KEEPING whatever the project added to it. The
+ * starts-with test only recognises an extension while the canonical prefix is unchanged, so the run that
+ * changes that prefix is exactly the run where every consumer stops matching — and writing the canonical
+ * content wholesale there deletes each project's own entries. The deletion is silent and lands far from
+ * the sync: a repo that ignores a generated declaration at its root loses that line, the file reappears
+ * untracked, and the gate fails parsing build output nobody meant to lint. Keeping any line the canonical
+ * content does not itself carry preserves the project's intent across a prefix change. */
+const mergeExtendable = (canonical: string, consumer: string): string => {
+  const owned = new Set(
+    canonical
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+  )
+  const extras = consumer
+    .split('\n')
+    .map(line => line.trimEnd())
+    .filter(line => line.trim() !== '' && !owned.has(line.trim()))
+  return extras.length > 0 ? `${normalizeTail(canonical)}\n${extras.join('\n')}\n` : canonical
+}
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {
   const result = new Map<string, Set<string>>()
   for (const { pkg } of entries)
@@ -160,6 +180,7 @@ export {
   isExtended,
   isInsideProject,
   isSkippedPath,
+  mergeExtendable,
   projectName,
   readJson,
   readPkg,

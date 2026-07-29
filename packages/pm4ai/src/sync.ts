@@ -30,6 +30,7 @@ import {
   gitCleanRe,
   isExtended,
   isSkippedPath,
+  mergeExtendable,
   readJson,
   readPkg,
   resolveManagedFiles,
@@ -97,8 +98,9 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
       const srcContent = await src.text()
       const dstContent = (await dst.exists()) ? await dst.text() : ''
       if (extendable && isExtended(srcContent, dstContent)) return
-      if (srcContent !== dstContent) {
-        await write(dst, srcContent)
+      const nextContent = extendable && dstContent !== '' ? mergeExtendable(srcContent, dstContent) : srcContent
+      if (nextContent !== dstContent) {
+        await write(dst, nextContent)
         return { detail: `${name} updated`, type: 'synced' } satisfies Issue
       }
     })
