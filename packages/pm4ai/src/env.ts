@@ -1,5 +1,4 @@
 // biome-ignore lint/style/noProcessEnv: this module is the single env boundary; all other reads go through the typed accessors below
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: these are runtime seams supplied by tests and hosts, not declared in a repo .env
 const raw = process.env
 /** Search root for project discovery; bounds scanning to an isolated dir in tests/constrained hosts. */
 const pm4aiHome = (): string | undefined => raw.PM4AI_HOME

@@ -360,6 +360,7 @@ interface TsdownConfig {
 const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<TsdownConfig | undefined> => {
   const entry: string[] = []
   const copy: string[] = []
+  let unresolvedExport = false
   const { exports } = pkg
   if (exports)
     for (const [key, val] of Object.entries(exports)) {
@@ -374,8 +375,10 @@ const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<Tsdo
           // eslint-disable-next-line no-await-in-loop
           const src = await resolveExportSource(key, importPath, pkgDir)
           if (src) entry.push(src)
+          else unresolvedExport = true
         }
     }
+  if (unresolvedExport) return
   if (pkg.bin) {
     const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
     for (const binPath of Object.values(bins)) {

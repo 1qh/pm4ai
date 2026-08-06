@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-/** biome-ignore-all lint/performance/noAwaitInLoops: sequential unpublish must stay ordered */
+/** biome-ignore-all lint/performance/noAwaitInLoops: sequential npm operations must stay ordered */
 import { $, file } from 'bun'
 import { join } from 'node:path'
 
@@ -28,6 +28,11 @@ const cleanup = async () => {
     // eslint-disable-next-line no-await-in-loop
     const r = await $`npm unpublish ${spec}`.nothrow()
     if (r.exitCode === 0) console.log(`${spec} unpublished`)
+    else {
+      // eslint-disable-next-line no-await-in-loop
+      const d = await $`npm deprecate ${spec} ${'superseded by latest'}`.nothrow()
+      console.log(d.exitCode === 0 ? `${spec} deprecated` : `${spec} left as-is`)
+    }
   }
 }
 export { cleanup }
