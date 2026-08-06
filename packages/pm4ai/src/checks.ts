@@ -508,7 +508,13 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
       .quiet()
       .nothrow()
   const bunGlobals = bunGlobalResult.stdout.toString().trim()
-  if (bunGlobals && !hasNext) {
+  const keepsBunExternal =
+    (
+      await $`rg -q 'neverBundle.*bun' ${projectPath} -g 'tsdown.config.ts' -g 'tsdown.config.js' ${RG_EXCLUDE}`
+        .quiet()
+        .nothrow()
+    ).exitCode === 0
+  if (bunGlobals && !hasNext && !keepsBunExternal) {
     const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
     if (fixable.length > 0) {
       const named = fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')
