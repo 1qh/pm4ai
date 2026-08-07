@@ -757,6 +757,57 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
     )
   return issues
 }
+const ARBITRARY_CLASS = String.raw`[a-z][\w-]*-\[[^\]\s]+\]`
+const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
+const shipsUtilityClasses = async (depDir: string): Promise<boolean> =>
+  (await $`rg -q --no-ignore --no-messages ${ARBITRARY_CLASS} ${depDir}`.nothrow()).exitCode === 0
+const IMPORT_MATCH = /from ['"](?<spec>[^'"]+)['"]/gu
+const escapeRe = (s: string): string => s.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
+const packageOfSpecifier = (spec: string): string | undefined => {
+  if (spec.startsWith('.') || spec.startsWith('@a/') || spec.startsWith('node:')) return
+  const parts = spec.split('/')
+  return spec.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? spec)
+}
+const importedPackages = async (projectPath: string): Promise<Set<string>> => {
+  const out = (
+    await $`rg -oN --no-messages ${IMPORT_SPECIFIER} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE}`.nothrow()
+  ).stdout.toString()
+  const names = new Set<string>()
+  for (const m of out.matchAll(IMPORT_MATCH)) {
+    const pkg = packageOfSpecifier(m.groups?.spec ?? '')
+    if (pkg) names.add(pkg)
+  }
+  return names
+}
+const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]> => {
+  const cssFiles = await glob('**/*.css', projectPath)
+  const entries = (
+    await Promise.all(
+      cssFiles.map(async css => {
+        const text = await file(css).text()
+        const isEntry = text.includes('@a/ui/globals.css') || text.includes("@import 'tailwindcss'")
+        return isEntry ? { css, text } : undefined
+      })
+    )
+  ).filter((e): e is { css: string; text: string } => e !== undefined)
+  if (entries.length === 0) return []
+  const pkgs = await importedPackages(projectPath)
+  const perPkg = await Promise.all(
+    [...pkgs].map(async name => {
+      const depDir = join(projectPath, 'node_modules', name)
+      if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return []
+      const sourced = new RegExp(String.raw`@source[^\n]*node_modules/${escapeRe(name)}\b`, 'u')
+      return entries
+        .filter(e => !sourced.test(e.text))
+        .map(e =>
+          drift(
+            `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) but its global.css does not @source it — the classes render inert`
+          )
+        )
+    })
+  )
+  return perPkg.flat()
+}
 export {
   checkActionRunsTests,
   checkAppTsconfigs,
@@ -780,6 +831,7 @@ export {
   checkRootPkg,
   checkShadcnClasses,
   checkSherifScope,
+  checkTailwindSourceCoverage,
   checkTypescriptPin,
   checkVercel
 }

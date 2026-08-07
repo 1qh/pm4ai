@@ -13,6 +13,7 @@ import {
   checkHermeticTests,
   checkMergeMarkers,
   checkRootPkg,
+  checkTailwindSourceCoverage,
   checkVercel
 } from '../checks.js'
 
@@ -531,6 +532,51 @@ describe('checkConvexSelfHosted', () => {
     await write(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\nJWT_PRIVATE_KEY=k\nJWKS=j\n')
     await write(join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@convex-dev/auth': 'latest' } }))
     const issues = await checkConvexSelfHosted(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+})
+describe('checkTailwindSourceCoverage', () => {
+  const scaffold = async ({
+    cssTail = '',
+    depIndex,
+    depName = 'faklib',
+    tmp
+  }: {
+    cssTail?: string
+    depIndex: string
+    depName?: string
+    tmp: string
+  }) => {
+    await mkdir(join(tmp, 'apps', 'web', 'src', 'app'), { recursive: true })
+    await write(join(tmp, 'apps', 'web', 'src', 'app', 'page.tsx'), `import { X } from '${depName}'\nexport const P = X\n`)
+    await write(join(tmp, 'apps', 'web', 'src', 'app', 'global.css'), `@import '@a/ui/globals.css';\n${cssTail}`)
+    await mkdir(join(tmp, 'node_modules', depName), { recursive: true })
+    await write(join(tmp, 'node_modules', depName, 'index.js'), depIndex)
+  }
+  test('flags a lib that ships utility classes but is not @source-d', async () => {
+    const tmp = await makeTmp()
+    await scaffold({ depIndex: "export const X = () => 'group flex py-[3px] gap-[5px]'\n", tmp })
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]?.detail).toContain('faklib')
+    await rm(tmp, { recursive: true })
+  })
+  test('no issue when the lib is @source-d', async () => {
+    const tmp = await makeTmp()
+    await scaffold({
+      cssTail: "@source '../../../../node_modules/faklib';\n",
+      depIndex: "export const X = () => 'py-[3px]'\n",
+      tmp
+    })
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('no issue for a lib that ships no arbitrary-value utility classes', async () => {
+    const tmp = await makeTmp()
+    await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'plainlib', tmp })
+    const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })

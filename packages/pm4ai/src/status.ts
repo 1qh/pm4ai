@@ -26,6 +26,7 @@ import {
   checkRootPkg,
   checkShadcnClasses,
   checkSherifScope,
+  checkTailwindSourceCoverage,
   checkTypescriptPin,
   checkVercel
 } from './checks.js'
@@ -70,6 +71,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       checkLayouts(project.path),
       checkPages(project.path),
       checkShadcnClasses(project.path),
+      checkTailwindSourceCoverage(project.path),
       checkDepsLatest(project.path),
       checkTypescriptPin(project.path),
       checkSherifScope(project.path),
