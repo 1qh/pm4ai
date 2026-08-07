@@ -757,10 +757,12 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
     )
   return issues
 }
-const ARBITRARY_CLASS = String.raw`[a-z][\w-]*-\[[^\]\s]+\]`
+const UTILITY_CLASS = String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
 const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
-const shipsUtilityClasses = async (depDir: string): Promise<boolean> =>
-  (await $`rg -q --no-ignore --no-messages ${ARBITRARY_CLASS} ${depDir}`.nothrow()).exitCode === 0
+const shipsUtilityClasses = async (depDir: string): Promise<boolean> => {
+  const out = (await $`rg -oN --no-ignore --no-messages ${UTILITY_CLASS} ${depDir}`.nothrow()).stdout.toString()
+  return out.split('\n').filter(Boolean).length >= 3
+}
 const IMPORT_MATCH = /from ['"](?<spec>[^'"]+)['"]/gu
 const escapeRe = (s: string): string => s.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
 const packageOfSpecifier = (spec: string): string | undefined => {

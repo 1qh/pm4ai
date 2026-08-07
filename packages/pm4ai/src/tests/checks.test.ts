@@ -554,21 +554,22 @@ describe('checkTailwindSourceCoverage', () => {
     await mkdir(join(tmp, 'node_modules', depName), { recursive: true })
     await write(join(tmp, 'node_modules', depName, 'index.js'), depIndex)
   }
-  test('flags a lib that ships utility classes but is not @source-d', async () => {
+  const jsxDist =
+    'export const A = () => <div className="py-[3px]" />\n' +
+    'export const B = () => <div className="gap-[5px]" />\n' +
+    'export const C = () => <div className="w-[40px]" />\n'
+  const X = 'export const X = A\n'
+  test('flags a component lib that ships utility classes but is not @source-d', async () => {
     const tmp = await makeTmp()
-    await scaffold({ depIndex: "export const X = () => 'group flex py-[3px] gap-[5px]'\n", tmp })
+    await scaffold({ depIndex: jsxDist + X, tmp })
     const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(1)
     expect(issues[0]?.detail).toContain('faklib')
     await rm(tmp, { recursive: true })
   })
-  test('no issue when the lib is @source-d', async () => {
+  test('no issue when the same lib is @source-d — the @source is the only thing suppressing it', async () => {
     const tmp = await makeTmp()
-    await scaffold({
-      cssTail: "@source '../../../../node_modules/faklib';\n",
-      depIndex: "export const X = () => 'py-[3px]'\n",
-      tmp
-    })
+    await scaffold({ cssTail: "@source '../../../../node_modules/faklib';\n", depIndex: jsxDist + X, tmp })
     const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
@@ -576,6 +577,13 @@ describe('checkTailwindSourceCoverage', () => {
   test('no issue for a lib that ships no arbitrary-value utility classes', async () => {
     const tmp = await makeTmp()
     await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'plainlib', tmp })
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+  test('does not flag a non-UI lib with a single coincidental bracket match (below threshold)', async () => {
+    const tmp = await makeTmp()
+    await scaffold({ depIndex: 'export const X = () => <div className="w-[40px]" />\n', depName: 'coinclib', tmp })
     const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
