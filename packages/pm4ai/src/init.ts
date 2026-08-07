@@ -12,6 +12,7 @@ const SKIP = new Set([
   '.next',
   '.turbo',
   '.vercel',
+  '_lintmax_dummy.ts',
   'bun.lock',
   'CLAUDE.md',
   'dist',
