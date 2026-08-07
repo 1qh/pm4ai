@@ -759,9 +759,13 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
 }
 const UTILITY_CLASS = String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
 const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
+const UTILITY_GLOBS = ['-g', '*.js', '-g', '*.mjs', '-g', '*.cjs', '-g', '*.jsx', '-g', '*.tsx', '-g', '*.css']
 const shipsUtilityClasses = async (depDir: string): Promise<boolean> => {
-  const out = (await $`rg -oN --no-ignore --no-messages ${UTILITY_CLASS} ${depDir}`.nothrow()).stdout.toString()
-  return out.split('\n').filter(Boolean).length >= 3
+  const out = (
+    await $`rg -c --max-count=3 --no-ignore --no-messages ${UTILITY_GLOBS} ${UTILITY_CLASS} ${depDir}`.nothrow()
+  ).stdout.toString()
+  const total = out.split('\n').reduce((sum, line) => sum + (Number(line.split(':').pop()) || 0), 0)
+  return total >= 3
 }
 const IMPORT_MATCH = /from ['"](?<spec>[^'"]+)['"]/gu
 const escapeRe = (s: string): string => s.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
