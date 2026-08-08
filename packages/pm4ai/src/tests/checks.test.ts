@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  checkBannedImports,
   checkCi,
   checkConfigs,
   checkConvexSelfHosted,
@@ -533,6 +534,40 @@ describe('checkConvexSelfHosted', () => {
     await write(join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@convex-dev/auth': 'latest' } }))
     const issues = await checkConvexSelfHosted(tmp)
     expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
+})
+describe('checkBannedImports', () => {
+  const writeSrc = async (tmp: string, body: string) => {
+    await mkdir(join(tmp, 'scripts'), { recursive: true })
+    await write(join(tmp, 'scripts', 's.ts'), body)
+  }
+  test('flags a banned import with no allow directive', async () => {
+    const tmp = await makeTmp()
+    await writeSrc(tmp, "import { setGlobalDispatcher } from 'undici'\nexport const x = setGlobalDispatcher\n")
+    const issues = await checkBannedImports(tmp)
+    expect(issues.some(i => i.detail.includes('undici'))).toBe(true)
+    await rm(tmp, { recursive: true })
+  })
+  test('a per-file pm4ai-allow-import directive with a reason suppresses that ban only for that file', async () => {
+    const tmp = await makeTmp()
+    await writeSrc(
+      tmp,
+      '// pm4ai-allow-import undici: SOCKS routing under node for a live-fork verification harness\n' +
+        "import { setGlobalDispatcher } from 'undici'\nexport const x = setGlobalDispatcher\n"
+    )
+    const issues = await checkBannedImports(tmp)
+    expect(issues.some(i => i.detail.includes('undici'))).toBe(false)
+    await rm(tmp, { recursive: true })
+  })
+  test('a directive with no reason does not suppress', async () => {
+    const tmp = await makeTmp()
+    await writeSrc(
+      tmp,
+      "// pm4ai-allow-import undici:\nimport { setGlobalDispatcher } from 'undici'\nexport const x = setGlobalDispatcher\n"
+    )
+    const issues = await checkBannedImports(tmp)
+    expect(issues.some(i => i.detail.includes('undici'))).toBe(true)
     await rm(tmp, { recursive: true })
   })
 })

@@ -60,7 +60,12 @@ const importSpecifierPattern = (ban: string): RegExp => {
 const temporaryAllowedPackages = (ban: string): readonly string[] => TEMPORARY_ALLOWED_PACKAGES[ban] ?? []
 const isTemporarilyAllowedPackage = (ban: string, packageName: string): boolean =>
   temporaryAllowedPackages(ban).includes(packageName)
+const hasAllowDirective = (content: string, ban: string): boolean => {
+  const clean = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
+  return new RegExp(String.raw`pm4ai-allow-import[ \t]+${clean}[ \t]*:[ \t]*\S`, 'u').test(content)
+}
 const hasBlockedImport = (content: string, ban: string): boolean => {
+  if (hasAllowDirective(content, ban)) return false
   for (const match of content.matchAll(importSpecifierPattern(ban))) {
     const packageName = match[1]
     if (packageName !== undefined && !isTemporarilyAllowedPackage(ban, packageName)) return true
