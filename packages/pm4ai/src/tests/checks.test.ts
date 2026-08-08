@@ -574,6 +574,13 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })
+  test('no issue when the lib ships pre-compiled css the entry @imports directly — the import is the coverage', async () => {
+    const tmp = await makeTmp()
+    await scaffold({ cssTail: "@import 'faklib/css/preset.css';\n", depIndex: jsxDist + X, tmp })
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
   test('no issue for a lib that ships no arbitrary-value utility classes', async () => {
     const tmp = await makeTmp()
     await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'plainlib', tmp })

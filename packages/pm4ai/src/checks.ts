@@ -816,7 +816,8 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
           const depDir = join(projectPath, 'node_modules', name)
           if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return
           const sourced = new RegExp(String.raw`@source[^\n]*node_modules/${escapeRe(name)}\b`, 'u')
-          return sourced.test(e.text)
+          const importsDepCss = new RegExp(String.raw`@import\s+['"]${escapeRe(name)}/[^'"]+\.css`, 'u')
+          return sourced.test(e.text) || importsDepCss.test(e.text)
             ? undefined
             : drift(
                 `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) but its global.css does not @source it — the classes render inert`
