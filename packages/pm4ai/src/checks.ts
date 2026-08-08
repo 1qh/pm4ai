@@ -1,6 +1,6 @@
 import { $, file, Glob } from 'bun'
 import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
 import {
@@ -785,6 +785,17 @@ const importedPackages = async (projectPath: string): Promise<Set<string>> => {
   }
   return names
 }
+const appRootOf = async (cssPath: string, projectPath: string): Promise<string> => {
+  const dirs: string[] = []
+  let dir = dirname(cssPath)
+  while (dir.startsWith(projectPath) && dir !== projectPath) {
+    dirs.push(dir)
+    dir = dirname(dir)
+  }
+  const hasPkg = await Promise.all(dirs.map(async candidate => pathExists(join(candidate, 'package.json'))))
+  const idx = hasPkg.findIndex(Boolean)
+  return idx === -1 ? projectPath : (dirs[idx] ?? projectPath)
+}
 const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]> => {
   const cssFiles = await glob('**/*.css', projectPath)
   const entries = (
@@ -797,22 +808,25 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
     )
   ).filter((e): e is { css: string; text: string } => e !== undefined)
   if (entries.length === 0) return []
-  const pkgs = await importedPackages(projectPath)
-  const perPkg = await Promise.all(
-    [...pkgs].map(async name => {
-      const depDir = join(projectPath, 'node_modules', name)
-      if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return []
-      const sourced = new RegExp(String.raw`@source[^\n]*node_modules/${escapeRe(name)}\b`, 'u')
-      return entries
-        .filter(e => !sourced.test(e.text))
-        .map(e =>
-          drift(
-            `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) but its global.css does not @source it — the classes render inert`
-          )
-        )
+  const perEntry = await Promise.all(
+    entries.map(async e => {
+      const pkgs = await importedPackages(await appRootOf(e.css, projectPath))
+      const flagged = await Promise.all(
+        [...pkgs].map(async name => {
+          const depDir = join(projectPath, 'node_modules', name)
+          if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return
+          const sourced = new RegExp(String.raw`@source[^\n]*node_modules/${escapeRe(name)}\b`, 'u')
+          return sourced.test(e.text)
+            ? undefined
+            : drift(
+                `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) but its global.css does not @source it — the classes render inert`
+              )
+        })
+      )
+      return flagged.filter((i): i is Issue => i !== undefined)
     })
   )
-  return perPkg.flat()
+  return perEntry.flat()
 }
 export {
   checkActionRunsTests,

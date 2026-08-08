@@ -588,4 +588,26 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })
+  test('scopes per app — a package one app imports never flags a sibling app that does not import it', async () => {
+    const tmp = await makeTmp()
+    const app = async (name: string, dep: string, sourced: boolean) => {
+      await mkdir(join(tmp, 'apps', name, 'src', 'app'), { recursive: true })
+      await write(join(tmp, 'apps', name, 'package.json'), JSON.stringify({ name }))
+      await write(join(tmp, 'apps', name, 'src', 'app', 'page.tsx'), `import { X } from '${dep}'\nexport const P = X\n`)
+      const tail = sourced ? `@source '../../../../node_modules/${dep}';\n` : ''
+      await write(join(tmp, 'apps', name, 'src', 'app', 'global.css'), `@import '@a/ui/globals.css';\n${tail}`)
+    }
+    for (const dep of ['fumalib', 'idecnlib']) {
+      await mkdir(join(tmp, 'node_modules', dep), { recursive: true })
+      await write(join(tmp, 'node_modules', dep, 'index.js'), jsxDist + X)
+    }
+    await app('docs', 'fumalib', false)
+    await app('web', 'idecnlib', true)
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]?.detail).toContain('fumalib')
+    expect(issues[0]?.detail).toContain('apps/docs')
+    expect(issues.some(i => i.detail.includes('apps/web') || i.detail.includes('idecnlib'))).toBe(false)
+    await rm(tmp, { recursive: true })
+  })
 })
