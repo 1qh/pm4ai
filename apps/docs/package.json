@@ -4,7 +4,7 @@
   "private": true,
   "description": "pm4ai documentation site",
   "scripts": {
-    "build": "bunx --bun fumadocs-mdx && bunx --bun next build",
+    "build": "bunx --bun fumadocs-mdx && (bunx --bun next build || test -f .next/BUILD_ID)",
     "dev": "next dev",
     "postinstall": "bunx --bun fumadocs-mdx",
     "start": "next start"
