@@ -820,7 +820,7 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
         [...pkgs].map(async name => {
           const depDir = join(projectPath, 'node_modules', name)
           if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return
-          const sourced = new RegExp(String.raw`@source[^\n]*node_modules/${escapeRe(name)}\b`, 'u')
+          const sourced = new RegExp(String.raw`@source[^\n]*[/'"]${escapeRe(name)}(/|['"])`, 'u')
           const importsDepCss = new RegExp(String.raw`@import\s+['"]${escapeRe(name)}/[^'"]+\.css`, 'u')
           return sourced.test(e.text) || importsDepCss.test(e.text)
             ? undefined
