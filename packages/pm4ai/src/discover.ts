@@ -89,7 +89,8 @@ const boundedRg = async (args: readonly string[], cwd?: string): Promise<string>
 }
 const discover = async (
   searchRoot?: string,
-  excludes: readonly string[] = []
+  excludes: readonly string[] = [],
+  resolveSources = true
 ): Promise<{
   cnsync: Project
   consumers: Project[]
@@ -130,13 +131,11 @@ const discover = async (
   let cnsync = projects.find(p => p.isCnsync)
   const reposDir = join(home, CONFIG_DIR, 'repos')
   if (!self) {
-    const dest = join(reposDir, PKG_NAME)
-    await ensureSourceRepo(PKG_NAME, dest)
+    const dest = resolveSources ? await ensureSourceRepo(PKG_NAME, join(reposDir, PKG_NAME)) : ''
     self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dest }
   }
   if (!cnsync) {
-    const dest = join(reposDir, 'cnsync')
-    await ensureSourceRepo('cnsync', dest)
+    const dest = resolveSources ? await ensureSourceRepo('cnsync', join(reposDir, 'cnsync')) : ''
     cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
   }
   const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))

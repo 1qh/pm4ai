@@ -22,7 +22,7 @@ const list = async (
   searchRoot?: string,
   write: ListWriter = row => console.log(row)
 ): Promise<void> => {
-  const { consumers } = await discover(searchRoot, excludes)
+  const { consumers } = await discover(searchRoot, excludes, false)
   const rows = await Promise.all(
     consumers.map(async c => {
       const g = await gitStatus(c.path)

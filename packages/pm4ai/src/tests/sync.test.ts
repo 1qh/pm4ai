@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   checkClaudeMdFresh,
+  patchFumadocsScript,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,
@@ -646,5 +647,19 @@ describe('serializeTsdownConfig — prettier-canonical output', () => {
   test('idempotent: serialising the same config twice returns the same string', () => {
     const cfg = { copy: ['static'], entry: ['src/index.ts'] }
     expect(serializeTsdownConfig(cfg)).toBe(serializeTsdownConfig(cfg))
+  })
+})
+describe('patchFumadocsScript — gates next build against the Bun SIGILL teardown', () => {
+  test('wraps a bare next build with the .next/BUILD_ID artifact gate so exit 137 does not fail CI', () => {
+    expect(patchFumadocsScript('fumadocs-mdx && next build')).toBe(
+      'bunx --bun fumadocs-mdx && (bunx --bun next build || test -f .next/BUILD_ID)'
+    )
+  })
+  test('idempotent: an already-gated script is left untouched', () => {
+    const gated = 'bunx --bun fumadocs-mdx && (bunx --bun next build || test -f .next/BUILD_ID)'
+    expect(patchFumadocsScript(gated)).toBe(gated)
+  })
+  test('a script with no next build is not gated', () => {
+    expect(patchFumadocsScript('next dev')).toBe('next dev')
   })
 })

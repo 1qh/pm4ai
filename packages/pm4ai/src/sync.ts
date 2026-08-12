@@ -685,8 +685,13 @@ const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]>
 }
 const NEXT_BUILD_RE = /(?<!bunx --bun )\bnext build\b/gu
 const FUMADOCS_MDX_RE = /(?<!bunx --bun )\bfumadocs-mdx\b/gu
+const BUILD_ID_GATE = 'test -f .next/BUILD_ID'
+const gateNextBuild = (script: string): string =>
+  script.includes(BUILD_ID_GATE)
+    ? script
+    : script.replace('bunx --bun next build', `(bunx --bun next build || ${BUILD_ID_GATE})`)
 const patchFumadocsScript = (script: string): string =>
-  script.replace(NEXT_BUILD_RE, 'bunx --bun next build').replace(FUMADOCS_MDX_RE, 'bunx --bun fumadocs-mdx')
+  gateNextBuild(script.replace(NEXT_BUILD_RE, 'bunx --bun next build').replace(FUMADOCS_MDX_RE, 'bunx --bun fumadocs-mdx'))
 const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
   const entries = await collectWorkspacePackages(projectPath)
   const fumadocsApps = entries.filter(e => {
@@ -789,6 +794,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
 }
 export {
   checkClaudeMdFresh,
+  patchFumadocsScript,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,
