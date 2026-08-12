@@ -364,7 +364,7 @@ const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<Tsdo
   const { exports } = pkg
   if (exports)
     for (const [key, val] of Object.entries(exports)) {
-      const importPath = typeof val === 'string' ? val : val.import
+      const importPath = typeof val === 'string' ? val : (val.import ?? val.default)
       if (importPath)
         if (importPath.endsWith('.css')) {
           const srcCss = importPath.replace(distPrefixRe, 'src/')

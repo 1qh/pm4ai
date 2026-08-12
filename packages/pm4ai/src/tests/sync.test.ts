@@ -568,6 +568,30 @@ describe('syncSubPackages edge cases', () => {
     expect(pkg.files).toEqual(['dist'])
     await rm(tmp, { recursive: true })
   })
+  test('infers a multi-entry tsdown config from default-keyed subpath exports, never clobbering to index alone', async () => {
+    const tmp = await makeProject(
+      { private: true, workspaces: ['packages/*'] },
+      {
+        'packages/lib/package.json': {
+          exports: {
+            '.': { default: './dist/index.mjs', types: './dist/index.d.mts' },
+            './bridge': { default: './dist/bridge.mjs', types: './dist/bridge.d.mts' },
+            './vlm': { default: './dist/vlm.mjs', types: './dist/vlm.d.mts' }
+          },
+          name: 'my-lib'
+        }
+      }
+    )
+    const libSrc = join(tmp, 'packages/lib/src')
+    await mkdir(libSrc, { recursive: true })
+    await Promise.all(['index.ts', 'bridge.ts', 'vlm.ts'].map(async f => write(join(libSrc, f), 'export const x = 1\n')))
+    await syncSubPackages(selfPath, tmp)
+    const cfg = await file(join(tmp, 'packages/lib/tsdown.config.ts')).text()
+    expect(cfg).toContain("'src/index.ts'")
+    expect(cfg).toContain("'src/bridge.ts'")
+    expect(cfg).toContain("'src/vlm.ts'")
+    await rm(tmp, { recursive: true })
+  })
   test('does not modify private packages with no exports', async () => {
     const tmp = await makeProject(
       { private: true, workspaces: ['packages/*'] },
