@@ -132,6 +132,16 @@ const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> 
   }))
   return [...verbatim, ...conditional]
 }
+/** Conditional files a project USED to warrant and no longer does, so a leftover copy from when it had that
+ * capability is stale cruft — a publishable-only prune-versions.ts sitting in a repo that is now private,
+ * which sync neither refreshes nor removes, so it drifts forever while `fix` reports zero-diff because it is
+ * no longer managed. github is excluded: it is detected from the git remote, which is transiently absent
+ * mid-setup, and deleting a workflow on that false negative is destructive and not self-evidently
+ * recoverable, where a content-based capability (publishable, fumadocs, tailwind) is stable. */
+const staleConditionalFiles = async (projectPath: string): Promise<string[]> => {
+  const caps = await detectCapabilities(projectPath)
+  return CONDITIONAL_VERBATIM_FILES.filter(c => c.when !== 'github' && !caps[c.when]).map(c => c.path)
+}
 const normalizeTail = (content: string): string => content.trimEnd()
 const isExtended = (canonical: string, consumer: string): boolean =>
   normalizeTail(consumer).startsWith(normalizeTail(canonical))
@@ -199,6 +209,7 @@ export {
   rel,
   resolveManagedFiles,
   setVerbose,
+  staleConditionalFiles,
   writeJson
 }
 export type { ManagedFile }

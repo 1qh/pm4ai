@@ -34,6 +34,7 @@ import {
   readJson,
   readPkg,
   resolveManagedFiles,
+  staleConditionalFiles,
   writeJson
 } from './utils.js'
 
@@ -105,7 +106,16 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
       }
     })
   )
-  return results.filter((r): r is Issue => r !== undefined)
+  const stale = await staleConditionalFiles(projectPath)
+  const removals = await Promise.all(
+    stale.map(async name => {
+      const dst = join(projectPath, name)
+      if (!(await file(dst).exists())) return
+      await rm(dst)
+      return { detail: `${name} removed — no longer applies to this project`, type: 'synced' } satisfies Issue
+    })
+  )
+  return [...results, ...removals].filter((r): r is Issue => r !== undefined)
 }
 /** Single source for the generated CLAUDE.md — one doc title, a Contents list, then each rule as a `##` topic. `fix` writes what this returns; the freshness check diffs against it, so neither can drift from the other. */
 const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<GeneratedGuide> => {
@@ -447,6 +457,18 @@ const syncReadmeSymlink = async ({
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
 }
+const PRUNE_POSTPUBLISH = 'bun ../../tools/prune-versions.ts'
+/** A package that is no longer published keeps the postpublish prune hook fixPublishedPkg set while it WAS
+ * published — a script pointing at the tools/prune-versions.ts that syncConfigs now removes, so leaving it
+ * dangles the reference. Remove only the pm4ai-set hook, never a project's own custom postpublish. */
+const removeStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
+  const { scripts } = pkg
+  if (scripts?.postpublish !== PRUNE_POSTPUBLISH) return false
+  delete scripts.postpublish
+  if (Object.keys(scripts).length === 0) delete pkg.scripts
+  issues.push({ detail: `${rel} removed stale postpublish prune hook`, type: 'synced' })
+  return true
+}
 // eslint-disable-next-line sonarjs/cognitive-complexity -- published-package normalizer: type, files, license, repo, build/tsdown, readme, publish scripts
 const fixPublishedPkg = async ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): Promise<boolean> => {
   let changed = false
@@ -495,9 +517,8 @@ const fixPublishedPkg = async ({ issues, pkg, pkgPath, rel, repo }: FixPublished
   }
   const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
   await syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
-  const expectedPostpublish = 'bun ../../tools/prune-versions.ts'
-  if (pubScripts.postpublish !== expectedPostpublish) {
-    pubScripts.postpublish = expectedPostpublish
+  if (pubScripts.postpublish !== PRUNE_POSTPUBLISH) {
+    pubScripts.postpublish = PRUNE_POSTPUBLISH
     delete pubScripts['cleanup-old-versions']
     pkg.scripts = pubScripts
     changed = true
@@ -565,8 +586,10 @@ const fixSubEntry = async ({ entry, issues, projectPath, repo }: FixSubEntryArgs
     changed = true
     issues.push({ detail: `${rel} set to private`, type: 'synced' })
   }
-  const isPublished = isPublishedPkg(entry.pkg)
-  if (isPublished) changed = (await fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })) || changed
+  const pubChange = isPublishedPkg(entry.pkg)
+    ? await fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })
+    : removeStalePublishScripts(entry.pkg, rel, issues)
+  changed = pubChange || changed
   if (entry.pkg.scripts?.clean) {
     delete entry.pkg.scripts.clean
     if (Object.keys(entry.pkg.scripts).length === 0) delete entry.pkg.scripts
@@ -795,6 +818,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
 export {
   checkClaudeMdFresh,
   patchFumadocsScript,
+  removeStalePublishScripts,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,

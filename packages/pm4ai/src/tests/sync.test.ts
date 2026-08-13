@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import {
   checkClaudeMdFresh,
   patchFumadocsScript,
+  removeStalePublishScripts,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,
@@ -49,6 +50,18 @@ describe('syncConfigs', () => {
     const issues = await syncConfigs(src, dst)
     const cleanIssue = issues.find(i => i.detail.includes('clean.sh'))
     expect(cleanIssue).toBeUndefined()
+    await rm(src, { recursive: true })
+    await rm(dst, { recursive: true })
+  })
+  test('removes a leftover publishable-only file from a now-private project', async () => {
+    const src = await makeTmp()
+    const dst = await makeTmp()
+    await write(join(dst, 'package.json'), JSON.stringify({ name: 'x', private: true }))
+    await mkdir(join(dst, 'tools'), { recursive: true })
+    await write(join(dst, 'tools', 'prune-versions.ts'), '// stale')
+    const issues = await syncConfigs(src, dst)
+    expect(await file(join(dst, 'tools', 'prune-versions.ts')).exists()).toBe(false)
+    expect(issues.some(i => i.detail.includes('tools/prune-versions.ts removed'))).toBe(true)
     await rm(src, { recursive: true })
     await rm(dst, { recursive: true })
   })
@@ -661,5 +674,25 @@ describe('patchFumadocsScript — gates next build against the Bun SIGILL teardo
   })
   test('a script with no next build is not gated', () => {
     expect(patchFumadocsScript('next dev')).toBe('next dev')
+  })
+})
+describe('removeStalePublishScripts', () => {
+  test('removes the pm4ai prune hook from a no-longer-published package, keeping other scripts', () => {
+    const pkg = { scripts: { build: 'tsdown', postpublish: 'bun ../../tools/prune-versions.ts' } }
+    const issues: { detail: string; type: string }[] = []
+    expect(removeStalePublishScripts(pkg, 'packages/x', issues)).toBe(true)
+    expect(pkg.scripts.postpublish).toBeUndefined()
+    expect(pkg.scripts.build).toBe('tsdown')
+    expect(issues).toHaveLength(1)
+  })
+  test('leaves a project-owned custom postpublish untouched', () => {
+    const pkg = { scripts: { postpublish: 'echo done' } }
+    expect(removeStalePublishScripts(pkg, 'packages/x', [])).toBe(false)
+    expect(pkg.scripts.postpublish).toBe('echo done')
+  })
+  test('drops the scripts object entirely when the prune hook was its only entry', () => {
+    const pkg: { scripts?: Record<string, string> } = { scripts: { postpublish: 'bun ../../tools/prune-versions.ts' } }
+    expect(removeStalePublishScripts(pkg, 'packages/x', [])).toBe(true)
+    expect(pkg.scripts).toBeUndefined()
   })
 })

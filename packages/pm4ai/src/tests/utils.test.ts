@@ -206,3 +206,22 @@ describe('mergeExtendable', () => {
     expect(merged).toContain('        run: sh test.sh')
   })
 })
+describe('staleConditionalFiles', () => {
+  test('lists publishable-only files a non-publishable project should not carry, excluding github', async () => {
+    const { staleConditionalFiles } = await import('../utils.js')
+    const tmp = await makeTmp()
+    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'x', private: true }))
+    const stale = await staleConditionalFiles(tmp)
+    expect(stale).toContain('tools/prune-versions.ts')
+    expect(stale).not.toContain('.github/workflows/ci.yml')
+    await rm(tmp, { force: true, recursive: true })
+  })
+  test('lists nothing publishable for a publishable project', async () => {
+    const { staleConditionalFiles } = await import('../utils.js')
+    const tmp = await makeTmp()
+    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'x' }))
+    const stale = await staleConditionalFiles(tmp)
+    expect(stale).not.toContain('tools/prune-versions.ts')
+    await rm(tmp, { force: true, recursive: true })
+  })
+})
