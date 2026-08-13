@@ -6,7 +6,7 @@ Priorities:
 
 1. Consistency is more important than speed. If a fix works for one project, it must work for all.
 2. Never fix something locally that should be fixed universally. If it’s a pattern, add it to pm4ai.
-3. After every pm4ai change: fix, check, test, rebuild, run fix --all, commit ALL changed projects, verify CI passes on ALL projects before telling me it’s done.
+3. After every pm4ai change: fix, check, test, rebuild, run fix --all, commit ALL changed projects, verify CI passes on ALL projects before telling me it’s done. CI-green and `status --all` clean are each necessary and NEITHER is sufficient: CI proves builds and tests, `status --all` detects drift only over managed files — both are blind to the lint-autofix and codegen regeneration that `fix` also applies. The definitive proof a project is synced is that a fresh `fix` produces ZERO diff; a later `fix` on an “already green” repo that yields any managed-file, codegen, or lint diff means it was called green on the weaker evidence. Verify per-repo and commit each result.
 4. When syncing: commit every dirty project immediately after fix --all. Never leave uncommitted synced files.
 5. When publishing: always verify npm version first, run fix --all + full end-to-end test from npm before and after.
 6. pm4ai must be harmless — only modify when git is clean, changes visible, easy to revert.
