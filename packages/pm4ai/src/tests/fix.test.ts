@@ -3,7 +3,7 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fix, maintain } from '../fix.js'
+import { fix, isDocsOnlyChange, maintain } from '../fix.js'
 import { stateDir, statePath } from '../state-dir.js'
 
 setDefaultTimeout(30_000)
@@ -300,4 +300,23 @@ describe('fix() via CLI', () => {
     await rm(repo, { recursive: true })
     await rm(fakeHome, { recursive: true })
   }, 60_000)
+})
+describe('isDocsOnlyChange (docs-only sync skips the gate)', () => {
+  test('true when only CLAUDE.md / AGENTS.md / workflows changed', () => {
+    expect(isDocsOnlyChange(' M CLAUDE.md')).toBe(true)
+    expect(isDocsOnlyChange(' M apps/web/CLAUDE.md')).toBe(true)
+    expect(isDocsOnlyChange(' M AGENTS.md\n M apps/web/AGENTS.md')).toBe(true)
+    expect(isDocsOnlyChange(' M .github/workflows/ci.yml\n M .github/workflows/release.yml')).toBe(true)
+    expect(isDocsOnlyChange(' M CLAUDE.md\n M .github/workflows/ci.yml')).toBe(true)
+  })
+  test('false when any gate-relevant file changed (source, package.json, tsconfig, vendored ui)', () => {
+    expect(isDocsOnlyChange(' M CLAUDE.md\n M src/index.ts')).toBe(false)
+    expect(isDocsOnlyChange(' M package.json')).toBe(false)
+    expect(isDocsOnlyChange(' M tsconfig.json')).toBe(false)
+    expect(isDocsOnlyChange(' M readonly/ui/button.tsx')).toBe(false)
+    expect(isDocsOnlyChange('?? CLAUDE.md.bak')).toBe(false)
+  })
+  test('false on an empty change set (a zero-diff sync is not docs-only)', () => {
+    expect(isDocsOnlyChange('')).toBe(false)
+  })
 })

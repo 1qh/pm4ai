@@ -36,6 +36,17 @@ const hasHandwrittenTsx = async (projectPath: string): Promise<boolean> => {
   const out = await boundedRg(['--files', '-g', '*.tsx', '-g', ignoreUi], projectPath)
   return out.length > 0
 }
+const DOCS_ONLY_RE = /(?:^|\/)(?:CLAUDE|AGENTS)\.md$|(?:^|\/)\.github\/workflows\//u
+const changedPaths = (porcelain: string): string[] =>
+  porcelain
+    .split('\n')
+    .filter(Boolean)
+    .map(line => line.slice(3).trim())
+/** A sync that changed only generated docs (CLAUDE.md, AGENTS.md) or CI workflows cannot affect build/lint/test, so `up.sh` would verify unchanged code. Skip the gate for such a sync; any source, package.json, tsconfig, or vendored-ui change still runs it. Returns false on an empty change set so a zero-diff sync is not mistaken for docs-only. */
+const isDocsOnlyChange = (porcelain: string): boolean => {
+  const paths = changedPaths(porcelain)
+  return paths.length > 0 && paths.every(p => DOCS_ONLY_RE.test(p))
+}
 const violationRe = /(?<!\d)(?<count>\d+)\s*(?:error|violation|problem|issue)/iu
 const maintain = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -81,7 +92,7 @@ const syncSelf = async (selfPath: string): Promise<void> => {
   logIssues(await syncSubPackages(selfPath, selfPath))
   logIssues(await syncClaudeMd(selfPath, selfPath))
 }
-export { maintain }
+export { isDocsOnlyChange, maintain }
 // eslint-disable-next-line sonarjs/cognitive-complexity -- top-level fix orchestrator: lock, discover, gate git state, sync/audit/maintain pipeline
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = statePath('fix.lock')
@@ -227,17 +238,25 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         })
       )
       await emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
-      const maintainIssues = await maintain(project.path)
-      issues.push(...maintainIssues)
-      const maintainDetail = maintainIssues[0]?.detail
-      await emitToSocket(
-        createEvent({
-          detail: maintainDetail,
-          project: name,
-          status: maintainIssues.length > 0 ? 'fail' : 'ok',
-          step: 'maintain'
-        })
-      )
+      const preMaintain = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+      const docsOnly = isDocsOnlyChange(preMaintain.stdout.toString().trim())
+      if (docsOnly)
+        await emitToSocket(
+          createEvent({ detail: 'docs-only, gate skipped', project: name, status: 'ok', step: 'maintain' })
+        )
+      else {
+        const maintainIssues = await maintain(project.path)
+        issues.push(...maintainIssues)
+        const maintainDetail = maintainIssues[0]?.detail
+        await emitToSocket(
+          createEvent({
+            detail: maintainDetail,
+            project: name,
+            status: maintainIssues.length > 0 ? 'fail' : 'ok',
+            step: 'maintain'
+          })
+        )
+      }
       const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
       const changed = diff.stdout.toString().trim()
       const fileCount = changed ? changed.split('\n').length : 0
