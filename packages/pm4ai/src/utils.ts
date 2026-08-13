@@ -138,21 +138,33 @@ const isExtended = (canonical: string, consumer: string): boolean =>
 /** Rewrite an extendable file's canonical part while KEEPING whatever the project added to it. The
  * starts-with test only recognises an extension while the canonical prefix is unchanged, so the run that
  * changes that prefix is exactly the run where every consumer stops matching — and writing the canonical
- * content wholesale there deletes each project's own entries. The deletion is silent and lands far from
- * the sync: a repo that ignores a generated declaration at its root loses that line, the file reappears
- * untracked, and the gate fails parsing build output nobody meant to lint. Keeping any line the canonical
- * content does not itself carry preserves the project's intent across a prefix change. */
+ * content wholesale there deletes each project's own entries. The extension is a trailing suffix by
+ * construction (isExtended requires the consumer to start with canonical), so recover it as the VERBATIM
+ * block after canonical's own last line. A trimmed-line dedup — the earlier approach — drops a nested key
+ * whose trimmed form collides with a canonical line elsewhere (a step-level `env:` colliding with another
+ * step's `env:`), orphaning its children onto the wrong indentation and producing invalid YAML the moment
+ * the canonical prefix changes. The verbatim tail keeps the nesting intact; when canonical's own last line
+ * is absent from the consumer (a flat file whose canonical lines were rewritten) it falls back to
+ * line-identity recovery, never worse than before. */
 const mergeExtendable = (canonical: string, consumer: string): string => {
+  const consumerLines = consumer.split('\n').map(line => line.trimEnd())
+  const lastCanonical = canonical
+    .split('\n')
+    .map(line => line.trimEnd())
+    .findLast(line => line.trim() !== '')
+  const anchor = lastCanonical === undefined ? -1 : consumerLines.lastIndexOf(lastCanonical)
+  if (anchor !== -1) {
+    const extension = consumerLines.slice(anchor + 1)
+    while (extension.length > 0 && extension.at(-1) === '') extension.pop()
+    return extension.length > 0 ? `${normalizeTail(canonical)}\n${extension.join('\n')}\n` : canonical
+  }
   const owned = new Set(
     canonical
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
   )
-  const extras = consumer
-    .split('\n')
-    .map(line => line.trimEnd())
-    .filter(line => line.trim() !== '' && !owned.has(line.trim()))
+  const extras = consumerLines.filter(line => line.trim() !== '' && !owned.has(line.trim()))
   return extras.length > 0 ? `${normalizeTail(canonical)}\n${extras.join('\n')}\n` : canonical
 }
 const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string>> => {

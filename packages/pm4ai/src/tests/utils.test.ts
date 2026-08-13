@@ -193,4 +193,16 @@ describe('mergeExtendable', () => {
     const canonical = 'node_modules\ndist\n'
     expect(mergeExtendable(canonical, canonical)).toBe(canonical)
   })
+  test('preserves a nested extension block whose inner key collides with a canonical key', async () => {
+    const { mergeExtendable } = await import('../utils.js')
+    const canonicalTail =
+      'jobs:\n  ci:\n    steps:\n      - name: prune\n        env:\n          GH_TOKEN: x\n        run: sh prune.sh\n'
+    const canonicalNew = `on:\n  push:\n    paths-ignore:\n      - CLAUDE.md\n${canonicalTail}`
+    const consumer = `${canonicalTail}      - name: hermetic\n        env:\n          DB: secret\n        run: sh test.sh\n`
+    const merged = mergeExtendable(canonicalNew, consumer)
+    expect(merged).toContain('- CLAUDE.md')
+    expect(merged).toContain('      - name: hermetic')
+    expect(merged).toContain('        env:\n          DB: secret')
+    expect(merged).toContain('        run: sh test.sh')
+  })
 })
