@@ -24,7 +24,6 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "prepublishOnly": "bun run build",
-    "postpublish": "bun ../../tools/prune-versions.ts"
+    "prepublishOnly": "bun run build"
   }
 }
