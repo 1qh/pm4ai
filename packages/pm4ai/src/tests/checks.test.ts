@@ -15,7 +15,8 @@ import {
   checkMergeMarkers,
   checkRootPkg,
   checkTailwindSourceCoverage,
-  checkVercel
+  checkVercel,
+  deployStateFailed
 } from '../checks.js'
 
 setDefaultTimeout(30_000)
@@ -658,5 +659,17 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues[0]?.detail).toContain('apps/docs')
     expect(issues.some(i => i.detail.includes('apps/web') || i.detail.includes('idecnlib'))).toBe(false)
     await rm(tmp, { recursive: true })
+  })
+})
+describe('deployStateFailed', () => {
+  test('a failed GitHub deployment state is reported', () => {
+    expect(deployStateFailed('failure')).toBe(true)
+    expect(deployStateFailed('error')).toBe(true)
+  })
+  test('a healthy or transient state is not reported', () => {
+    expect(deployStateFailed('success')).toBe(false)
+    expect(deployStateFailed('in_progress')).toBe(false)
+    expect(deployStateFailed('queued')).toBe(false)
+    expect(deployStateFailed('')).toBe(false)
   })
 })

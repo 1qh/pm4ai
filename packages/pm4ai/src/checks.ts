@@ -531,21 +531,32 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
     issues.push(forbidden(`use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${relList(deepUi, projectPath)}`))
   return issues
 }
+/** Vercel posts its deploy status to the GitHub deployments API, so checkVercel reads the auto-deploy
+ * pipeline's health there as reliable JSON — not the TTY-only `vercel ls` table, which prints URLs with no
+ * state when captured, and not the gitignored `.vercel` link dir the old check keyed on (absent on a fresh
+ * checkout, so it never ran). It stays red while a manual prebuilt deploy papers over a broken push-to-deploy. */
+const DEPLOY_FAILED_STATES = new Set(['error', 'failure'])
+const deployStateFailed = (state: string): boolean => DEPLOY_FAILED_STATES.has(state.trim())
 const checkVercel = async (projectPath: string): Promise<Issue[]> => {
-  const hasVercel = await pathExists(join(projectPath, '.vercel'))
-  if (!hasVercel) return []
-  const result = await $`bunx vercel@latest ls`.cwd(projectPath).quiet().nothrow()
-  if (result.exitCode !== 0) {
-    debug('command failed:', 'bunx vercel@latest ls')
+  if (!(await pathExists(join(projectPath, 'vercel.json')))) return []
+  const repo = await getGhRepo(projectPath)
+  if (!repo) return []
+  const deploymentsUrl = `repos/${repo}/deployments?per_page=1`
+  const dep = await $`gh api ${deploymentsUrl}`.quiet().nothrow()
+  if (dep.exitCode !== 0) {
+    debug('gh api deployments failed for', repo)
     return []
   }
-  const latestLine = result.stdout
-    .toString()
-    .trim()
-    .split('\n')
-    .find(l => l.includes('●'))
-  if (latestLine?.includes('● Error')) return [issue('deploy', 'vercel deployment failed')]
-  return []
+  const deployments = JSON.parse(dep.stdout.toString().trim() || '[]') as { id?: number }[]
+  const id = deployments[0]?.id
+  if (id === undefined) return []
+  const statusesUrl = `repos/${repo}/deployments/${id}/statuses?per_page=1`
+  const st = await $`gh api ${statusesUrl}`.quiet().nothrow()
+  if (st.exitCode !== 0) return []
+  const statuses = JSON.parse(st.stdout.toString().trim() || '[]') as { state?: string }[]
+  return deployStateFailed(statuses[0]?.state ?? '')
+    ? [issue('deploy', 'vercel production deploy failed — build locally then `vercel deploy --prebuilt --prod`')]
+    : []
 }
 const FUMADOCS_NEXT_BUILD_RE = /(?<!bunx --bun )\bnext build\b/u
 const FUMADOCS_MDX_BARE_RE = /(?<!bunx --bun )\bfumadocs-mdx\b/u
@@ -859,5 +870,6 @@ export {
   checkSherifScope,
   checkTailwindSourceCoverage,
   checkTypescriptPin,
-  checkVercel
+  checkVercel,
+  deployStateFailed
 }
