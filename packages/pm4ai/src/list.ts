@@ -6,7 +6,7 @@ const AHEAD_RE = /\+(?<n>\d+)/u
 const BEHIND_RE = /-(?<n>\d+)/u
 type ListWriter = (row: string) => void
 const gitStatus = async (path: string): Promise<{ ahead: number; behind: number; dirty: boolean }> => {
-  const sb = await $`git -C ${path} status -sb --porcelain=v2 --branch`.quiet().nothrow()
+  const sb = await $`git -C ${path} status -sb --porcelain=v2 --branch -- .`.quiet().nothrow()
   const out = sb.stdout.toString()
   const aheadMatch = AHEAD_RE.exec(out)
   const behindMatch = BEHIND_RE.exec(out)

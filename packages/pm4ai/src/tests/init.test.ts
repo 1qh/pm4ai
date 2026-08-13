@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noMisplacedAssertion: the rule recognises test(name, fn) but not the test.skipIf(cond)(name, fn) call form, so it reads every assertion in these blocks as sitting outside a test */
 import { $, file } from 'bun'
 import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { rm, stat } from 'node:fs/promises'
+import { mkdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkSherifScope, checkTypescriptPin } from '../checks.js'
@@ -146,6 +146,22 @@ describe('init scaffold', () => {
     expect(await checkTypescriptPin(TEST_DIR)).toEqual([])
     expect(await checkSherifScope(TEST_DIR)).toEqual([])
   })
+  test('leaves an existing parent repo intact instead of nesting a .git inside it', async () => {
+    const parent = join(tmpdir(), `pm4ai-init-parent-${Date.now()}`)
+    const cwd = process.cwd()
+    try {
+      await mkdir(parent, { recursive: true })
+      await $`git init -b main`.cwd(parent).quiet().nothrow()
+      process.chdir(parent)
+      const name = 'nested-scaffold'
+      await init(name)
+      expect(await dirExists(join(parent, name))).toBe(true)
+      expect(await pathExists(join(parent, name, '.git'))).toBe(false)
+    } finally {
+      process.chdir(cwd)
+      await rm(parent, { force: true, recursive: true })
+    }
+  }, 120_000)
   test.skipIf(!process.env.CI)(
     'bun install succeeds',
     async () => {

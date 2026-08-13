@@ -44,8 +44,8 @@ const getHeadCommit = async (projectPath: string): Promise<string> => {
 }
 const getCodeCommitsSince = async (projectPath: string, commit: string): Promise<number> => {
   if (!commit) return -1
-  const excludes = [CLAUDE_MD, '*.md', ...VERBATIM_FILES].map(f => `:!${f}`)
-  const r = await $`git rev-list --count ${commit}..HEAD -- ${excludes}`.cwd(projectPath).quiet().nothrow()
+  const pathspec = ['.', ...[CLAUDE_MD, '*.md', ...VERBATIM_FILES].map(f => `:!${f}`)]
+  const r = await $`git rev-list --count ${commit}..HEAD -- ${pathspec}`.cwd(projectPath).quiet().nothrow()
   if (r.exitCode === 0) return Math.trunc(Number(r.stdout.toString().trim()))
   return -1
 }

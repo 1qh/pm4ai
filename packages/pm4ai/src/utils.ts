@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
 /* eslint-disable no-empty */
 import { $, file, Glob, write } from 'bun'
-import { access } from 'node:fs/promises'
+import { access, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
@@ -90,6 +90,29 @@ const isInsideProject = async (): Promise<string | undefined> => {
     return LINTMAX_PKG in deps
   })
   if (hasLintmax) return root
+}
+const gitToplevel = async (projectPath: string): Promise<string | undefined> => {
+  const r = await $`git rev-parse --show-toplevel`.cwd(projectPath).quiet().nothrow()
+  if (r.exitCode !== 0) return
+  return r.stdout.toString().trim() || undefined
+}
+const realPathOrSelf = async (p: string): Promise<string> => {
+  try {
+    return await realpath(p)
+  } catch {
+    return p
+  }
+}
+/** True when the project is a FOLDER INSIDE a git repo rather than the repo root, which every git call must
+ * account for: a bare `git status` there reports the WHOLE repo (so a sibling directory's edits read as the
+ * project's), and `pull`/`fetch`/`rev-list HEAD..@{u}` operate on the PARENT repo, which the manager does not
+ * manage. Compared through realpath because `rev-parse --show-toplevel` resolves symlinks (`/var` → `/private/var`
+ * on darwin) while the discovered path does not, so a raw string compare calls every temp-dir project nested. */
+const isNestedProject = async (projectPath: string): Promise<boolean> => {
+  const top = await gitToplevel(projectPath)
+  if (!top) return false
+  const [resolvedTop, resolvedProject] = await Promise.all([realPathOrSelf(top), realPathOrSelf(projectPath)])
+  return resolvedTop !== resolvedProject
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
 const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined =>
@@ -199,8 +222,10 @@ export {
   getGhRepo,
   getTsconfigTypes,
   gitCleanRe,
+  gitToplevel,
   isExtended,
   isInsideProject,
+  isNestedProject,
   isSkippedPath,
   mergeExtendable,
   projectName,

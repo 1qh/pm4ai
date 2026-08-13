@@ -20,7 +20,7 @@ import {
   syncTsconfig,
   syncUi
 } from './sync.js'
-import { isInsideProject, projectName } from './utils.js'
+import { isInsideProject, isNestedProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 
@@ -92,7 +92,27 @@ const syncSelf = async (selfPath: string): Promise<void> => {
   logIssues(await syncSubPackages(selfPath, selfPath))
   logIssues(await syncClaudeMd(selfPath, selfPath))
 }
-export { isDocsOnlyChange, maintain }
+type RepoGitState = { behind: number; name: string; path: string } | { name: string; reason: string }
+/** The git-state gate every repo passes before `fix` touches it. Dirtiness is asked of the project's OWN path
+ * (`-- .`), and a NESTED project — a folder inside a repo the manager does not manage — reports settled without
+ * fetching: `fetch`/`rev-list HEAD..@{u}` and the `pull` they authorise all act on the whole PARENT repo, which a
+ * pathspec cannot express, so the only correct answer for a nested project is to leave the parent alone. */
+const repoGitState = async (repoPath: string): Promise<RepoGitState> => {
+  const name = projectName(repoPath)
+  const dirty = await $`git status --porcelain -- .`.cwd(repoPath).quiet().nothrow()
+  if (dirty.stdout.toString().trim()) return { name, reason: 'uncommitted changes' }
+  if (await isNestedProject(repoPath)) return { behind: 0, name, path: repoPath }
+  await $`git fetch`.cwd(repoPath).quiet().nothrow()
+  const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repoPath).quiet().nothrow()
+  const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repoPath).quiet().nothrow()
+  const b = Math.trunc(Number(behind.stdout.toString().trim()))
+  const a = Math.trunc(Number(ahead.stdout.toString().trim()))
+  if (b > 0 && a > 0) return { name, reason: `diverged (${b} behind, ${a} ahead)` }
+  if (a > 0) return { name, reason: `${a} commits ahead, push first` }
+  return { behind: b, name, path: repoPath }
+}
+export { isDocsOnlyChange, maintain, repoGitState }
+export type { RepoGitState }
 // eslint-disable-next-line sonarjs/cognitive-complexity -- top-level fix orchestrator: lock, discover, gate git state, sync/audit/maintain pipeline
 export const fix = async (all = false, excludes: readonly string[] = []) => {
   const lockFile = statePath('fix.lock')
@@ -159,21 +179,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     const allRepos = [...new Map([self, cnsync, ...consumers].map(r => [r.path, r])).values()]
     const blocked: string[] = []
     const pullable: { name: string; path: string }[] = []
-    const checkResults = await Promise.all(
-      allRepos.map(async repo => {
-        const name = projectName(repo.path)
-        const dirty = await $`git status --porcelain`.cwd(repo.path).quiet().nothrow()
-        if (dirty.stdout.toString().trim()) return { name, reason: 'uncommitted changes' }
-        await $`git fetch`.cwd(repo.path).quiet().nothrow()
-        const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
-        const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()
-        const b = Math.trunc(Number(behind.stdout.toString().trim()))
-        const a = Math.trunc(Number(ahead.stdout.toString().trim()))
-        if (b > 0 && a > 0) return { name, reason: `diverged (${b} behind, ${a} ahead)` }
-        if (a > 0) return { name, reason: `${a} commits ahead, push first` }
-        return { behind: b, name, path: repo.path }
-      })
-    )
+    const checkResults = await Promise.all(allRepos.map(async repo => repoGitState(repo.path)))
     for (const r of checkResults)
       if ('reason' in r) blocked.push(`${r.name}: ${r.reason}`)
       else if (r.behind > 0) pullable.push({ name: r.name, path: r.path })
@@ -238,7 +244,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         })
       )
       await emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
-      const preMaintain = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+      const preMaintain = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
       const docsOnly = isDocsOnlyChange(preMaintain.stdout.toString().trim())
       if (docsOnly)
         await emitToSocket(
@@ -257,7 +263,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
           })
         )
       }
-      const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+      const diff = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
       const changed = diff.stdout.toString().trim()
       const fileCount = changed ? changed.split('\n').length : 0
       await emitToSocket(
@@ -281,7 +287,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     console.log('--- changes ---')
     const summaries = await Promise.all(
       allTargets.map(async project => {
-        const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+        const diff = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
         const changed = diff.stdout.toString().trim()
         const count = changed ? changed.split('\n').length : 0
         return count > 0 ? `${projectName(project.path)}: ${count} files modified` : `${projectName(project.path)}: clean`
