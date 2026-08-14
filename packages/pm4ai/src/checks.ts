@@ -159,7 +159,13 @@ const checkRelease = async (projectPath: string): Promise<Issue[]> => {
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const nested = await isNestedInRepo(projectPath)
   const dirtyCheck = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
-  if (!(nested || dirtyCheck.stdout.toString().trim())) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
+  const dirty = dirtyCheck.stdout.toString().trim()
+  if (nested) {
+    const issues = [issue('git', 'skipped git pull: not a repository root')]
+    if (dirty) issues.push(issue('git', `${dirty.split('\n').length} uncommitted changes`))
+    return issues
+  }
+  if (!dirty) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
   const result = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
   if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain -- .')
   const out = result.stdout.toString().trim()

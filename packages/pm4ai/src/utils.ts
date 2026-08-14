@@ -100,7 +100,29 @@ const isNestedInRepo = async (dir: string): Promise<boolean> => {
     const [realTop, realDir] = await Promise.all([realpath(top), realpath(dir)])
     return realTop !== realDir
   } catch {
-    return top !== dir
+    return false
+  }
+}
+const isInsideExistingRepo = async (dir: string): Promise<boolean> => {
+  const chain: string[] = [dir]
+  let current = dir
+  let parent = dirname(current)
+  while (parent !== current) {
+    chain.push(parent)
+    current = parent
+    parent = dirname(current)
+  }
+  const existing = chain[(await Promise.all(chain.map(pathExists))).findIndex(Boolean)]
+  if (existing === undefined) return false
+  const root = await $`git rev-parse --show-toplevel`.cwd(existing).quiet().nothrow()
+  if (root.exitCode !== 0) return false
+  const top = root.stdout.toString().trim()
+  if (!top) return false
+  try {
+    const [realTop, realExisting] = await Promise.all([realpath(top), realpath(existing)])
+    return realTop !== realExisting || !(await pathExists(dir))
+  } catch {
+    return false
   }
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
@@ -212,6 +234,7 @@ export {
   getTsconfigTypes,
   gitCleanRe,
   isExtended,
+  isInsideExistingRepo,
   isInsideProject,
   isNestedInRepo,
   isSkippedPath,

@@ -164,7 +164,8 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         const name = projectName(repo.path)
         const dirty = await $`git status --porcelain -- .`.cwd(repo.path).quiet().nothrow()
         if (dirty.stdout.toString().trim()) return { name, reason: 'uncommitted changes' }
-        if (await isNestedInRepo(repo.path)) return { behind: 0, name, path: repo.path }
+        if (await isNestedInRepo(repo.path))
+          return { name, reason: 'not a repository root; skipped fetch and upstream ahead/behind counts' }
         await $`git fetch`.cwd(repo.path).quiet().nothrow()
         const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()

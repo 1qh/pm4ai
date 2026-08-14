@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { discover } from './discover.js'
 import { syncClaudeMd } from './sync.js'
-import { getBunVersion, isNestedInRepo } from './utils.js'
+import { getBunVersion, isInsideExistingRepo } from './utils.js'
 
 const SKIP = new Set([
   '.git',
@@ -90,6 +90,11 @@ const init = async (name: string) => {
     process.exitCode = 1
     return
   }
+  if (await isInsideExistingRepo(dir)) {
+    console.log(`${dir} is inside an existing git repository — refusing to scaffold`)
+    process.exitCode = 1
+    return
+  }
   const { self } = await discover()
   const src = self.path
   console.log(`scaffolding ${projectName} from ${src}...`)
@@ -119,13 +124,9 @@ const init = async (name: string) => {
   await syncClaudeMd(src, dir)
   const bookInstall = join(homedir(), 'book', 'install.sh')
   if (await pathExists(bookInstall)) await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
-  const nested = await isNestedInRepo(dir)
-  if (nested) console.log(`\nalready inside a git repository — skipped git init, commit ${projectName}/ yourself`)
-  else {
-    await $`git init`.cwd(dir).quiet()
-    await $`git add -A`.cwd(dir).quiet()
-    await $`git -c user.name=pm4ai -c user.email=pm4ai commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet().nothrow()
-  }
+  await $`git init`.cwd(dir).quiet()
+  await $`git add -A`.cwd(dir).quiet()
+  await $`git -c user.name=pm4ai -c user.email=pm4ai commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet().nothrow()
   console.log(`\ncreated ${projectName}/`)
   console.log(`\n  cd ${projectName}`)
   console.log('  bun i')
