@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { discover } from './discover.js'
 import { syncClaudeMd } from './sync.js'
-import { getBunVersion, isInsideExistingRepo } from './utils.js'
+import { getBunVersion, isInsideExistingRepo, isNestedInRepo } from './utils.js'
 
 const SKIP = new Set([
   '.git',
@@ -124,6 +124,11 @@ const init = async (name: string) => {
   await syncClaudeMd(src, dir)
   const bookInstall = join(homedir(), 'book', 'install.sh')
   if (await pathExists(bookInstall)) await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
+  if (await isNestedInRepo(dir)) {
+    console.log(`${dir} is inside an existing git repository — refusing to run git init`)
+    process.exitCode = 1
+    return
+  }
   await $`git init`.cwd(dir).quiet()
   await $`git add -A`.cwd(dir).quiet()
   await $`git -c user.name=pm4ai -c user.email=pm4ai commit -m "init: scaffold from pm4ai"`.cwd(dir).quiet().nothrow()

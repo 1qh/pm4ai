@@ -167,7 +167,7 @@ describe('init scaffold', () => {
     async () => {
       const result = await $`bun run fix`.cwd(TEST_DIR).quiet().nothrow()
       expect(result.exitCode).toBe(0)
-      const status = await $`git status --porcelain`.cwd(TEST_DIR).quiet().nothrow()
+      const status = await $`git status --porcelain -- .`.cwd(TEST_DIR).quiet().nothrow()
       expect(status.stdout.toString().trim()).toBe('')
     },
     120_000

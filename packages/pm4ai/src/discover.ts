@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { CONFIG_DIR } from './config-dir.js'
 import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { pm4aiCloneBase, pm4aiHome } from './env.js'
-import { debug, projectName } from './utils.js'
+import { debug, isNestedInRepo, projectName } from './utils.js'
 
 interface Project {
   isCnsync: boolean
@@ -52,6 +52,7 @@ const ensureSourceRepo = async (repo: string, dest: string) => {
     await $`GIT_TERMINAL_PROMPT=0 git clone ${cloneBase()}/${repo}.git ${dest}`.quiet().nothrow()
     return dest
   }
+  if (await isNestedInRepo(dest)) return dest
   await $`GIT_TERMINAL_PROMPT=0 git fetch --quiet --prune`.cwd(dest).quiet().nothrow()
   await $`git reset --hard @{u}`.cwd(dest).quiet().nothrow()
   await $`git clean -fd`.cwd(dest).quiet().nothrow()
