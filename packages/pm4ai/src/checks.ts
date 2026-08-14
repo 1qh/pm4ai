@@ -1,5 +1,5 @@
 import { $, file, Glob } from 'bun'
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Issue, IssueType } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
@@ -847,6 +847,69 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
   )
   return perEntry.flat()
 }
+const TEMPLATES_DIR = 'packages/pm4ai/src/templates'
+const PKGNAME_TOKEN = 'pkgname'
+interface ScaffoldTemplate {
+  dir: string
+  name: string
+}
+const scaffoldTemplates = async (templatesDir: string): Promise<ScaffoldTemplate[]> => {
+  const entries = await readdir(templatesDir, { withFileTypes: true })
+  const found = await Promise.all(
+    entries
+      .filter(e => e.isDirectory())
+      .map(async e => {
+        const pkg = await readPkg(join(templatesDir, e.name, 'package.json'))
+        return pkg?.name === undefined ? undefined : { dir: e.name, name: pkg.name }
+      })
+  )
+  return found.filter((t): t is ScaffoldTemplate => t !== undefined)
+}
+const adversarialNames = (templates: ScaffoldTemplate[]): string[] => {
+  const candidates = new Set(templates.map(t => t.dir))
+  for (const t of templates)
+    for (const segment of t.name.replace('@', '').split('/'))
+      if (segment.length > 0 && !segment.includes(PKGNAME_TOKEN)) candidates.add(segment)
+  return [...candidates]
+}
+const unparameterisedTemplates = (templates: ScaffoldTemplate[]): Issue[] =>
+  templates
+    .filter(t => !t.name.includes(PKGNAME_TOKEN))
+    .map(t =>
+      drift(
+        `scaffold template ${t.dir} names itself "${t.name}" with no ${PKGNAME_TOKEN} — a project of that name scaffolds two workspace packages with one name and bun i refuses the install`
+      )
+    )
+const collidingTemplates = (templates: ScaffoldTemplate[]): Issue[] => {
+  const issues: Issue[] = []
+  const reported = new Set<string>()
+  for (const candidate of adversarialNames(templates)) {
+    const byProduced = new Map<string, string[]>()
+    for (const t of templates) {
+      const produced = t.name.replaceAll(PKGNAME_TOKEN, candidate)
+      byProduced.set(produced, [...(byProduced.get(produced) ?? []), t.dir])
+    }
+    for (const [produced, dirs] of byProduced) {
+      const key = dirs.join(',')
+      if (dirs.length > 1 && !reported.has(key)) {
+        reported.add(key)
+        issues.push(
+          drift(
+            `scaffold templates ${key} both produce workspace package "${produced}" for a project named "${candidate}"`
+          )
+        )
+      }
+    }
+  }
+  return issues
+}
+const checkScaffoldNames = async (projectPath: string): Promise<Issue[]> => {
+  const templatesDir = join(projectPath, TEMPLATES_DIR)
+  if (!(await pathExists(templatesDir))) return []
+  const templates = await scaffoldTemplates(templatesDir)
+  if (templates.length === 0) return []
+  return [...unparameterisedTemplates(templates), ...collidingTemplates(templates)]
+}
 export {
   checkActionRunsTests,
   checkAppTsconfigs,
@@ -868,6 +931,7 @@ export {
   checkPages,
   checkRelease,
   checkRootPkg,
+  checkScaffoldNames,
   checkShadcnClasses,
   checkSherifScope,
   checkTailwindSourceCoverage,

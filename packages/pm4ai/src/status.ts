@@ -24,6 +24,7 @@ import {
   checkPages,
   checkRelease,
   checkRootPkg,
+  checkScaffoldNames,
   checkShadcnClasses,
   checkSherifScope,
   checkTailwindSourceCoverage,
@@ -84,6 +85,7 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       checkFumadocsGithubUrl(project.path),
       checkMergeMarkers(project.path),
       checkConvexSelfHosted(project.path),
+      checkScaffoldNames(project.path),
       audit(project.path)
     ])
     for (const r of results) issues.push(...r)
