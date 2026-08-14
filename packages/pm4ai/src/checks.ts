@@ -19,6 +19,7 @@ import {
   getGhRepo,
   getTsconfigTypes,
   isExtended,
+  isNestedInRepo,
   readJson,
   readPkg,
   rel,
@@ -156,10 +157,11 @@ const checkRelease = async (projectPath: string): Promise<Issue[]> => {
   return []
 }
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
-  const dirtyCheck = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
-  if (!dirtyCheck.stdout.toString().trim()) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
-  const result = await $`git status --porcelain`.cwd(projectPath).quiet().nothrow()
-  if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain')
+  const nested = await isNestedInRepo(projectPath)
+  const dirtyCheck = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
+  if (!(nested || dirtyCheck.stdout.toString().trim())) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
+  const result = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
+  if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain -- .')
   const out = result.stdout.toString().trim()
   if (!out) return []
   return [issue('git', `${out.split('\n').length} uncommitted changes`)]

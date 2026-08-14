@@ -20,7 +20,7 @@ import {
   syncTsconfig,
   syncUi
 } from './sync.js'
-import { isInsideProject, projectName } from './utils.js'
+import { isInsideProject, isNestedInRepo, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
 
@@ -162,8 +162,9 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     const checkResults = await Promise.all(
       allRepos.map(async repo => {
         const name = projectName(repo.path)
-        const dirty = await $`git status --porcelain`.cwd(repo.path).quiet().nothrow()
+        const dirty = await $`git status --porcelain -- .`.cwd(repo.path).quiet().nothrow()
         if (dirty.stdout.toString().trim()) return { name, reason: 'uncommitted changes' }
+        if (await isNestedInRepo(repo.path)) return { behind: 0, name, path: repo.path }
         await $`git fetch`.cwd(repo.path).quiet().nothrow()
         const behind = await $`git rev-list --count HEAD..@{u}`.cwd(repo.path).quiet().nothrow()
         const ahead = await $`git rev-list --count @{u}..HEAD`.cwd(repo.path).quiet().nothrow()
@@ -238,7 +239,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
         })
       )
       await emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
-      const preMaintain = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+      const preMaintain = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
       const docsOnly = isDocsOnlyChange(preMaintain.stdout.toString().trim())
       if (docsOnly)
         await emitToSocket(
@@ -257,7 +258,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
           })
         )
       }
-      const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+      const diff = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
       const changed = diff.stdout.toString().trim()
       const fileCount = changed ? changed.split('\n').length : 0
       await emitToSocket(
@@ -281,7 +282,7 @@ export const fix = async (all = false, excludes: readonly string[] = []) => {
     console.log('--- changes ---')
     const summaries = await Promise.all(
       allTargets.map(async project => {
-        const diff = await $`git status --porcelain`.cwd(project.path).quiet().nothrow()
+        const diff = await $`git status --porcelain -- .`.cwd(project.path).quiet().nothrow()
         const changed = diff.stdout.toString().trim()
         const count = changed ? changed.split('\n').length : 0
         return count > 0 ? `${projectName(project.path)}: ${count} files modified` : `${projectName(project.path)}: clean`

@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
 /* eslint-disable no-empty */
 import { $, file, Glob, write } from 'bun'
-import { access } from 'node:fs/promises'
+import { access, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
@@ -90,6 +90,18 @@ const isInsideProject = async (): Promise<string | undefined> => {
     return LINTMAX_PKG in deps
   })
   if (hasLintmax) return root
+}
+const isNestedInRepo = async (dir: string): Promise<boolean> => {
+  const root = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
+  if (root.exitCode !== 0) return false
+  const top = root.stdout.toString().trim()
+  if (!top) return false
+  try {
+    const [realTop, realDir] = await Promise.all([realpath(top), realpath(dir)])
+    return realTop !== realDir
+  } catch {
+    return top !== dir
+  }
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
 const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined =>
@@ -201,6 +213,7 @@ export {
   gitCleanRe,
   isExtended,
   isInsideProject,
+  isNestedInRepo,
   isSkippedPath,
   mergeExtendable,
   projectName,
