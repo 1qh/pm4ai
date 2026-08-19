@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseJson } from './json.js'
 interface PkgJson {
   license?: string
   name?: string
   requiredDevDeps?: string[]
 }
-const selfPkg = parseJson<PkgJson>(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
+/** biome-ignore lint/nursery/noUnsafeTypeAssertion: own package.json read into the known PkgJson shape — single boundary, kept inline so the build config loader stays dependency-free */
+const selfPkg = JSON.parse(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as PkgJson
 const PKG_NAME = selfPkg.name ?? 'pm4ai'
 const DEFAULT_LICENSE = selfPkg.license ?? 'MIT'
 const LINTMAX_PKG = 'lintmax'
