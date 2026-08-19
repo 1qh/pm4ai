@@ -140,7 +140,7 @@ describe('API endpoints', () => {
     const { json, status } = await rpc('socketStatus')
     expect(status).toBe(200)
     /** biome-ignore lint/nursery/noUnsafeTypeAssertion: RPC procedure response is narrowed by the procedure under test */
-    const data = json.json as SocketStatusResponse
+    const data = json.json as unknown as SocketStatusResponse
     expect(data.connected).toBe(false)
   })
   test('fixAll without auth returns error', async () => {
@@ -159,7 +159,7 @@ describe('API endpoints', () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'pm4ai' })
     expect(status).toBe(200)
     /** biome-ignore lint/nursery/noUnsafeTypeAssertion: RPC procedure response is narrowed by the procedure under test */
-    const data = json.json as ProjectStatusResponse
+    const data = json.json as unknown as ProjectStatusResponse
     expect(data.name).toBe('pm4ai')
     expect(data.path).toBeTruthy()
   })
