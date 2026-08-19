@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition, complexity */
 import type { WatchEvent } from './watch-types.js'
-
 interface DerivedStats {
   completedStepCount: number
   done: number

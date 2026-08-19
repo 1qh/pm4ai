@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fix, isDocsOnlyChange, maintain } from '../fix.js'
 import { stateDir, statePath } from '../state-dir.js'
-
+import { parseJson } from '../json.js'
 setDefaultTimeout(30_000)
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- typed test-fixture JSON boundary
+const readJson = async <T,>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
 const toFileName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
@@ -40,7 +42,7 @@ describe('maintain', () => {
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
     expect(await file(checkFile).exists()).toBe(true)
-    const result = (await file(checkFile).json()) as { pass: boolean }
+    const result = await readJson<{ pass: boolean }>(checkFile)
     expect(result.pass).toBe(true)
     await rm(tmp, { recursive: true })
   })
@@ -51,7 +53,7 @@ describe('maintain', () => {
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
     expect(await file(checkFile).exists()).toBe(true)
-    const result = (await file(checkFile).json()) as { pass: boolean; violations: number }
+    const result = await readJson<{ pass: boolean; violations: number }>(checkFile)
     expect(result.pass).toBe(false)
     expect(result.violations).toBe(5)
     await rm(tmp, { recursive: true })
@@ -89,7 +91,7 @@ describe('lockfile', () => {
     await rm(lockFile, { force: true })
     await mkdir(stateDir(), { recursive: true })
     await write(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
-    const lock = (await file(lockFile).json()) as { at: string; pid: number }
+    const lock = await readJson<{ at: string; pid: number }>(lockFile)
     const age = Date.now() - new Date(lock.at).getTime()
     expect(age).toBeGreaterThan(600_000)
     let alive = false
@@ -109,7 +111,7 @@ describe('lockfile', () => {
     const fd = await open(lockFile, 'wx')
     await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     await fd.close()
-    const lock = (await file(lockFile).json()) as { at: string; pid: number }
+    const lock = await readJson<{ at: string; pid: number }>(lockFile)
     expect(lock.pid).toBe(process.pid)
     expect(new Date(lock.at).getTime()).not.toBeNaN()
     await rm(lockFile, { force: true })
@@ -118,7 +120,7 @@ describe('lockfile', () => {
     await rm(lockFile, { force: true })
     await mkdir(stateDir(), { recursive: true })
     await write(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    const lock = (await file(lockFile).json()) as { at: string; pid: number }
+    const lock = await readJson<{ at: string; pid: number }>(lockFile)
     const age = Date.now() - new Date(lock.at).getTime()
     expect(age).toBeLessThan(600_000)
     let alive = false
@@ -158,7 +160,7 @@ describe('maintain edge cases', () => {
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
-    const result = (await file(checkFile).json()) as { violations: number }
+    const result = await readJson<{ violations: number }>(checkFile)
     expect(result.violations).toBe(12)
     await rm(tmp, { recursive: true })
   })
@@ -168,7 +170,7 @@ describe('maintain edge cases', () => {
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
-    const result = (await file(checkFile).json()) as { violations: number }
+    const result = await readJson<{ violations: number }>(checkFile)
     expect(result.violations).toBe(7)
     await rm(tmp, { recursive: true })
   })
@@ -178,7 +180,7 @@ describe('maintain edge cases', () => {
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
-    const result = (await file(checkFile).json()) as { violations: number }
+    const result = await readJson<{ violations: number }>(checkFile)
     expect(result.violations).toBe(1)
     await rm(tmp, { recursive: true })
   })
@@ -197,7 +199,7 @@ describe('maintain edge cases', () => {
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const logFile = statePath('logs', `${safeName}.json`)
-    const entry = (await file(logFile).json()) as { error?: string; pass: boolean }
+    const entry = await readJson<{ error?: string; pass: boolean }>(logFile)
     expect(entry.pass).toBe(false)
     expect(entry.error).toContain('fatal error')
     await rm(tmp, { recursive: true })
@@ -208,7 +210,7 @@ describe('maintain edge cases', () => {
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const logFile = statePath('logs', `${safeName}.json`)
-    const entry = (await file(logFile).json()) as { error?: string; pass: boolean }
+    const entry = await readJson<{ error?: string; pass: boolean }>(logFile)
     expect(entry.pass).toBe(true)
     expect(entry.error).toBeUndefined()
     await rm(tmp, { recursive: true })

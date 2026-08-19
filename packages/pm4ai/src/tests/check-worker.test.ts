@@ -4,8 +4,10 @@ import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { statePath } from '../state-dir.js'
-
+import { parseJson } from '../json.js'
 setDefaultTimeout(30_000)
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- typed test-fixture JSON boundary
+const readJson = async <T,>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const dirExists = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
@@ -26,7 +28,7 @@ describe('check-worker', () => {
     await $`bun ${workerPath} ${tmp}`.quiet().nothrow()
     const resultFile = join(checksDir, `${safeName(tmp)}.json`)
     expect(await file(resultFile).exists()).toBe(true)
-    const result = (await file(resultFile).json()) as { pass: boolean; violations: number }
+    const result = await readJson<{ pass: boolean; violations: number }>(resultFile)
     expect(result.pass).toBe(true)
     expect(result.violations).toBe(0)
     await rm(tmp, { recursive: true })
@@ -40,7 +42,7 @@ describe('check-worker', () => {
     )
     await $`bun ${workerPath} ${tmp}`.quiet().nothrow()
     const resultFile = join(checksDir, `${safeName(tmp)}.json`)
-    const result = (await file(resultFile).json()) as { pass: boolean }
+    const result = await readJson<{ pass: boolean }>(resultFile)
     expect(result.pass).toBe(false)
     await rm(tmp, { recursive: true })
   })
@@ -68,7 +70,7 @@ describe('check-worker', () => {
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true, scripts: { check: 'true' } }))
     await $`bun ${workerPath} ${tmp}`.quiet().nothrow()
     const resultFile = join(checksDir, `${safeName(tmp)}.json`)
-    const result = (await file(resultFile).json()) as { commit: string }
+    const result = await readJson<{ commit: string }>(resultFile)
     expect(result.commit).toHaveLength(40)
     await rm(tmp, { recursive: true })
   })

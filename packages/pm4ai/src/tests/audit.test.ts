@@ -15,7 +15,6 @@ import {
   checkTrustedDeps,
   usesForbidden
 } from '../audit.js'
-
 setDefaultTimeout(30_000)
 const PROJECT = join(tmpdir(), 'project')
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })
@@ -119,7 +118,7 @@ describe('checkScripts', () => {
     const pkgs = [
       entry('package.json', {
         scripts: {
-          test: `bash -c "turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)"`
+          test: `bash -c "turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces?|missing field|Turborepo will still function' >&2)"`
         }
       })
     ]

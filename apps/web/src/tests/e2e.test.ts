@@ -170,8 +170,10 @@ describe('dashboard API via browser', () => {
       return { data: json, status: res.status }
     })
     expect(result.status).toBe(200)
-    const data = result.data as { json: unknown[] }
-    expect(Array.isArray(data.json)).toBe(true)
+    expect(result.data).toHaveProperty('json')
+    if (typeof result.data !== 'object' || result.data === null || !('json' in result.data))
+      throw new Error('unexpected projects response')
+    expect(Array.isArray(result.data.json)).toBe(true)
   })
   test('fetch unknown procedure returns 404', async () => {
     await page.goto(BASE)
@@ -195,7 +197,17 @@ const waitForSocketConnected = async (timeout = 10_000): Promise<void> => {
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'
     })
-    const data = (await res.json()) as { json: { connected: boolean } }
+    const data: unknown = await res.json()
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('json' in data) ||
+      typeof data.json !== 'object' ||
+      data.json === null ||
+      !('connected' in data.json) ||
+      typeof data.json.connected !== 'boolean'
+    )
+      throw new Error('unexpected socket status response')
     if (data.json.connected) return
     await wait(500)
   }

@@ -12,7 +12,6 @@ import {
   writeCheckResult
 } from '../check-cache.js'
 import { statePath } from '../state-dir.js'
-
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-cc-'))
 const leadingSepRe = /^--/u

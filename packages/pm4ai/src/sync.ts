@@ -21,6 +21,7 @@ import {
   TURBO_WARNING_FILTER
 } from './constants.js'
 import { inferRules } from './infer.js'
+import { parseJson } from './json.js'
 import { DEP_FIELDS } from './types.js'
 import {
   buildPkgDepMap,
@@ -37,7 +38,6 @@ import {
   staleConditionalFiles,
   writeJson
 } from './utils.js'
-
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)
@@ -88,6 +88,13 @@ const buildContents = (titles: string[]): string =>
 interface GeneratedGuide {
   content?: string
   error?: string
+}
+interface TsconfigCompilerOptions {
+  paths?: Record<string, string[]>
+  types?: unknown
+}
+interface MutableCompilerOptions {
+  [key: string]: unknown
 }
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const managed = await resolveManagedFiles(projectPath)
@@ -296,7 +303,7 @@ const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<
   let requiredTrusted: string[] = []
   if (selfPath) {
     const selfPkgPath = join(selfPath, 'package.json')
-    const selfPkg = JSON.parse(await file(selfPkgPath).text()) as PackageJson
+    const selfPkg = parseJson<PackageJson>(await file(selfPkgPath).text())
     requiredTrusted = selfPkg.trustedDependencies ?? []
   }
   const missingTrusted = requiredTrusted.filter(d => !trusted.includes(d))
@@ -333,7 +340,8 @@ const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
     issues.push({ detail: `set tsconfig extends to "${EXPECTED.tsconfigExtends}"`, type: 'synced' })
   }
   if (!getTsconfigTypes(tsconfig)?.includes('bun-types')) {
-    const co = (tsconfig.compilerOptions ?? {}) as Record<string, unknown>
+    /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
+    const co = (tsconfig.compilerOptions ?? {}) as MutableCompilerOptions
     co.types = ['bun-types']
     tsconfig.compilerOptions = co
     changed = true
@@ -692,7 +700,7 @@ const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]>
   const pkgPath = join(projectPath, 'package.json')
   const pkgFile = file(pkgPath)
   if (await pkgFile.exists()) {
-    const pkg = (await pkgFile.json()) as Record<string, unknown>
+    const pkg = parseJson<Record<string, unknown>>(await pkgFile.text())
     const { workspaces } = pkg
     if (
       Array.isArray(workspaces) &&
@@ -751,7 +759,8 @@ const ALIAS_TRIM_RE = /\/\*$/u
 const ALIAS_DOT_SLASH_RE = /^\.\//u
 const resolveLibBase = async (appDir: string): Promise<string> => {
   const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
-  const paths = (tsconfig?.compilerOptions as undefined | { paths?: Record<string, string[]> })?.paths
+  /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
+  const paths = (tsconfig?.compilerOptions as undefined | TsconfigCompilerOptions)?.paths
   const aliasTarget = paths?.['@/*']?.[0]
   if (!aliasTarget) return 'src'
   return aliasTarget.replace(ALIAS_TRIM_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'

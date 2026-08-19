@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto'
 import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { discover } from './discover.js'
-
 const dirExists = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()

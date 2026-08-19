@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
 const dirExists = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()

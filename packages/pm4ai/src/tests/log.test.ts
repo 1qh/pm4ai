@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readLog, updateLog } from '../log.js'
-
 const overwritePath = join(tmpdir(), 'overwrite-test')
 describe('updateLog + readLog', () => {
   test('writes and reads back a log entry', async () => {

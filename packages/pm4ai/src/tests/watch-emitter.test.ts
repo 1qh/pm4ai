@@ -6,7 +6,7 @@ import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
 import { clients, emit, SOCKET_PATH, socketExists, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-
+import { parseJson } from '../json.js'
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 /** Polls to a deadline instead of sleeping a fixed span: a loaded runner needs longer than any constant a green local run would pick, and a constant tuned for it wastes that span on every pass. */
 const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void> => {
@@ -32,7 +32,7 @@ const readEvents = async (sock: Socket, count: number): Promise<WatchEvent[]> =>
       buffer = lines.pop() ?? ''
       for (const line of lines)
         if (line) {
-          events.push(JSON.parse(line) as WatchEvent)
+          events.push(parseJson<WatchEvent>(line))
           if (events.length >= count) resolve(events)
         }
     })
@@ -110,7 +110,7 @@ describe('event delivery', () => {
     expect(lines).toHaveLength(2)
     for (const line of lines)
       expect(() => {
-        JSON.parse(line) as unknown
+        JSON.parse(line)
       }).not.toThrow()
     sock.destroy()
   })

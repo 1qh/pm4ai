@@ -5,7 +5,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { discover } from './discover.js'
 import { debug, getGhRepo } from './utils.js'
-
 const RUNNER_VERSION = '2.334.0'
 const RUNNER_LABEL = 'self-hosted-mac-arm64'
 const NTFY_TOPIC = '1qh-ci'

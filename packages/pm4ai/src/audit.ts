@@ -11,7 +11,7 @@ import {
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
-
+import { parseJson } from './json.js'
 interface PkgEntry {
   path: string
   pkg: PackageJson
@@ -240,7 +240,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
     issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
     const selfPkgFile = file(join(import.meta.dirname, '..', '..', '..', 'package.json'))
     const selfPkgExists = await selfPkgFile.exists()
-    const selfPkg = selfPkgExists ? ((await selfPkgFile.json()) as PackageJson) : ({} as PackageJson)
+    const selfPkg = selfPkgExists ? parseJson<PackageJson>(await selfPkgFile.text()) : {}
     issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
   }
   issues.push(
@@ -259,7 +259,7 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
       if (!res?.ok) return
       let doc: { time?: Record<string, string>; versions?: Record<string, { deprecated?: string }> }
       try {
-        doc = (await res.json()) as typeof doc
+        doc = parseJson<typeof doc>(await res.text())
       } catch {
         return
       }

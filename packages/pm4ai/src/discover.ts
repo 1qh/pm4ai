@@ -6,7 +6,7 @@ import { CONFIG_DIR } from './config-dir.js'
 import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { pm4aiCloneBase, pm4aiHome } from './env.js'
 import { debug, isNestedInRepo, projectName } from './utils.js'
-
+import { parseJson } from './json.js'
 interface Project {
   isCnsync: boolean
   isSelf: boolean
@@ -25,11 +25,11 @@ const hasLintmaxDep = async (dir: string): Promise<boolean> => {
   const pkgFile = file(join(dir, 'package.json'))
   if (!(await pkgFile.exists())) return false
   try {
-    const pkg = (await pkgFile.json()) as {
+    const pkg = parseJson<{
       dependencies?: Record<string, string>
       devDependencies?: Record<string, string>
       peerDependencies?: Record<string, string>
-    }
+    }>(await pkgFile.text())
     return Boolean(
       pkg.dependencies?.[LINTMAX_PKG] ?? pkg.devDependencies?.[LINTMAX_PKG] ?? pkg.peerDependencies?.[LINTMAX_PKG]
     )

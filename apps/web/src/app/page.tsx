@@ -28,7 +28,7 @@ import {
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { client } from '@/lib/client'
-
+import { parseJson } from '@/lib/json'
 interface ApiProject {
   checkResult: null | { at: string; pass: boolean; violations: number }
   name: string
@@ -143,7 +143,7 @@ const Dashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST'
       })
-      const data = (await res.json()) as { json: ApiProject[] }
+      const data = parseJson<{ json: ApiProject[] }>(await res.text())
       const seen = new Set<string>()
       return data.json.filter(p => {
         if (seen.has(p.name)) return false
@@ -196,7 +196,7 @@ const Dashboard = () => {
             if (eventMatch?.[1] === 'done') return
             if (eventMatch?.[1] === 'message' && dataMatch?.[1])
               try {
-                const raw = JSON.parse(dataMatch[1]) as { json: unknown }
+                const raw = parseJson<{ json: unknown }>(dataMatch[1])
                 const parsed = watchEventSchema.safeParse(raw.json)
                 if (parsed.success) {
                   const event = parsed.data

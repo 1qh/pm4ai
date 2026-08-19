@@ -1,6 +1,5 @@
 import { guide } from 'pm4ai/guide'
 import { source } from '@/lib/source'
-
 const ecosystem = `## Ecosystem
 All projects with lintmax in deps are managed by pm4ai. The tool syncs configs, generates CLAUDE.md, enforces conventions, and runs maintenance.
 Key repos:

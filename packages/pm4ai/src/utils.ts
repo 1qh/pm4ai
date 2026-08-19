@@ -6,7 +6,7 @@ import { access, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
-
+import { parseJson } from './json.js'
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)
@@ -19,8 +19,8 @@ const readJson = async (path: string): Promise<Record<string, unknown> | undefin
   const f = file(path)
   if (!(await f.exists())) return
   try {
-    const raw: unknown = await f.json()
-    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) return raw as Record<string, unknown>
+    const raw: unknown = parseJson<unknown>(await f.text())
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) return raw
   } catch {}
 }
 const readPkg = async (path: string): Promise<PackageJson | undefined> => {
@@ -126,8 +126,18 @@ const isInsideExistingRepo = async (dir: string): Promise<boolean> => {
   }
 }
 const rel = (fullPath: string, base: string) => fullPath.replace(`${base}/`, '')
-const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined =>
-  (config.compilerOptions as Record<string, unknown> | undefined)?.types as string[] | undefined
+interface TsconfigTypesShape {
+  types?: unknown
+}
+const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined => {
+  const compilerOptions = config.compilerOptions
+  if (typeof compilerOptions !== 'object' || compilerOptions === null || Array.isArray(compilerOptions)) return
+  /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions comes from validated JSON and only its types field is read */
+  const options = compilerOptions as TsconfigTypesShape
+  return Array.isArray(options.types) && options.types.every((type): type is string => typeof type === 'string')
+    ? options.types
+    : undefined
+}
 const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
 const isSkippedPath = (path: string) => path.includes('readonly/') || path.includes('.next/')
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu

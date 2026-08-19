@@ -2,10 +2,10 @@
 /** biome-ignore-all lint/performance/noAwaitInLoops: sequential npm operations must stay ordered */
 import { $, file } from 'bun'
 import { join } from 'node:path'
-
+import { parseJson } from './json.js'
 const cleanup = async () => {
   const pkgPath = join(process.cwd(), 'package.json')
-  const pkg = (await file(pkgPath).json()) as { name?: string; version?: string }
+  const pkg = parseJson<{ name?: string; version?: string }>(await file(pkgPath).text())
   if (!(pkg.name && pkg.version)) {
     console.error('package.json missing name or version')
     process.exitCode = 1
@@ -16,7 +16,7 @@ const cleanup = async () => {
     console.log(`${pkg.name}: first publish, nothing to clean`)
     return
   }
-  const versions = JSON.parse(result.stdout.toString()) as string | string[]
+  const versions = parseJson<string | string[]>(result.stdout.toString())
   const allVersions = Array.isArray(versions) ? versions : [versions]
   const old = allVersions.filter(v => v !== pkg.version)
   if (old.length === 0) {

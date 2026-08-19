@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-
+import { parseJson } from './json.js'
 interface PkgJson {
   license?: string
   name?: string
   requiredDevDeps?: string[]
 }
-const selfPkg = JSON.parse(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as PkgJson
+const selfPkg = parseJson<PkgJson>(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
 const PKG_NAME = selfPkg.name ?? 'pm4ai'
 const DEFAULT_LICENSE = selfPkg.license ?? 'MIT'
 const LINTMAX_PKG = 'lintmax'
@@ -18,7 +18,7 @@ const TSDOWN_BASE = {
   outDir: 'dist'
 }
 const DEFAULT_FILES = [TSDOWN_BASE.outDir]
-const REQUIRED_ROOT_DEVDEPS = (selfPkg as { requiredDevDeps?: string[] }).requiredDevDeps ?? []
+const REQUIRED_ROOT_DEVDEPS = selfPkg.requiredDevDeps ?? []
 const DEFAULT_DEP_VERSION = 'latest'
 const CLAUDE_MD = 'CLAUDE.md'
 const EXPECTED = {
@@ -28,7 +28,7 @@ const EXPECTED = {
   vercelInstall: 'bun i'
 }
 const TURBO_FLAG = '--output-logs=errors-only'
-const TURBO_WARNING_FILTER = 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function'
+const TURBO_WARNING_FILTER = 'WARNING|Could not resolve workspaces?|missing field|Turborepo will still function'
 const filterTurboWorkspaceWarning = (cmd: string): string =>
   `bash -c "${cmd} 2> >(grep -vE '${TURBO_WARNING_FILTER}' >&2)"`
 const DEFAULT_SCRIPTS = {

@@ -8,14 +8,14 @@
   ],
   "scripts": {
     "action": "sh up.sh && bun run test",
-    "build": "bash -c \"turbo build --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)\"",
+    "build": "bash -c \"turbo build --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces?|missing field|Turborepo will still function' >&2)\"",
     "check": "lintmax check",
     "clean": "sh clean.sh",
     "fix": "lintmax fix",
     "postinstall": "sherif -i typescript",
     "prepare": "bunx simple-git-hooks",
     "pretest": "which rg || sudo apt-get install -y ripgrep",
-    "test": "bash -c \"turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)\""
+    "test": "bash -c \"turbo test --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces?|missing field|Turborepo will still function' >&2)\""
   },
   "simple-git-hooks": {
     "pre-commit": "sh up.sh && git add -u"

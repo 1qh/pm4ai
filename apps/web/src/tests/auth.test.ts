@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'
-
 const uuidRe = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/iu
 describe('generateToken', () => {
   test('returns a UUID v4 string', () => {

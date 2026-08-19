@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import type { WatchEvent } from '../watch-types.js'
 import { emitToSocket, socketExists, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-
+import { parseJson } from '../json.js'
 setDefaultTimeout(60_000)
 const isCI = 'CI' in process.env
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
@@ -51,7 +51,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ detail: 'done', project: 'test-proj', status: 'ok', step: 'sync' }))
     await wait(500)
     expect(lines.length).toBeGreaterThanOrEqual(2)
-    const parsed = lines.map(l => JSON.parse(l) as WatchEvent)
+    const parsed = lines.map(l => parseJson<WatchEvent>(l))
     expect(parsed[0]?.project).toBe('test-proj')
     expect(parsed[0]?.step).toBe('sync')
     expect(parsed[0]?.status).toBe('start')
@@ -66,7 +66,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await wait(500)
     expect(lines).toHaveLength(3)
     for (const line of lines) {
-      const e = JSON.parse(line) as WatchEvent
+      const e = parseJson<WatchEvent>(line)
       expect(e).toHaveProperty('at')
       expect(e).toHaveProperty('project')
       expect(e).toHaveProperty('step')
@@ -80,7 +80,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
       await emitToSocket(createEvent({ project: `proj-${i}`, status: 'start', step: 'sync' }))
     await wait(1000)
     expect(lines).toHaveLength(20)
-    const projects = new Set(lines.map(l => (JSON.parse(l) as WatchEvent).project))
+    const projects = new Set(lines.map(l => parseJson<WatchEvent>(l).project))
     expect(projects.size).toBe(20)
   })
   test('full fix lifecycle for a project', async () => {
@@ -98,7 +98,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
       await emitToSocket(createEvent({ detail, project, status, step }))
     await wait(500)
     expect(lines).toHaveLength(7)
-    const events = lines.map(l => JSON.parse(l) as WatchEvent)
+    const events = lines.map(l => parseJson<WatchEvent>(l))
     expect(events[0]?.step).toBe('sync')
     expect(events[0]?.status).toBe('start')
     expect(events[1]?.detail).toBe('3 synced')
@@ -116,7 +116,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ detail: 'clean', project: 'b', status: 'ok', step: 'done' }))
     await wait(500)
     expect(lines).toHaveLength(6)
-    const events = lines.map(l => JSON.parse(l) as WatchEvent)
+    const events = lines.map(l => parseJson<WatchEvent>(l))
     const aEvents = events.filter(e => e.project === 'a')
     const bEvents = events.filter(e => e.project === 'b')
     expect(aEvents).toHaveLength(3)
@@ -129,7 +129,7 @@ describe.skipIf(isCI)('watch --json e2e', () => {
     await emitToSocket(createEvent({ detail: '5 violations', project: 'broken', status: 'fail', step: 'done' }))
     await wait(500)
     expect(lines).toHaveLength(3)
-    const events = lines.map(l => JSON.parse(l) as WatchEvent)
+    const events = lines.map(l => parseJson<WatchEvent>(l))
     expect(events[1]?.status).toBe('fail')
     expect(events[1]?.detail).toBe('5 violations')
     expect(events[2]?.step).toBe('done')

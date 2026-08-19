@@ -1,7 +1,6 @@
 import { file } from 'bun'
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-
 describe('setup templates', () => {
   test('SwiftBar plugin uses bunx pm4ai@latest', async () => {
     const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()

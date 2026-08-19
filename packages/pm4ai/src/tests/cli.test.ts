@@ -1,7 +1,6 @@
 import { $ } from 'bun'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { join } from 'node:path'
-
 setDefaultTimeout(30_000)
 const cli = join(import.meta.dir, '..', '..', 'dist', 'cli.mjs')
 const versionRe = /^\d+\.\d+\.\d+$/u

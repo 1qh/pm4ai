@@ -18,7 +18,6 @@ import {
   checkVercel,
   deployStateFailed
 } from '../checks.js'
-
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {

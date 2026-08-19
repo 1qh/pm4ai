@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
-
 setDefaultTimeout(30_000)
 describe('timeAgo', () => {
   test('5 minutes ago', () => {

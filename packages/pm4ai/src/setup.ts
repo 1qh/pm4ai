@@ -3,7 +3,6 @@ import { write } from 'bun'
 import { access, chmod, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-
 const SWIFTBAR_PLUGIN = `#!/bin/bash
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>

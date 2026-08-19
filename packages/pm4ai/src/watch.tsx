@@ -28,7 +28,6 @@ import {
   STEP_LABELS,
   timeAgo
 } from './watch-state.js'
-
 const VERSION = pkg.version ?? '0.0.0'
 const safeReadCheck = (path: string) => {
   try {
@@ -89,7 +88,7 @@ const ProjectRow = ({
   const secs = state.elapsed > 0 ? state.elapsed : undefined
   const stepInfo =
     state.status === 'running'
-      ? `${STEP_LABELS[state.step as keyof typeof STEP_LABELS] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
+      ? `${STEP_LABELS[state.step] ?? '⚡ working'} ${progressDots(state.completedSteps, state.step)}`
       : (state.detail ?? '')
   return (
     <Box gap={1} paddingLeft={1}>

@@ -25,8 +25,11 @@ import {
   rel,
   resolveManagedFiles
 } from './utils.js'
-
+import { parseJson } from './json.js'
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
+interface TsconfigCompilerOptions {
+  paths?: Record<string, string[]>
+}
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
   const dot = pattern.includes('/.')
@@ -104,11 +107,11 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
     debug('command failed:', `gh run list --repo ${repo}`)
     return []
   }
-  const runs = JSON.parse(result.stdout.toString().trim() || '[]') as {
+  const runs = parseJson<{
     conclusion: null | string
     createdAt: string
     status: string
-  }[]
+  }[]>(result.stdout.toString().trim() || '[]')
   const issues: Issue[] = []
   const latest = runs.at(0)
   if (!latest) issues.push(issue('ci', 'CI: no runs'))
@@ -338,7 +341,7 @@ const fetchLatest = async (name: string): Promise<string | undefined> => {
   try {
     const res = await fetch(`https://registry.npmjs.org/${name}/latest`, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return
-    const data = (await res.json()) as { version?: string }
+    const data = parseJson<{ version?: string }>(await res.text())
     return data.version
   } catch {
     debug('checkDepsLatest fetch failed:', name)
@@ -555,13 +558,13 @@ const checkVercel = async (projectPath: string): Promise<Issue[]> => {
     debug('gh api deployments failed for', repo)
     return []
   }
-  const deployments = JSON.parse(dep.stdout.toString().trim() || '[]') as { id?: number }[]
+  const deployments = parseJson<{ id?: number }[]>(dep.stdout.toString().trim() || '[]')
   const id = deployments[0]?.id
   if (id === undefined) return []
   const statusesUrl = `repos/${repo}/deployments/${id}/statuses?per_page=1`
   const st = await $`gh api ${statusesUrl}`.quiet().nothrow()
   if (st.exitCode !== 0) return []
-  const statuses = JSON.parse(st.stdout.toString().trim() || '[]') as { state?: string }[]
+  const statuses = parseJson<{ state?: string }[]>(st.stdout.toString().trim() || '[]')
   return deployStateFailed(statuses[0]?.state ?? '')
     ? [issue('deploy', 'vercel production deploy failed — build locally then `vercel deploy --prebuilt --prod`')]
     : []
@@ -605,7 +608,8 @@ const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => 
     fumadocsDirs.map(async appDir => {
       const dirIssues: Issue[] = []
       const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
-      const aliasTarget = (tsconfig?.compilerOptions as undefined | { paths?: Record<string, string[]> })?.paths?.[
+      /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
+      const aliasTarget = (tsconfig?.compilerOptions as undefined | TsconfigCompilerOptions)?.paths?.[
         '@/*'
       ]?.[0]
       const libBase = aliasTarget

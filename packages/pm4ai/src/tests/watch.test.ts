@@ -5,7 +5,7 @@ import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
 import { emit, SOCKET_PATH, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-
+import { parseJson } from '../json.js'
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 const connectAndRead = async (count: number): Promise<WatchEvent[]> =>
   new Promise(resolve => {
@@ -18,7 +18,7 @@ const connectAndRead = async (count: number): Promise<WatchEvent[]> =>
       buffer = lines.pop() ?? ''
       for (const line of lines)
         if (line) {
-          events.push(JSON.parse(line) as WatchEvent)
+          events.push(parseJson<WatchEvent>(line))
           if (events.length >= count) {
             sock.destroy()
             resolve(events)

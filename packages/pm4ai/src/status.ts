@@ -37,7 +37,6 @@ import { checkClaudeMdFresh } from './sync.js'
 import { isInsideProject, projectName } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
-
 const status = async (swiftbar = false, all = false, excludes: readonly string[] = []) => {
   let allProjects: { name: string; path: string }[]
   let selfPath: string

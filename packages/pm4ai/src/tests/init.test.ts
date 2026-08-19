@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { checkSherifScope, checkTypescriptPin } from '../checks.js'
 import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
-
+import { parseJson } from '../json.js'
 setDefaultTimeout(30_000)
 const dirExists = async (p: string): Promise<boolean> => {
   try {
@@ -27,7 +27,17 @@ const pathExists = async (p: string): Promise<boolean> => {
 const TEST_NAME = `pm4ai-init-${Date.now()}`
 const TEST_DIR = join(tmpdir(), TEST_NAME)
 const providerJsxRe = /<\w+Provider/u
-const readPkg = async (path: string) => (await file(path).json()) as Record<string, unknown>
+interface FixturePackage {
+  bin?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  name?: string
+  private?: boolean
+  scripts?: Record<string, string>
+  'simple-git-hooks'?: Record<string, string>
+  trustedDependencies?: string[]
+}
+const readPkg = async (path: string): Promise<FixturePackage> => parseJson<FixturePackage>(await file(path).text())
 afterAll(async () => rm(TEST_DIR, { force: true, recursive: true }), 60_000)
 describe('init scaffold', () => {
   test('creates project', async () => {
@@ -98,19 +108,19 @@ describe('init scaffold', () => {
     expect(rootPkg.private).toBe(true)
     const cliPkg = await readPkg(join(TEST_DIR, 'packages/cli/package.json'))
     expect(cliPkg.name).toBe(TEST_NAME)
-    const bin = cliPkg.bin as Record<string, string>
+    const bin = cliPkg.bin ?? {}
     expect(bin[TEST_NAME]).toBe('dist/cli.mjs')
     const libPkg = await readPkg(join(TEST_DIR, 'packages/lib/package.json'))
     expect(libPkg.name).toBe(`@${TEST_NAME}/lib`)
   })
   test('no pm4ai-specific deps', async () => {
     const webPkg = await readPkg(join(TEST_DIR, 'apps/web/package.json'))
-    const webDeps = (webPkg.dependencies ?? {}) as Record<string, string>
+    const webDeps = webPkg.dependencies ?? {}
     expect(webDeps.pm4ai).toBeUndefined()
     expect(webDeps['@orpc/client']).toBeUndefined()
     expect(webDeps.zod).toBeUndefined()
     const docsPkg = await readPkg(join(TEST_DIR, 'apps/docs/package.json'))
-    const docsDeps = (docsPkg.dependencies ?? {}) as Record<string, string>
+    const docsDeps = docsPkg.dependencies ?? {}
     expect(docsDeps.pm4ai).toBeUndefined()
   })
   test('no Provider in layout files', async () => {
@@ -128,16 +138,14 @@ describe('init scaffold', () => {
   })
   test('template root package.json matches constants', async () => {
     const tplPkg = await readPkg(join(TEST_DIR, 'package.json'))
-    const scripts = tplPkg.scripts as Record<string, string>
+    const scripts = tplPkg.scripts ?? {}
     for (const [key, val] of Object.entries(DEFAULT_SCRIPTS)) expect(scripts[key]).toBe(val)
-    const hooks = tplPkg['simple-git-hooks'] as Record<string, string>
+    const hooks = tplPkg['simple-git-hooks'] ?? {}
     expect(hooks['pre-commit']).toBe(EXPECTED.preCommit)
-    const devDeps = Object.keys(tplPkg.devDependencies as Record<string, string>)
+    const devDeps = Object.keys(tplPkg.devDependencies ?? {})
     for (const dep of REQUIRED_ROOT_DEVDEPS) expect(devDeps).toContain(dep)
-    const rootPkg = (await file(join(import.meta.dirname, '..', '..', '..', '..', 'package.json')).json()) as {
-      trustedDependencies?: string[]
-    }
-    const trusted = tplPkg.trustedDependencies as string[]
+    const rootPkg = await readPkg(join(import.meta.dirname, '..', '..', '..', '..', 'package.json'))
+    const trusted = tplPkg.trustedDependencies ?? []
     for (const dep of rootPkg.trustedDependencies ?? []) expect(trusted).toContain(dep)
     expect(tplPkg.private).toBe(true)
     expect(tplPkg.name).toBeUndefined()

@@ -11,10 +11,12 @@ import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
 import { z } from 'zod/v4'
 import { validateSession } from './auth'
 import { isConnected, subscribe } from './socket'
-
 type CheckResult = z.infer<typeof checkResultSchema>
 const checksDir = join(homedir(), '.pm4ai', 'checks')
 const leadingSepRe = /^--/u
+interface AuthedContext {
+  headers: Headers
+}
 const pathExists = async (p: string): Promise<boolean> => {
   try {
     await stat(p)
@@ -51,7 +53,8 @@ const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null
     .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 }
 const authed = os.middleware(async ({ context, next }) => {
-  const { headers } = context as { headers: Headers }
+  /** biome-ignore lint/nursery/noUnsafeTypeAssertion: oRPC middleware context exposes request headers through an untyped context */
+  const { headers } = context as AuthedContext
   if (!validateSession(headers.get('cookie'))) throw new Error('Unauthorized')
   return next({})
 })

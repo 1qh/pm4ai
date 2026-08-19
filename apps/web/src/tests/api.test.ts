@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from '
 import { join } from 'node:path'
 import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
-
+import { parseJson } from '../lib/json'
 const dashboardDir = join(import.meta.dirname, '..', '..')
 setDefaultTimeout(60_000)
 /** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
@@ -83,6 +83,13 @@ interface RpcResponse {
   name?: string
   path?: string
 }
+interface SocketStatusResponse {
+  connected: boolean
+}
+interface ProjectStatusResponse {
+  name: string
+  path: string
+}
 const rpc = async (
   procedure: string,
   body: unknown = [],
@@ -94,7 +101,7 @@ const rpc = async (
     headers: { 'Content-Type': 'application/json' },
     method: 'POST'
   })
-  const json = (await res.json()) as RpcResponse
+  const json = parseJson<RpcResponse>(await res.text())
   return { json, status: res.status }
 }
 describe('API endpoints', () => {
@@ -132,7 +139,8 @@ describe('API endpoints', () => {
   test('socketStatus returns connected boolean', async () => {
     const { json, status } = await rpc('socketStatus')
     expect(status).toBe(200)
-    const data = json.json as unknown as { connected: boolean }
+    /** biome-ignore lint/nursery/noUnsafeTypeAssertion: RPC procedure response is narrowed by the procedure under test */
+    const data = json.json as SocketStatusResponse
     expect(data.connected).toBe(false)
   })
   test('fixAll without auth returns error', async () => {
@@ -150,7 +158,8 @@ describe('API endpoints', () => {
   test('projectStatus returns project data', async () => {
     const { json, status } = await rpc('projectStatus', undefined, { project: 'pm4ai' })
     expect(status).toBe(200)
-    const data = json.json as unknown as { name: string; path: string }
+    /** biome-ignore lint/nursery/noUnsafeTypeAssertion: RPC procedure response is narrowed by the procedure under test */
+    const data = json.json as ProjectStatusResponse
     expect(data.name).toBe('pm4ai')
     expect(data.path).toBeTruthy()
   })

@@ -4,7 +4,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isConnected, subscribe } from '../lib/socket'
-
+import { parseJson } from '../lib/json'
 const leadingSepRe = /^--/u
 const toSafe = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
 const decode = (fileName: string) => `/${fileName.replace('.json', '').replaceAll('--', '/')}`
@@ -19,7 +19,7 @@ describe('check result reading', () => {
     await writeCheck(dir, '/Users/o/z/pm4ai', { at: '2026-01-01T00:00:00Z', pass: true, violations: 0 })
     const [firstFile] = await jsonFiles(dir)
     expect(firstFile).toBeDefined()
-    const data = (await Bun.file(join(dir, firstFile ?? '')).json()) as Record<string, unknown>
+    const data = parseJson<Record<string, unknown>>(await Bun.file(join(dir, firstFile ?? '')).text())
     expect(data.at).toBeDefined()
     expect(typeof data.pass).toBe('boolean')
     expect(typeof data.violations).toBe('number')
@@ -32,7 +32,7 @@ describe('check result reading', () => {
     const contents = await Promise.all((await jsonFiles(dir)).map(async f => Bun.file(join(dir, f)).text()))
     for (const content of contents)
       expect(() => {
-        JSON.parse(content) as unknown
+        JSON.parse(content)
       }).not.toThrow()
     await rm(dir, { recursive: true })
   })
@@ -97,7 +97,7 @@ describe('getProjectsFromCache logic', () => {
     const dir = await makeChecksDir()
     await writeCheck(dir, '/x/y', { at: 'x', pass: true, violations: 0 })
     const datas = await Promise.all(
-      (await jsonFiles(dir)).map(async f => Bun.file(join(dir, f)).json() as Promise<Record<string, unknown>>)
+      (await jsonFiles(dir)).map(async f => parseJson<Record<string, unknown>>(await Bun.file(join(dir, f)).text()))
     )
     for (const data of datas) {
       expect(data).toHaveProperty('at')

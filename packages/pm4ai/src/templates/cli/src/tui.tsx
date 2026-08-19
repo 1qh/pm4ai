@@ -2,7 +2,6 @@ import { Box, render, Text, useApp, useInput } from 'ink'
 import Spinner from 'ink-spinner'
 import { useState } from 'react'
 import pkg from '../package.json' with { type: 'json' }
-
 const ITEMS = ['build', 'test', 'deploy']
 const App = () => {
   const app = useApp()
