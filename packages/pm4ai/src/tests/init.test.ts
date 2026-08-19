@@ -8,6 +8,7 @@ import { checkSherifScope, checkTypescriptPin } from '../checks.js'
 import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
 import { parseJson } from '../json.js'
+
 setDefaultTimeout(30_000)
 const dirExists = async (p: string): Promise<boolean> => {
   try {

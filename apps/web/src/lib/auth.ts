@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+
 const SESSION_SECRET = randomUUID()
 const pendingTokens = new Map<string, true>()
 let currentToken: string | undefined

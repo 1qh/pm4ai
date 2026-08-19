@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { consumeToken, createSessionCookie } from '@/lib/auth'
+
 export const GET = async (_req: Request, { params }: { params: Promise<{ token: string }> }) => {
   const { token } = await params
   if (!consumeToken(token)) return new NextResponse('Unauthorized', { status: 401 })

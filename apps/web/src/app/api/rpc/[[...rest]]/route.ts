@@ -1,5 +1,6 @@
 import { RPCHandler } from '@orpc/server/fetch'
 import { router } from '@/lib/router'
+
 const handler = new RPCHandler(router)
 const handle = async (req: Request) => {
   const url = new URL(req.url)

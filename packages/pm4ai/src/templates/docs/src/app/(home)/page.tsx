@@ -1,4 +1,5 @@
 import Link from 'next/link'
+
 const Page = () => (
   <div className='flex flex-1 flex-col items-center justify-center gap-8 px-4'>
     <h1 className='text-6xl font-extrabold tracking-tighter'>pkgname</h1>

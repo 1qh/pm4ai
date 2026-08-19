@@ -13,6 +13,7 @@ import {
   RG_EXCLUDE,
   UI_PACKAGE_NAME
 } from './constants.js'
+import { parseJson } from './json.js'
 import {
   debug,
   detectCapabilities,
@@ -25,7 +26,7 @@ import {
   rel,
   resolveManagedFiles
 } from './utils.js'
-import { parseJson } from './json.js'
+
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 interface TsconfigCompilerOptions {
   paths?: Record<string, string[]>
@@ -107,11 +108,13 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
     debug('command failed:', `gh run list --repo ${repo}`)
     return []
   }
-  const runs = parseJson<{
-    conclusion: null | string
-    createdAt: string
-    status: string
-  }[]>(result.stdout.toString().trim() || '[]')
+  const runs = parseJson<
+    {
+      conclusion: null | string
+      createdAt: string
+      status: string
+    }[]
+  >(result.stdout.toString().trim() || '[]')
   const issues: Issue[] = []
   const latest = runs.at(0)
   if (!latest) issues.push(issue('ci', 'CI: no runs'))
@@ -609,9 +612,7 @@ const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => 
       const dirIssues: Issue[] = []
       const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
       /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
-      const aliasTarget = (tsconfig?.compilerOptions as undefined | TsconfigCompilerOptions)?.paths?.[
-        '@/*'
-      ]?.[0]
+      const aliasTarget = (tsconfig?.compilerOptions as TsconfigCompilerOptions | undefined)?.paths?.['@/*']?.[0]
       const libBase = aliasTarget
         ? aliasTarget.replace(ALIAS_TRIM_TAIL_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'
         : 'src'

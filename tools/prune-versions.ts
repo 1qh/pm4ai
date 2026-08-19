@@ -3,6 +3,7 @@
 /* eslint-disable no-console */
 import { $, file } from 'bun'
 import { join } from 'node:path'
+
 const toVersionList = (parsed: unknown): string[] => {
   if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === 'string')
   if (typeof parsed === 'string') return [parsed]

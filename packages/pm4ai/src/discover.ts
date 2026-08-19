@@ -5,8 +5,9 @@ import { dirname, join } from 'node:path'
 import { CONFIG_DIR } from './config-dir.js'
 import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './constants.js'
 import { pm4aiCloneBase, pm4aiHome } from './env.js'
-import { debug, isNestedInRepo, projectName } from './utils.js'
 import { parseJson } from './json.js'
+import { debug, isNestedInRepo, projectName } from './utils.js'
+
 interface Project {
   isCnsync: boolean
   isSelf: boolean

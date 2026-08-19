@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { ALL_BANNED } from '../banned.js'
+
 const extractExactName = (ban: string): string | undefined => {
   if (!ban.endsWith('"')) return
   const clean = ban.slice(1, -1)
@@ -12,7 +13,9 @@ const checkExists = async (name: string): Promise<boolean> => {
 }
 test('all banned packages exist on npm', async () => {
   if (!process.env.PM4AI_LIVE) return
-  const names = [...new Set(ALL_BANNED.map(b => extractExactName(b.ban)).filter((name): name is string => name !== undefined))]
+  const names = [
+    ...new Set(ALL_BANNED.map(b => extractExactName(b.ban)).filter((name): name is string => name !== undefined))
+  ]
   const batchSize = 50
   const missing: string[] = []
   for (let i = 0; i < names.length; i += batchSize) {

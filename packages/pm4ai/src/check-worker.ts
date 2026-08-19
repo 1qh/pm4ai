@@ -2,6 +2,7 @@ import { $, write } from 'bun'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { statePath } from './state-dir.js'
+
 const projectPath = process.argv[2]
 if (!projectPath) throw new Error('project path required')
 const safeName = projectPath.replaceAll('/', '--').replace(/^--/u, '')

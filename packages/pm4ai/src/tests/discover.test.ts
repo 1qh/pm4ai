@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discover, discoverSources, isCnsyncRepo } from '../discover.js'
+
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-discover-'))
 const initGitRepo = async (dir: string, remote?: string) => {

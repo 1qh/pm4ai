@@ -3,9 +3,10 @@ import { file } from 'bun'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
+import { parseJson } from '../json.js'
 import { emit, SOCKET_PATH, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-import { parseJson } from '../json.js'
+
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 const connectAndRead = async (count: number): Promise<WatchEvent[]> =>
   new Promise(resolve => {

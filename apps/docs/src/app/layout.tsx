@@ -4,6 +4,7 @@ import { cn } from '@a/ui'
 import { mono, sans } from './fonts'
 import './global.css'
 import { Providers } from './providers'
+
 const metadata: Metadata = {
   title: 'pm4ai docs'
 }

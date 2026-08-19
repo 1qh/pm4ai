@@ -4,11 +4,11 @@ import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fix, isDocsOnlyChange, maintain } from '../fix.js'
-import { stateDir, statePath } from '../state-dir.js'
 import { parseJson } from '../json.js'
+import { stateDir, statePath } from '../state-dir.js'
+
 setDefaultTimeout(30_000)
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- typed test-fixture JSON boundary
-const readJson = async <T,>(path: string): Promise<T> => parseJson<T>(await file(path).text())
+const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
 const toFileName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')

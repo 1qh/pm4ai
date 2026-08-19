@@ -3,11 +3,11 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { statePath } from '../state-dir.js'
 import { parseJson } from '../json.js'
+import { statePath } from '../state-dir.js'
+
 setDefaultTimeout(30_000)
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- typed test-fixture JSON boundary
-const readJson = async <T,>(path: string): Promise<T> => parseJson<T>(await file(path).text())
+const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const dirExists = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()

@@ -4,9 +4,10 @@ import { write } from 'bun'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
+import { parseJson } from '../json.js'
 import { clients, emit, SOCKET_PATH, socketExists, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-import { parseJson } from '../json.js'
+
 const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 /** Polls to a deadline instead of sleeping a fixed span: a loaded runner needs longer than any constant a green local run would pick, and a constant tuned for it wastes that span on every pass. */
 const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void> => {

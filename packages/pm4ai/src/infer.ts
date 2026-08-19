@@ -4,6 +4,7 @@ import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ALL_DEP_FIELDS } from './types.js'
 import { collectWorkspacePackages } from './utils.js'
+
 const parseFrontmatter = (content: string): Record<string, string> => {
   if (!content.startsWith('---')) return {}
   const endIdx = content.indexOf('---', 3)

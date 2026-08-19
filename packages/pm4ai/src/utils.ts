@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 import { parseJson } from './json.js'
+
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)
@@ -130,7 +131,7 @@ interface TsconfigTypesShape {
   types?: unknown
 }
 const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined => {
-  const compilerOptions = config.compilerOptions
+  const { compilerOptions } = config
   if (typeof compilerOptions !== 'object' || compilerOptions === null || Array.isArray(compilerOptions)) return
   /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions comes from validated JSON and only its types field is read */
   const options = compilerOptions as TsconfigTypesShape

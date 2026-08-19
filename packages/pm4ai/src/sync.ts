@@ -38,6 +38,7 @@ import {
   staleConditionalFiles,
   writeJson
 } from './utils.js'
+
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)
@@ -89,12 +90,10 @@ interface GeneratedGuide {
   content?: string
   error?: string
 }
+type MutableCompilerOptions = Record<string, unknown>
 interface TsconfigCompilerOptions {
   paths?: Record<string, string[]>
   types?: unknown
-}
-interface MutableCompilerOptions {
-  [key: string]: unknown
 }
 const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const managed = await resolveManagedFiles(projectPath)
@@ -760,7 +759,7 @@ const ALIAS_DOT_SLASH_RE = /^\.\//u
 const resolveLibBase = async (appDir: string): Promise<string> => {
   const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
   /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
-  const paths = (tsconfig?.compilerOptions as undefined | TsconfigCompilerOptions)?.paths
+  const paths = (tsconfig?.compilerOptions as TsconfigCompilerOptions | undefined)?.paths
   const aliasTarget = paths?.['@/*']?.[0]
   if (!aliasTarget) return 'src'
   return aliasTarget.replace(ALIAS_TRIM_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'

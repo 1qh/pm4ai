@@ -3,6 +3,7 @@
 import { $, file } from 'bun'
 import { join } from 'node:path'
 import { parseJson } from './json.js'
+
 const cleanup = async () => {
   const pkgPath = join(process.cwd(), 'package.json')
   const pkg = parseJson<{ name?: string; version?: string }>(await file(pkgPath).text())

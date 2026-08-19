@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Issue } from '../types.js'
 import { formatIssues, formatSwiftBar, hasRealIssues, shellEscape, timeAgo } from '../format.js'
+
 const projPath = join(tmpdir(), 'pm4ai-fmt-proj')
 describe('formatIssues', () => {
   test('no issues prints ok (ok-on-success)', () => {

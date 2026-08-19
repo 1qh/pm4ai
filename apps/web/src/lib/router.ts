@@ -11,6 +11,7 @@ import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
 import { z } from 'zod/v4'
 import { validateSession } from './auth'
 import { isConnected, subscribe } from './socket'
+
 type CheckResult = z.infer<typeof checkResultSchema>
 const checksDir = join(homedir(), '.pm4ai', 'checks')
 const leadingSepRe = /^--/u

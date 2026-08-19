@@ -2,6 +2,7 @@
 import { $ } from 'bun'
 import { discover } from './discover.js'
 import { isNestedInRepo } from './utils.js'
+
 const AHEAD_RE = /\+(?<n>\d+)/u
 const BEHIND_RE = /-(?<n>\d+)/u
 type ListWriter = (row: string) => void

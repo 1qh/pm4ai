@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { CLAUDE_MD, VERBATIM_FILES } from './constants.js'
 import { checkResultSchema, lockSchema, safeParseJson } from './schemas.js'
 import { statePath } from './state-dir.js'
+
 interface CheckResult {
   at: string
   commit: string

@@ -8,10 +8,11 @@ import {
   TURBO_FLAG,
   TURBO_WARNING_FILTER
 } from './constants.js'
+import { parseJson } from './json.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
-import { parseJson } from './json.js'
+
 interface PkgEntry {
   path: string
   pkg: PackageJson

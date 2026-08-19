@@ -4,6 +4,7 @@ import { mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { logEntrySchema, safeParseJson } from './schemas.js'
 import { statePath } from './state-dir.js'
+
 type LogEntry = z.infer<typeof logEntrySchema>
 const logDir = statePath('logs')
 const leadingSepRe = /^--/u

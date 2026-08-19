@@ -15,6 +15,7 @@ import {
   checkTrustedDeps,
   usesForbidden
 } from '../audit.js'
+
 setDefaultTimeout(30_000)
 const PROJECT = join(tmpdir(), 'project')
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })

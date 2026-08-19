@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inferRules, parseFrontmatter } from '../infer.js'
+
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-infer-'))
 describe('parseFrontmatter', () => {
   test('standard frontmatter', () => {

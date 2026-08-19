@@ -28,6 +28,7 @@ import {
   STEP_LABELS,
   timeAgo
 } from './watch-state.js'
+
 const VERSION = pkg.version ?? '0.0.0'
 const safeReadCheck = (path: string) => {
   try {

@@ -1,11 +1,10 @@
-/* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
+/* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop, react/exhaustive-effect-dependencies -- React-Compiler-era rule; these are intentional mount-only + explicit-dep effects in non-compiled React */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: SSE handler */
 /** biome-ignore-all lint/nursery/useNamedCaptureGroup: regex */
 /** biome-ignore-all lint/performance/noAwaitInLoops: SSE stream */
 /** biome-ignore-all lint/performance/useTopLevelRegex: effect */
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effects */
 'use client'
-/* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop */
 /* eslint-disable @typescript-eslint/strict-void-return, react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps, @typescript-eslint/no-empty-function, @typescript-eslint/no-misused-promises, max-depth, no-await-in-loop, no-unmodified-loop-condition, prefer-named-capture-group, complexity, @typescript-eslint/no-use-before-define */
 import type { WatchEvent } from 'pm4ai'
 import type { ProjectInfo, ProjectState } from 'pm4ai/watch-state'
@@ -29,6 +28,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { client } from '@/lib/client'
 import { parseJson } from '@/lib/json'
+
 interface ApiProject {
   checkResult: null | { at: string; pass: boolean; violations: number }
   name: string

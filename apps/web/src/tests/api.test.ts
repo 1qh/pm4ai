@@ -1,9 +1,10 @@
 import type { ChildProcess } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { join } from 'node:path'
+import { parseJson } from '../lib/json'
 import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
-import { parseJson } from '../lib/json'
+
 const dashboardDir = join(import.meta.dirname, '..', '..')
 setDefaultTimeout(60_000)
 /** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
@@ -76,6 +77,10 @@ interface ProjectEntry {
   name: string
   path: string
 }
+interface ProjectStatusResponse {
+  name: string
+  path: string
+}
 interface RpcResponse {
   connected?: boolean
   json?: ProjectEntry[]
@@ -85,10 +90,6 @@ interface RpcResponse {
 }
 interface SocketStatusResponse {
   connected: boolean
-}
-interface ProjectStatusResponse {
-  name: string
-  path: string
 }
 const rpc = async (
   procedure: string,
