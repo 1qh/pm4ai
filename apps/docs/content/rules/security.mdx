@@ -16,6 +16,7 @@ Credential handling, env scoping, server/client boundary, mechanism-asserted inv
 - Set every var explicitly in `.env` (sole source of truth), even conventional ones. Why: nothing implicit.
 - Enforce auth/isolation/ownership by a mechanism the caller can’t bypass — Convex `v.*` validator + auth guard at the boundary, DB NOT NULL/CHECK/unique constraint, server-side challenge. Why: call-site checks get forgotten.
 - Two independent enforcement points per isolation/security invariant. Why: defense in depth.
+- Set a session cookie's `Secure` flag from the request SCHEME (`x-forwarded-proto` else the URL protocol), never from `NODE_ENV`. Why: a browser silently drops a `Secure` cookie sent over plain HTTP, so `secure: NODE_ENV === 'production'` breaks the session on any prod deploy served over HTTP on a real host — and it passes every local test because `http://localhost` is a browser secure-context exemption, so only a live drive on a non-localhost HTTP host catches it.
 - A regression test flips the mechanism off and asserts the invariant fails. Why: if it passes mechanism-off, it was call-site-asserted.
 
 ## NEVER
