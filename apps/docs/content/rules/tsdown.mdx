@@ -12,6 +12,7 @@ Building + publishing library packages with tsdown.
 - Emit ESM + declaration files. Why: consumers need types.
 - `prepublishOnly` builds before publish. Why: never ship stale `dist/`.
 - Export every type used in the public API. Why: DTS generation fails on unexported internal types leaking through re-exports.
+- Test-publish a new package name before wiring the repo to it. Why: npm's name-similarity policy REJECTS a short/common single word at `publish` (403 `Package name too similar to existing packages`) even though `npm view` says it is free — the block fires only at publish, so a name that passes availability can still fail. A dashless one-word name has the widest collision surface (`leat`≈lit/lab/tea1, `sigil`≈sigil_ both blocked); pick a more distinctive real word (`leat`→`headrace`, `sigil`→`escutcheon`) and confirm with one throwaway `publish` before renaming the root, member, repo and every consumer dep.
 
 ## NEVER
 
