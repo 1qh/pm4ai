@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/nursery/noUndeclaredCustomProperties: every --color-fd-* is declared by the fumadocs preset imported below, which this rule does not resolve, so it reads a declared property as undeclared. The aliases are what let a consumer write the shadcn name bg-muted rather than bg-fd-muted, which the shadcn rule requires. */
 @import 'tailwindcss';
 @import 'shadcn/tailwind.css';
 @import 'fumadocs-ui/css/neutral.css';
