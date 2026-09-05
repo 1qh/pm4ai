@@ -123,7 +123,9 @@ const init = async (name: string) => {
   ])
   await syncClaudeMd(src, dir)
   const bookInstall = join(homedir(), 'book', 'install.sh')
-  if (await pathExists(bookInstall)) await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
+  // biome-ignore lint/style/noProcessEnv: opt-out flag for the optional book-rules wiring side effect (set by tests, and by users who scaffold without book)
+  if (process.env.PM4AI_SKIP_BOOK_WIRING !== '1' && (await pathExists(bookInstall)))
+    await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
   if (await isNestedInRepo(dir)) {
     console.log(`${dir} is inside an existing git repository — refusing to run git init`)
     process.exitCode = 1

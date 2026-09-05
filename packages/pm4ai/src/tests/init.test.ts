@@ -39,7 +39,11 @@ interface FixturePackage {
   trustedDependencies?: string[]
 }
 const readPkg = async (path: string): Promise<FixturePackage> => parseJson<FixturePackage>(await file(path).text())
-afterAll(async () => rm(TEST_DIR, { force: true, recursive: true }), 60_000)
+process.env.PM4AI_SKIP_BOOK_WIRING = '1'
+afterAll(async () => {
+  delete process.env.PM4AI_SKIP_BOOK_WIRING
+  await rm(TEST_DIR, { force: true, recursive: true })
+}, 60_000)
 describe('init scaffold', () => {
   test('creates project', async () => {
     process.chdir(tmpdir())
