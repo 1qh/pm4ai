@@ -184,6 +184,7 @@ const Dashboard = () => {
         if (!res.body) return
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ''
+        // biome-ignore lint/nursery/noUnmodifiedLoopCondition: cancelled is flipped by the effect cleanup (line 218), a cross-closure mutation biome cannot see; the loop also breaks on the stream's done
         while (!cancelled) {
           const { done, value } = await reader.read()
           if (done) break
