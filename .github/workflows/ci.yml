@@ -1,5 +1,6 @@
 name: ' '
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - 'CLAUDE.md'
