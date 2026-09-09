@@ -12,6 +12,10 @@ A client-only React single-page app served by `Bun.serve` with Bun's own bundler
 - Serve the frontend from one `Bun.serve` process that imports the HTML entry and serves the SPA, the base path, and a health route. Why: Bun's bundler and server cover build, hot reload, base-path routing and health in one runtime, so a client-only SPA needs no framework server.
 - Mount every route and asset under the deployment base path through `Bun.serve` route patterns, single-sourced from one constant. Why: the base path is the deployment contract when the app is hosted beside another app on one domain.
 
+#### Production JSX
+- Pass `Bun.serve` a BOOLEAN `development: false` in production, never an object like `{ hmr: false }`. Why: an object keeps Bun's bundler in development mode and emits the dev JSX runtime (`jsxDEV`), so the served SPA throws `jsxDEV is not a function` and never mounts — an HTML 200 and a healthy health route hide it, because the crash is client-side after load. Gate `development` on the deploy env: `NODE_ENV === 'production' ? false : { hmr: true }`.
+- Prove the SPA MOUNTS, never that the server answers — a committed headless-browser drive that loads the served SPA and asserts the app rendered (a real element, zero console errors). Why: `curl` on the HTML proves the server serves, not that React mounted; the production-JSX crash and every other pre-mount throw pass a 200 and fail the browser.
+
 #### Tailwind and assets
 - Register `bun-plugin-tailwind` in `bunfig.toml` under `[serve.static]` `plugins`. Why: the serve and bundler lane reads that list where a bare `bun build` invocation does not, so Tailwind at-rules pass through uncompiled unless the plugin is registered for the serve.
 - Declare Tailwind `@source` globs relative to the serve CWD — the app's own `src` and each `node_modules/<lib>/dist` whose classes are used. Why: bun-plugin-tailwind scans from the process CWD rather than the css file, so a css-file-relative glob misses and those utilities never compile.
