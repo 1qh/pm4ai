@@ -1,0 +1,26 @@
+---
+title: Bun-only React frontend
+description: Serving a client-only React SPA with Bun, no meta-framework
+infer: bun-plugin-tailwind
+---
+
+A client-only React single-page app served by `Bun.serve` with Bun's own bundler — no meta-framework, no 2nd build tool.
+
+## MUST
+
+#### Runtime and server
+- Serve the frontend from one `Bun.serve` process that imports the HTML entry and serves the SPA, the base path, and a health route. Why: Bun's bundler and server cover build, hot reload, base-path routing and health in one runtime, so a client-only SPA needs no framework server.
+- Mount every route and asset under the deployment base path through `Bun.serve` route patterns, single-sourced from one constant. Why: the base path is the deployment contract when the app is hosted beside another app on one domain.
+
+#### Tailwind and assets
+- Register `bun-plugin-tailwind` in `bunfig.toml` under `[serve.static]` `plugins`. Why: the serve and bundler lane reads that list where a bare `bun build` invocation does not, so Tailwind at-rules pass through uncompiled unless the plugin is registered for the serve.
+- Declare Tailwind `@source` globs relative to the serve CWD — the app's own `src` and each `node_modules/<lib>/dist` whose classes are used. Why: bun-plugin-tailwind scans from the process CWD rather than the css file, so a css-file-relative glob misses and those utilities never compile.
+- Build a bundled worker (pdf.js and similar) as its own entry and serve it plus its wasm as static assets, pointing the library's worker and wasm URL at the served paths. Why: a worker referenced by `new URL(..., import.meta.url)` is a runtime asset the client fetches rather than an inlined import, so the bundler does not auto-emit it.
+- Carry a local permissive `#:schema` on `bunfig.toml` when the TOML linter's bundled bun schema rejects a valid bun-documented key such as `serve.static`. Why: the schema lags bun's fullstack config, so the key works at runtime while the stale schema fails the gate, and a documented permissive override keeps both green.
+
+## NEVER
+- Never add a meta-framework (Next, Remix, Astro) or a 2nd bundler (Vite, webpack). Cost: a client-only SPA uses none of a framework server's SSR or RSC, so it is unused weight and toolchain drift where Bun's own server and bundler already cover serve, build, hot reload, base-path and health.
+- Never use Bun JSX prop punning (`<C {x} />`). Cost: it is a Bun-transpiler-only extension, so tsc and oxlint reject it at parse time — breaking type-check and the lint gate and erasing types — for a few saved characters.
+
+## Pitfall
+- A bare `bun build` invocation does not read the `[serve.static]` plugin list, so a Tailwind check run that way reports raw CSS and an invalid at-rule warning while the served app is correct — verify Tailwind through the serve and bundler lane.
