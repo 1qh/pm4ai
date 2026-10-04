@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 import { ALL_BANNED } from '../banned.js'
-
 const extractExactName = (ban: string): string | undefined => {
   if (!ban.endsWith('"')) return
   const clean = ban.slice(1, -1)

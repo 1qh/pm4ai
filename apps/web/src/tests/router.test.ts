@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseJson } from '../lib/json'
 import { isConnected, subscribe } from '../lib/socket'
-
 const leadingSepRe = /^--/u
 const toSafe = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
 const decode = (fileName: string) => `/${fileName.replace('.json', '').replaceAll('--', '/')}`

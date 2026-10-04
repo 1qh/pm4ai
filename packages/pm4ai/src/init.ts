@@ -6,7 +6,6 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { discover } from './discover.js'
 import { syncClaudeMd } from './sync.js'
 import { getBunVersion, isInsideExistingRepo, isNestedInRepo } from './utils.js'
-
 const SKIP = new Set([
   '.git',
   '.next',

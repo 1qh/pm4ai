@@ -7,7 +7,6 @@ import { GH_ORG, LINTMAX_PKG, MONOREPO_NAME, PKG_NAME, READONLY_UI } from './con
 import { pm4aiCloneBase, pm4aiHome } from './env.js'
 import { parseJson } from './json.js'
 import { debug, isNestedInRepo, projectName } from './utils.js'
-
 interface Project {
   isCnsync: boolean
   isSelf: boolean

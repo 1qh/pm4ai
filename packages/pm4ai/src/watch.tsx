@@ -28,7 +28,6 @@ import {
   STEP_LABELS,
   timeAgo
 } from './watch-state.js'
-
 const VERSION = pkg.version ?? '0.0.0'
 const safeReadCheck = (path: string) => {
   try {
@@ -236,12 +235,14 @@ const RunningFooter = ({
   </Box>
 )
 RunningFooter.displayName = 'RunningFooter'
+const readColumns = (stdout: NodeJS.WritableStream): number =>
+  'columns' in stdout && typeof stdout.columns === 'number' ? stdout.columns : 80
 const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
   const app = useApp()
-  const { stdout } = useStdout()
-  const [cols, setCols] = useState(stdout?.columns ?? 80)
+  const stdout: NodeJS.WritableStream = useStdout().stdout
+  const [cols, setCols] = useState(() => readColumns(stdout))
   useEffect(() => {
-    const handler = () => setCols(stdout?.columns ?? 80)
+    const handler = () => setCols(readColumns(stdout))
     stdout?.on('resize', handler)
     return () => {
       stdout?.off('resize', handler)

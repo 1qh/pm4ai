@@ -12,7 +12,6 @@ import {
   writeCheckResult
 } from '../check-cache.js'
 import { statePath } from '../state-dir.js'
-
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-cc-'))
 const leadingSepRe = /^--/u
@@ -150,7 +149,7 @@ describe('spawnBackgroundCheck', () => {
   test('does not throw for valid project', async () => {
     const tmp = await makeTmp()
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true, scripts: { check: 'true' } }))
-    await expect(spawnBackgroundCheck(tmp)).resolves.toBeUndefined()
+    expect(await spawnBackgroundCheck(tmp)).toBeUndefined()
     await rm(tmp, { recursive: true })
   })
   test('skips when check already running', async () => {
@@ -160,7 +159,7 @@ describe('spawnBackgroundCheck', () => {
     const safeName = toSafeName(tmp)
     const lp = join(dir, `${safeName}.lock`)
     await write(lp, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    await expect(spawnBackgroundCheck(tmp)).resolves.toBeUndefined()
+    expect(await spawnBackgroundCheck(tmp)).toBeUndefined()
     await rm(lp, { force: true })
     await rm(tmp, { recursive: true })
   })

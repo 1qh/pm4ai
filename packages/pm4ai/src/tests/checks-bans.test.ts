@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkBannedImports } from '../checks.js'
-
 setDefaultTimeout(30_000)
 const URL_MOD = 'url'
 const AWS_ALLOWED = '@aws-sdk/client-s3'

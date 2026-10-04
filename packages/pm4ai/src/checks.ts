@@ -26,7 +26,6 @@ import {
   rel,
   resolveManagedFiles
 } from './utils.js'
-
 const SCAN_EXCLUDE = new Set(['.git', '.next', '.turbo', '.vercel', 'dist', 'node_modules', 'readonly', 'templates'])
 interface TsconfigCompilerOptions {
   paths?: Record<string, string[]>
@@ -67,7 +66,7 @@ const isTemporarilyAllowedPackage = (ban: string, packageName: string): boolean 
   temporaryAllowedPackages(ban).includes(packageName)
 const hasAllowDirective = (content: string, ban: string): boolean => {
   const clean = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
-  return new RegExp(String.raw`pm4ai-allow-import[ \t]+${clean}[ \t]*:[ \t]*\S`, 'u').test(content)
+  return new RegExp(String.raw`pm4ai-allow-import[ \t]+${clean}[ \t]*:[ \t]*\S`, 'u').exec(content) !== null
 }
 const hasBlockedImport = (content: string, ban: string): boolean => {
   if (hasAllowDirective(content, ban)) return false
@@ -442,7 +441,6 @@ const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   return issues
 }
 const DOT_DIR_RE = /(?:^|\/)\.[^/]/u
-/** TypeScript's default glob skips dot-directories, so naming one is the only way to type it — and naming any entry replaces the defaults, forcing the rest to be restated. */
 const namesADotDir = (include: unknown): boolean =>
   Array.isArray(include) && include.some(entry => typeof entry === 'string' && DOT_DIR_RE.test(entry))
 const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
@@ -657,6 +655,20 @@ const parseEnvKeys = (text: string): Set<string> => {
   }
   return keys
 }
+const NODE_ENV_PRODUCTION_RG = String.raw`process\.env(\.NODE_ENV|\['NODE_ENV'\]|\["NODE_ENV"\]).*['"]production['"]`
+const CONVEX_SOURCE_GLOBS = ['-g', '*.ts', '-g', '*.tsx', '-g', '!_generated/**', '-g', '!*.test.ts']
+const CONVEX_ENV_SET_GLOBS = [
+  '-g',
+  '*.ts',
+  '-g',
+  '*.tsx',
+  '-g',
+  '!**/sync*.ts',
+  '-g',
+  '!**/scripts/test-*.ts',
+  '-g',
+  '!**/global-setup*.ts'
+]
 const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const generated = await glob('**/convex/_generated/api.d.ts', projectPath)
@@ -677,14 +689,10 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
   const [nodeEnvHits, setHits, pkgFiles] = await Promise.all([
     Promise.all(
       convexDirs.map(async d =>
-        $`rg -l "process\.env(\.NODE_ENV|\['NODE_ENV'\]|\[\"NODE_ENV\"\]).*['\"]production['\"]" ${d} -g '*.ts' -g '*.tsx' -g '!_generated/**' -g '!*.test.ts' ${RG_EXCLUDE}`
-          .quiet()
-          .nothrow()
+        $`rg -l ${NODE_ENV_PRODUCTION_RG} ${d} ${CONVEX_SOURCE_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow()
       )
     ),
-    $`rg -l 'convex env set' ${projectPath} -g '*.ts' -g '*.tsx' -g '!**/sync*.ts' -g '!**/scripts/test-*.ts' -g '!**/global-setup*.ts' ${RG_EXCLUDE}`
-      .quiet()
-      .nothrow(),
+    $`rg -l 'convex env set' ${projectPath} ${CONVEX_ENV_SET_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow(),
     glob('**/package.json', projectPath)
   ])
   for (const r of nodeEnvHits) {
@@ -692,7 +700,8 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
     if (out)
       issues.push(
         forbidden(
-          `NODE_ENV === 'production' branch in convex/ (always true on self-hosted; gate on explicit env flag instead): ${relList(out, projectPath)}`
+          "NODE_ENV === 'production' branch in convex/ (always true on self-hosted; " +
+            `gate on explicit env flag instead): ${relList(out, projectPath)}`
         )
       )
   }
@@ -748,7 +757,8 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
   if (netOffenders.length > 0)
     issues.push(
       forbidden(
-        `non-hermetic network in test — use a local bare repo, mock the call, or gate a live test behind a credential: ${netOffenders.join(', ')}`
+        'non-hermetic network in test — use a local bare repo, mock the call, ' +
+          `or gate a live test behind a credential: ${netOffenders.join(', ')}`
       )
     )
   const homeResult = await $`rg -l -e ${HOME_READ_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
@@ -763,7 +773,8 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
   if (ambient.length > 0)
     issues.push(
       forbidden(
-        `non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
+        'non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir ' +
+          `or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
       )
     )
   const timeResult = await $`rg -n -e ${PERF_TIME_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
@@ -781,12 +792,15 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
   if (timing.length > 0)
     issues.push(
       forbidden(
-        `non-hermetic timing in test — a wall-clock micro-benchmark (performance.now/hrtime) flakes on a loaded runner; assert the outcome, not the elapsed time: ${timing.join(', ')}`
+        'non-hermetic timing in test — a wall-clock micro-benchmark (performance.now/hrtime) ' +
+          `flakes on a loaded runner; assert the outcome, not the elapsed time: ${timing.join(', ')}`
       )
     )
   return issues
 }
-const UTILITY_CLASS = String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
+const UTILITY_CLASS =
+  String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|` +
+  String.raw`grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
 const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
 const UTILITY_GLOBS = ['-g', '*.js', '-g', '*.mjs', '-g', '*.cjs', '-g', '*.jsx', '-g', '*.tsx', '-g', '*.css']
 const shipsUtilityClasses = async (depDir: string): Promise<boolean> => {
@@ -849,7 +863,8 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
           return sourced.test(e.text) || importsDepCss.test(e.text)
             ? undefined
             : drift(
-                `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) but its global.css does not @source it — the classes render inert`
+                `${rel(e.css, projectPath)} imports ${name} (ships Tailwind utility classes) ` +
+                  'but its global.css does not @source it — the classes render inert'
               )
         })
       )
@@ -888,7 +903,8 @@ const unparameterisedTemplates = (templates: ScaffoldTemplate[]): Issue[] =>
     .filter(t => !t.name.includes(PKGNAME_TOKEN))
     .map(t =>
       drift(
-        `scaffold template ${t.dir} names itself "${t.name}" with no ${PKGNAME_TOKEN} — a project of that name scaffolds two workspace packages with one name and bun i refuses the install`
+        `scaffold template ${t.dir} names itself "${t.name}" with no ${PKGNAME_TOKEN} — ` +
+          'a project of that name scaffolds two workspace packages with one name and bun i refuses the install'
       )
     )
 const collidingTemplates = (templates: ScaffoldTemplate[]): Issue[] => {

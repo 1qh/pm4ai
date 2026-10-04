@@ -28,7 +28,6 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { client } from '@/lib/client'
 import { parseJson } from '@/lib/json'
-
 interface ApiProject {
   checkResult: null | { at: string; pass: boolean; violations: number }
   name: string
@@ -42,10 +41,10 @@ const mkIdleFromApi = (_p: ProjectInfo, apiData?: ApiProject): ProjectState => {
   return { cachedPass: cr.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
 const statusColor = (s: ProjectState['status'], pass?: boolean) => {
-  if (s === 'running') return 'text-yellow-400'
+  if (s === 'running') return 'text-warning'
   if (s === 'failed') return 'text-destructive'
-  if (s === 'done') return 'text-green-400'
-  if (pass === true) return 'text-green-600'
+  if (s === 'done') return 'text-success'
+  if (pass === true) return 'text-success-muted'
   if (pass === false) return 'text-destructive/60'
   return 'text-muted-foreground/40'
 }
@@ -57,9 +56,9 @@ const statusIcon = (s: ProjectState['status'], pass?: boolean) => {
   return '·'
 }
 const cardTone = (status: ProjectState['status'], isRunning: boolean): string => {
-  if (isRunning) return 'border-yellow-700 bg-yellow-950/20'
+  if (isRunning) return 'border-warning-border bg-warning-surface/20'
   if (status === 'failed') return 'border-destructive/30 bg-destructive/5'
-  if (status === 'done') return 'border-green-900 bg-green-950/10'
+  if (status === 'done') return 'border-success-border bg-success-surface/10'
   return 'border-border bg-muted'
 }
 const nameTone = (status: ProjectState['status'], isRunning: boolean): string => {
@@ -69,15 +68,15 @@ const nameTone = (status: ProjectState['status'], isRunning: boolean): string =>
 }
 const eventStatusTone = (status: string): string => {
   if (status === 'fail') return 'text-destructive'
-  if (status === 'ok') return 'text-green-400'
-  return 'text-yellow-400'
+  if (status === 'ok') return 'text-success'
+  return 'text-warning'
 }
 const CardDetail = ({ p, ps }: { p: ProjectInfo; ps: ProjectState }) => {
   const isRunning = ps.status === 'running'
   return (
     <div className='flex items-center gap-4 text-sm'>
       {isRunning && ps.elapsed > 0 ? <span className='text-muted-foreground'>{ps.elapsed}s</span> : null}
-      {ps.status === 'done' ? <span className='text-green-400'>{ps.detail}</span> : null}
+      {ps.status === 'done' ? <span className='text-success'>{ps.detail}</span> : null}
       {ps.status === 'failed' ? <span className='text-destructive'>{ps.detail}</span> : null}
       {ps.status === 'idle' && ps.detail ? <span className='text-muted-foreground'>{ps.detail}</span> : null}
       {ps.status === 'idle' && !ps.detail ? <span className='text-muted-foreground/40'>never checked</span> : null}
@@ -113,7 +112,7 @@ const ProjectCard = ({ p, ps }: { p: ProjectInfo; ps: ProjectState }) => {
         <div className='flex items-center gap-3'>
           <span className={cn('text-lg', color)}>{icon}</span>
           <span className={cn('font-medium', nameTone(ps.status, isRunning))}>{p.name}</span>
-          {isRunning ? <span className='text-yellow-400 text-sm'>{stepLabel}</span> : null}
+          {isRunning ? <span className='text-warning text-sm'>{stepLabel}</span> : null}
           {isRunning ? <span className='text-muted-foreground text-sm font-mono tracking-wider'>{dots}</span> : null}
         </div>
         <CardDetail p={p} ps={ps} />
@@ -127,7 +126,7 @@ const ElapsedDelta = ({ elapsed, lastElapsed }: { elapsed: number; lastElapsed: 
   const delta = elapsed - lastElapsed
   if (delta === 0) return null
   return (
-    <span className={cn(delta > 0 ? 'text-destructive' : 'text-green-400')}>
+    <span className={cn(delta > 0 ? 'text-destructive' : 'text-success')}>
       ({delta > 0 ? '+' : ''}
       {delta}s)
     </span>
@@ -268,7 +267,7 @@ const Dashboard = () => {
     <div className='max-w-6xl mx-auto p-6'>
       <header className='flex items-center justify-between mb-6'>
         <div className='flex items-center gap-4'>
-          <h1 className='text-2xl font-bold text-purple-400'>⚡ pm4ai</h1>
+          <h1 className='text-2xl font-bold text-brand'>⚡ pm4ai</h1>
           <span className='text-sm text-muted-foreground'>{projects.length} projects</span>
           {state.runCount > 0 ? <span className='text-sm text-muted-foreground'>· run #{state.runCount}</span> : null}
           {state.history.length > 1 ? (
@@ -295,7 +294,7 @@ const Dashboard = () => {
       {state.phase === 'running' ? (
         <div className='flex flex-col gap-2 mb-6'>
           <div className='flex items-center gap-3'>
-            <span className='text-sm text-yellow-400 font-mono'>{pct}%</span>
+            <span className='text-sm text-warning font-mono'>{pct}%</span>
             {state.elapsed > 0 ? <span className='text-sm text-muted-foreground'>{formatTime(state.elapsed)}</span> : null}
             {stats.eta !== undefined && stats.eta > 0 ? (
               <span className='text-sm text-muted-foreground/60'>~{formatTime(stats.eta)} left</span>
@@ -303,7 +302,10 @@ const Dashboard = () => {
           </div>
           <div className='h-2 bg-secondary rounded-full overflow-hidden'>
             <div
-              className='h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-300 rounded-full'
+              className={cn(
+                'h-full bg-gradient-to-r from-progress-start to-progress-end',
+                'transition-all duration-300 rounded-full'
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -320,7 +322,7 @@ const Dashboard = () => {
             </div>
           ) : (
             <div className='flex items-center gap-3'>
-              <span className='text-green-400 font-bold'>✔ all clean</span>
+              <span className='text-success font-bold'>✔ all clean</span>
               <span className='text-muted-foreground'>{formatTime(state.elapsed)}</span>
               {state.lastElapsed > 0 ? <ElapsedDelta elapsed={state.elapsed} lastElapsed={state.lastElapsed} /> : null}
               {state.history.length > 1 ? (
@@ -342,7 +344,10 @@ const Dashboard = () => {
       </section>
       {state.lastTime && state.phase === 'idle' ? (
         <div className='text-sm text-muted-foreground/60 mb-4'>
-          last run: {state.lastFailed > 0 ? `${state.lastFailed} failed` : 'all clean'} · {formatTime(state.lastElapsed)} ·{' '}
+          last run: {state.lastFailed > 0 ? `${state.lastFailed} failed` : 'all clean'}
+          {' · '}
+          {formatTime(state.lastElapsed)}
+          {' · '}
           {state.lastTime}
         </div>
       ) : null}

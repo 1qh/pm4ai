@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-
 interface PkgJson {
   license?: string
   name?: string

@@ -16,7 +16,6 @@ import {
   syncTsconfig,
   syncUi
 } from '../sync.js'
-
 setDefaultTimeout(30_000)
 const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))

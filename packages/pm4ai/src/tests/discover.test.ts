@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discover, discoverSources, isCnsyncRepo } from '../discover.js'
-
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-discover-'))
 const initGitRepo = async (dir: string, remote?: string) => {
@@ -13,44 +12,38 @@ const initGitRepo = async (dir: string, remote?: string) => {
   if (remote) await $`git remote add origin ${remote}`.cwd(dir).quiet().nothrow()
 }
 describe('isCnsyncRepo', () => {
-  test('project with readonly/ui but wrong remote is false', async () => {
+  test.each([
+    {
+      expected: false,
+      remote: 'git@github.com:someone/my-project.git',
+      title: 'project with readonly/ui but wrong remote is false'
+    },
+    {
+      expected: true,
+      remote: 'git@github.com:1qh/cnsync.git',
+      title: 'project with readonly/ui and 1qh/cnsync ssh remote is true'
+    },
+    {
+      expected: true,
+      remote: 'https://github.com/1qh/cnsync.git',
+      title: 'project with readonly/ui and 1qh/cnsync https remote is true'
+    },
+    { expected: false, remote: undefined, title: 'project with no git remote is false' },
+    {
+      expected: false,
+      remote: 'git@github.com:other/cnsync.git',
+      title: 'project with similar name like cnsync-fork is false'
+    }
+  ])('$title', async ({ expected, remote }) => {
     const tmp = await makeTmp()
     await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
-    await initGitRepo(tmp, 'git@github.com:someone/my-project.git')
-    expect(await isCnsyncRepo(tmp)).toBe(false)
-    await rm(tmp, { recursive: true })
-  })
-  test('project with readonly/ui and 1qh/cnsync ssh remote is true', async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
-    await initGitRepo(tmp, 'git@github.com:1qh/cnsync.git')
-    expect(await isCnsyncRepo(tmp)).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test('project with readonly/ui and 1qh/cnsync https remote is true', async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
-    await initGitRepo(tmp, 'https://github.com/1qh/cnsync.git')
-    expect(await isCnsyncRepo(tmp)).toBe(true)
+    await initGitRepo(tmp, remote)
+    expect(await isCnsyncRepo(tmp)).toBe(expected)
     await rm(tmp, { recursive: true })
   })
   test('project without readonly/ui is false regardless of remote', async () => {
     const tmp = await makeTmp()
     await initGitRepo(tmp, 'git@github.com:1qh/cnsync.git')
-    expect(await isCnsyncRepo(tmp)).toBe(false)
-    await rm(tmp, { recursive: true })
-  })
-  test('project with no git remote is false', async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
-    await initGitRepo(tmp)
-    expect(await isCnsyncRepo(tmp)).toBe(false)
-    await rm(tmp, { recursive: true })
-  })
-  test('project with similar name like cnsync-fork is false', async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
-    await initGitRepo(tmp, 'git@github.com:other/cnsync.git')
     expect(await isCnsyncRepo(tmp)).toBe(false)
     await rm(tmp, { recursive: true })
   })

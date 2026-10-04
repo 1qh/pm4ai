@@ -1,26 +1,15 @@
 import { file } from 'bun'
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-
 describe('setup templates', () => {
-  test('SwiftBar plugin uses bunx pm4ai@latest', async () => {
+  test.each([
+    { expected: ['bunx pm4ai@latest status --swiftbar'], title: 'SwiftBar plugin uses bunx pm4ai@latest' },
+    { expected: ['export PATH=', '.bun/bin'], title: 'SwiftBar plugin sets PATH' },
+    { expected: ['pm4ai@latest', 'fix'], title: 'launchd plist targets pm4ai@latest fix' },
+    { expected: ['<integer>9</integer>', '<integer>0</integer>'], title: 'launchd plist runs daily at 9am' }
+  ])('$title', async ({ expected }) => {
     const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
-    expect(src).toContain('bunx pm4ai@latest status --swiftbar')
-  })
-  test('SwiftBar plugin sets PATH', async () => {
-    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
-    expect(src).toContain('export PATH=')
-    expect(src).toContain('.bun/bin')
-  })
-  test('launchd plist targets pm4ai@latest fix', async () => {
-    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
-    expect(src).toContain('pm4ai@latest')
-    expect(src).toContain('fix')
-  })
-  test('launchd plist runs daily at 9am', async () => {
-    const src = await file(join(import.meta.dirname, '..', 'setup.ts')).text()
-    expect(src).toContain('<integer>9</integer>')
-    expect(src).toContain('<integer>0</integer>')
+    for (const value of expected) expect(src).toContain(value)
   })
 })
 describe('streaming plugin', () => {

@@ -1,2 +1,14 @@
 @import '@a/ui/globals.css';
 @source '../../../readonly/ui/src';
+@theme inline {
+  --color-brand: oklch(71.4% 0.203 305.504);
+  --color-progress-end: oklch(62.7% 0.265 303.9);
+  --color-progress-start: oklch(71.5% 0.143 215.221);
+  --color-success: oklch(79.2% 0.209 151.711);
+  --color-success-border: oklch(39.3% 0.095 152.535);
+  --color-success-muted: oklch(62.7% 0.194 149.214);
+  --color-success-surface: oklch(26.6% 0.065 152.934);
+  --color-warning: oklch(85.2% 0.199 91.936);
+  --color-warning-border: oklch(55.4% 0.135 66.442);
+  --color-warning-surface: oklch(28.6% 0.066 53.813);
+}

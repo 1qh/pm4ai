@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'
-
 const uuidRe = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/iu
 describe('generateToken', () => {
   test('returns a UUID v4 string', () => {
@@ -37,25 +36,15 @@ describe('consumeToken', () => {
   })
 })
 describe('createSessionCookie', () => {
-  test('returns HttpOnly cookie', () => {
+  test.each([
+    { expected: 'HttpOnly', title: 'returns HttpOnly cookie' },
+    { expected: 'SameSite=Strict', title: 'has SameSite=Strict' },
+    { expected: 'Path=/', title: 'has Path=/' },
+    { expected: 'Max-Age=', title: 'has Max-Age' },
+    { expected: 'pm4ai_session=', title: 'contains pm4ai_session key' }
+  ])('$title', ({ expected }) => {
     const cookie = createSessionCookie()
-    expect(cookie).toContain('HttpOnly')
-  })
-  test('has SameSite=Strict', () => {
-    const cookie = createSessionCookie()
-    expect(cookie).toContain('SameSite=Strict')
-  })
-  test('has Path=/', () => {
-    const cookie = createSessionCookie()
-    expect(cookie).toContain('Path=/')
-  })
-  test('has Max-Age', () => {
-    const cookie = createSessionCookie()
-    expect(cookie).toContain('Max-Age=')
-  })
-  test('contains pm4ai_session key', () => {
-    const cookie = createSessionCookie()
-    expect(cookie).toContain('pm4ai_session=')
+    expect(cookie).toContain(expected)
   })
   test('session value is a UUID', () => {
     const cookie = createSessionCookie()

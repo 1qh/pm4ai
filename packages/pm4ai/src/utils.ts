@@ -7,7 +7,6 @@ import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 import { parseJson } from './json.js'
-
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)

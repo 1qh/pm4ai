@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { parseJson } from '../lib/json'
 import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
-
 const dashboardDir = join(import.meta.dirname, '..', '..')
 setDefaultTimeout(60_000)
 /** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */

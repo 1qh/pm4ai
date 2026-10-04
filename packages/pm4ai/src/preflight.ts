@@ -1,6 +1,5 @@
 /* eslint-disable no-console */
 import { $ } from 'bun'
-
 const REQUIRED = ['rg', 'git']
 const OPTIONAL = ['gh']
 const check = async (name: string): Promise<boolean> => {

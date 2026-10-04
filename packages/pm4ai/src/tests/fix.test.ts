@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { fix, isDocsOnlyChange, maintain } from '../fix.js'
 import { parseJson } from '../json.js'
 import { stateDir, statePath } from '../state-dir.js'
-
 setDefaultTimeout(30_000)
 const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
@@ -154,34 +153,18 @@ describe('lockfile', () => {
   })
 })
 describe('maintain edge cases', () => {
-  test('captures violation count from stderr', async () => {
+  test.each([
+    { stderr: '12 errors found', title: 'captures violation count from stderr', violations: 12 },
+    { stderr: '7 problems detected', title: 'captures violation/problem/issue keywords', violations: 7 },
+    { stderr: 'something broke', title: 'defaults to 1 violation when no count found', violations: 1 }
+  ])('$title', async ({ stderr, violations }) => {
     const tmp = await makeTmp()
-    await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "12 errors found" >&2\nexit 1')
+    await write(join(tmp, 'up.sh'), `#!/bin/sh\necho "${stderr}" >&2\nexit 1`)
     await maintain(tmp)
     const safeName = toFileName(tmp)
     const checkFile = statePath('checks', `${safeName}.json`)
     const result = await readJson<{ violations: number }>(checkFile)
-    expect(result.violations).toBe(12)
-    await rm(tmp, { recursive: true })
-  })
-  test('captures violation/problem/issue keywords', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "7 problems detected" >&2\nexit 1')
-    await maintain(tmp)
-    const safeName = toFileName(tmp)
-    const checkFile = statePath('checks', `${safeName}.json`)
-    const result = await readJson<{ violations: number }>(checkFile)
-    expect(result.violations).toBe(7)
-    await rm(tmp, { recursive: true })
-  })
-  test('defaults to 1 violation when no count found', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "something broke" >&2\nexit 1')
-    await maintain(tmp)
-    const safeName = toFileName(tmp)
-    const checkFile = statePath('checks', `${safeName}.json`)
-    const result = await readJson<{ violations: number }>(checkFile)
-    expect(result.violations).toBe(1)
+    expect(result.violations).toBe(violations)
     await rm(tmp, { recursive: true })
   })
   test('copies bun.lock snapshot on success', async () => {

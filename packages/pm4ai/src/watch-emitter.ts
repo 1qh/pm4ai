@@ -8,7 +8,6 @@ import { createConnection, createServer } from 'node:net'
 import type { WatchEvent } from './watch-types.js'
 import { safeParseJson, watchEventSchema } from './schemas.js'
 import { SOCKET_DIR, SOCKET_PATH } from './watch-socket.js'
-
 type Listener = (event: WatchEvent) => void
 const clients = new Set<Socket>()
 const listeners = new Set<Listener>()

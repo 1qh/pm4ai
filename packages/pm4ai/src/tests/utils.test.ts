@@ -12,7 +12,6 @@ import {
   readJson,
   readPkg
 } from '../utils.js'
-
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-utils-'))
 describe('projectName', () => {
   test('extracts last segment', () => {

@@ -4,7 +4,6 @@ import pkg from '../package.json' with { type: 'json' }
 import { guide } from './guide.js'
 import { preflight } from './preflight.js'
 import { setVerbose } from './utils.js'
-
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('-')))
 const positional = args.filter(a => !a.startsWith('-'))

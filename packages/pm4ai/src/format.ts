@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import type { Issue } from './types.js'
 import { SWIFTBAR_FONT } from './constants.js'
 import { getBunVersion, getGhRepo, projectName } from './utils.js'
-
 const shellMetaRe = /[^\w\s./:@=-]/gu
 const shellEscape = (s: string): string => s.replaceAll(shellMetaRe, String.raw`\$&`)
 const isInfoOnly = (i: Issue) => i.type === 'info' || (i.type === 'check' && !i.detail.startsWith('failed'))

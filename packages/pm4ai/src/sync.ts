@@ -38,7 +38,6 @@ import {
   staleConditionalFiles,
   writeJson
 } from './utils.js'
-
 const pathExists = async (path: string): Promise<boolean> => {
   try {
     await access(path)

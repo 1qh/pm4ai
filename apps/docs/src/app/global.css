@@ -3,6 +3,7 @@
 @import 'shadcn/tailwind.css';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@layer theme, base, components, utilities, app;
 @source '../../../../packages/**/*.{ts,tsx}';
 @theme inline {
   --color-foreground: var(--color-fd-foreground);
@@ -26,6 +27,7 @@
   --color-destructive-foreground: var(--color-fd-primary-foreground);
 }
 /* biome-ignore lint/nursery/noUnusedClasses: applied at runtime by next-themes */
+/* biome-ignore lint/nursery/useLayeredStyles: fumadocs defines these .dark tokens unlayered, and a layered override loses */
 .dark {
   --color-fd-background: hsl(0, 0%, 0%);
   --color-fd-card: hsl(0, 0%, 5%);
@@ -34,12 +36,14 @@
   --color-fd-secondary: hsl(0, 0%, 8%);
   --color-fd-border: hsla(0, 0%, 30%, 30%);
 }
-/* biome-ignore lint/nursery/noUnusedClasses: applied via font variable setup to rendered pre/code */
-.font-mono,
-pre,
-code {
-  font-family: var(--font-mono), ui-monospace, monospace;
-}
-html > body[data-scroll-locked] {
-  margin-right: 0px !important;
+@layer app {
+  /* biome-ignore lint/nursery/noUnusedClasses: applied via font variable setup to rendered pre/code */
+  .font-mono,
+  pre,
+  code {
+    font-family: var(--font-mono), ui-monospace, monospace;
+  }
+  html > body[data-scroll-locked] {
+    margin-inline-end: 0px !important;
+  }
 }

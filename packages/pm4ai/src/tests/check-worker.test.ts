@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseJson } from '../json.js'
 import { statePath } from '../state-dir.js'
-
 setDefaultTimeout(30_000)
 const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const dirExists = async (p: string): Promise<boolean> => {

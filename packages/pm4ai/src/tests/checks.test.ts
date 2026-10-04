@@ -18,7 +18,6 @@ import {
   checkVercel,
   deployStateFailed
 } from '../checks.js'
-
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
 describe('checkRootPkg', () => {
@@ -476,31 +475,27 @@ describe('checkConvexSelfHosted', () => {
     expect(issues.some(i => i.detail.includes('SITE_URL'))).toBe(true)
     await rm(tmp, { recursive: true })
   })
-  test("flags NODE_ENV === 'production' branch (dot)", async () => {
+  test.each([
+    {
+      filename: 'foo.ts',
+      source: "if (process.env.NODE_ENV === 'production') throw new Error('x')\n",
+      title: "flags NODE_ENV === 'production' branch (dot)"
+    },
+    {
+      filename: 'bar.ts',
+      source: "if (process.env['NODE_ENV'] === 'production') throw new Error('x')\n",
+      title: "flags NODE_ENV === 'production' branch (single-quote bracket)"
+    },
+    {
+      filename: 'baz.ts',
+      source: 'if (process.env["NODE_ENV"] === "production") throw new Error("x")\n',
+      title: "flags NODE_ENV === 'production' branch (double-quote bracket)"
+    }
+  ])('$title', async ({ filename, source }) => {
     const tmp = await makeTmp()
     await mkdir(join(tmp, 'convex', '_generated'), { recursive: true })
     await write(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
-    await write(join(tmp, 'convex', 'foo.ts'), "if (process.env.NODE_ENV === 'production') throw new Error('x')\n")
-    await write(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
-    const issues = await checkConvexSelfHosted(tmp)
-    expect(issues.some(i => i.detail.includes('NODE_ENV'))).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test("flags NODE_ENV === 'production' branch (single-quote bracket)", async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'convex', '_generated'), { recursive: true })
-    await write(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
-    await write(join(tmp, 'convex', 'bar.ts'), "if (process.env['NODE_ENV'] === 'production') throw new Error('x')\n")
-    await write(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
-    const issues = await checkConvexSelfHosted(tmp)
-    expect(issues.some(i => i.detail.includes('NODE_ENV'))).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test("flags NODE_ENV === 'production' branch (double-quote bracket)", async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'convex', '_generated'), { recursive: true })
-    await write(join(tmp, 'convex', '_generated', 'api.d.ts'), '')
-    await write(join(tmp, 'convex', 'baz.ts'), 'if (process.env["NODE_ENV"] === "production") throw new Error("x")\n')
+    await write(join(tmp, 'convex', filename), source)
     await write(join(tmp, '.env'), 'CONVEX_SELF_HOSTED_URL=https://x\nSITE_URL=https://y\n')
     const issues = await checkConvexSelfHosted(tmp)
     expect(issues.some(i => i.detail.includes('NODE_ENV'))).toBe(true)
@@ -565,7 +560,8 @@ describe('checkBannedImports', () => {
     const tmp = await makeTmp()
     await writeSrc(
       tmp,
-      "// pm4ai-allow-import undici:\nimport { setGlobalDispatcher } from 'undici'\nexport const x = setGlobalDispatcher\n"
+      "// pm4ai-allow-import undici:\nimport { setGlobalDispatcher } from 'undici'\n" +
+        'export const x = setGlobalDispatcher\n'
     )
     const issues = await checkBannedImports(tmp)
     expect(issues.some(i => i.detail.includes('undici'))).toBe(true)
@@ -603,23 +599,22 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues[0]?.detail).toContain('faklib')
     await rm(tmp, { recursive: true })
   })
-  test('no issue when the same lib is @source-d — the @source is the only thing suppressing it', async () => {
+  test.each([
+    {
+      cssTail: "@source '../../../../node_modules/faklib';\n",
+      title: 'no issue when the same lib is @source-d — the @source is the only thing suppressing it'
+    },
+    {
+      cssTail: "@source '../../packages/faklib/src';\n",
+      title: 'no issue when the lib is @source-d as a local workspace package (packages/<name>/src) in its own monorepo'
+    },
+    {
+      cssTail: "@import 'faklib/css/preset.css';\n",
+      title: 'no issue when the lib ships pre-compiled css the entry @imports directly — the import is the coverage'
+    }
+  ])('$title', async ({ cssTail }) => {
     const tmp = await makeTmp()
-    await scaffold({ cssTail: "@source '../../../../node_modules/faklib';\n", depIndex: jsxDist + X, tmp })
-    const issues = await checkTailwindSourceCoverage(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('no issue when the lib is @source-d as a local workspace package (packages/<name>/src) in its own monorepo', async () => {
-    const tmp = await makeTmp()
-    await scaffold({ cssTail: "@source '../../packages/faklib/src';\n", depIndex: jsxDist + X, tmp })
-    const issues = await checkTailwindSourceCoverage(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('no issue when the lib ships pre-compiled css the entry @imports directly — the import is the coverage', async () => {
-    const tmp = await makeTmp()
-    await scaffold({ cssTail: "@import 'faklib/css/preset.css';\n", depIndex: jsxDist + X, tmp })
+    await scaffold({ cssTail, depIndex: jsxDist + X, tmp })
     const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })

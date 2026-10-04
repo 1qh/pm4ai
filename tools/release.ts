@@ -2,7 +2,6 @@
 /* eslint-disable no-console */
 import { $, file, Glob } from 'bun'
 import { dirname, join } from 'node:path'
-
 const nameVer = (p: { name: string; version: string }): string => `${p.name}@${p.version}`
 interface Pkg {
   name?: string

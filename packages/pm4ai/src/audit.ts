@@ -12,7 +12,6 @@ import { parseJson } from './json.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
 import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
-
 interface PkgEntry {
   path: string
   pkg: PackageJson
