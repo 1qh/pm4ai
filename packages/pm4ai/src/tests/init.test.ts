@@ -180,7 +180,8 @@ describe('init scaffold', () => {
       const result = await $`bun run fix`.cwd(TEST_DIR).quiet().nothrow()
       expect(result.exitCode).toBe(0)
       const status = await $`git status --porcelain -- .`.cwd(TEST_DIR).quiet().nothrow()
-      expect(status.stdout.toString().trim()).toBe('')
+      const diff = await $`git diff -- .`.cwd(TEST_DIR).quiet().nothrow()
+      expect(`${status.stdout.toString().trim()}${diff.stdout.toString()}`).toBe('')
     },
     120_000
   )
