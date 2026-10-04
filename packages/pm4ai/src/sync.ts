@@ -122,6 +122,21 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
   )
   return [...results, ...removals].filter((r): r is Issue => r !== undefined)
 }
+const ANY_HEADING_RE = /^#{1,6} /u
+/** The formatter puts a blank line on both sides of every heading outside a code fence, so the generator emits that shape and its output is already a fixed point under `bun run fix`. */
+const spaceHeadings = (text: string): string => {
+  const out: string[] = []
+  let inFence = false
+  let afterHeading = false
+  for (const line of text.split('\n')) {
+    if (FENCE_RE.test(line)) inFence = !inFence
+    const heading = !inFence && ANY_HEADING_RE.test(line)
+    if ((heading || afterHeading) && line !== '' && out.length > 0 && out.at(-1) !== '') out.push('')
+    out.push(line)
+    afterHeading = heading
+  }
+  return out.join('\n')
+}
 /** Single source for the generated CLAUDE.md — one doc title, a Contents list, then each rule as a `##` topic. `fix` writes what this returns; the freshness check diffs against it, so neither can drift from the other. */
 const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<GeneratedGuide> => {
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
@@ -132,7 +147,7 @@ const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<
   const header = `# ${GUIDE_TITLE}\n\n${buildContents(titles)}`
   const blocks = contents.map(c => ruleBlock(c))
   const raw = `${[header, ...blocks].join('\n\n---\n\n')}\n`
-  return { content: raw }
+  return { content: spaceHeadings(raw) }
 }
 const SMART_SINGLE_RE = /[‘’]/gu
 const SMART_DOUBLE_RE = /[“”]/gu
