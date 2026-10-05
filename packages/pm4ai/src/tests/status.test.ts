@@ -1,8 +1,8 @@
-import { $ } from 'bun'
-import { describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { $, file } from 'bun'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { chmod, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { getUiSyncTime } from '../format.js'
 import { timeAgo } from '../status.js'
 setDefaultTimeout(30_000)
@@ -121,15 +121,64 @@ test('status --all shows every discovered project', async () => {
 }, 30_000)
 const isCI = Boolean(process.env.CI)
 describe.skipIf(isCI)('status() via CLI', () => {
-  const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
-  const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
+  const cliPath = join(import.meta.dirname, '..', 'cli.ts')
+  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..')
+  const copySkip = new Set(['.git', '.next', '.turbo', 'dist', 'node_modules'])
+  let root = ''
+  let pm4aiPath = ''
+  let preloadPath = ''
+  let env: Record<string, string | undefined> = {}
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'pm4ai-status-home-'))
+    pm4aiPath = join(root, 'pm4ai')
+    preloadPath = join(root, 'offline.ts')
+    await cp(repoRoot, pm4aiPath, { filter: src => !copySkip.has(basename(src)), recursive: true })
+    await mkdir(join(pm4aiPath, '.git'))
+    const binDir = join(root, 'bin')
+    const stateDir = join(root, 'state')
+    await mkdir(binDir)
+    await mkdir(join(stateDir, 'checks'), { recursive: true })
+    const safeName = pm4aiPath.replaceAll('/', '--').replace(/^--/u, '')
+    await writeFile(
+      join(stateDir, 'checks', `${safeName}.lock`),
+      JSON.stringify({ at: new Date().toISOString(), pid: process.pid })
+    )
+    for (const command of ['git', 'gh']) {
+      const shimPath = join(binDir, command)
+      await writeFile(shimPath, '#!/bin/sh\nexit 1\n')
+      await chmod(shimPath, 0o755)
+    }
+    const openShim = join(binDir, 'open')
+    await writeFile(openShim, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/swiftbar-refresh"\nexit 0\n')
+    await chmod(openShim, 0o755)
+    await writeFile(preloadPath, 'globalThis.fetch = async () => new Response(null, { status: 503 })\n')
+    env = {
+      ...process.env,
+      HOME: root,
+      PATH: `${binDir}:${process.env.PATH}`,
+      PM4AI_HOME: root,
+      PM4AI_NO_SWIFTBAR_REFRESH: '1',
+      PM4AI_STATE_DIR: stateDir
+    }
+  })
+  afterAll(async () => {
+    if (root) await rm(root, { force: true, recursive: true })
+  })
   test('status command runs on real project', async () => {
-    const result = (await $`bun ${cliPath} status`.cwd(pm4aiPath).quiet().nothrow()).text()
-    expect(result).toContain('pm4ai')
+    const result = await $`bun --preload ${preloadPath} ${cliPath} status`.cwd(pm4aiPath).env(env).quiet().nothrow()
+    expect(result.exitCode).toBe(0)
+    expect(result.text()).toContain('pm4ai')
+    expect(await file(join(root, 'swiftbar-refresh')).exists()).toBe(false)
   }, 30_000)
   test('status --swiftbar outputs SwiftBar format', async () => {
-    const result = (await $`bun ${cliPath} status --swiftbar`.cwd(pm4aiPath).quiet().nothrow()).text()
-    expect(result).toContain('sfimage=')
-    expect(result).toContain('Refresh | refresh=true')
+    const result = await $`bun --preload ${preloadPath} ${cliPath} status --swiftbar`
+      .cwd(pm4aiPath)
+      .env(env)
+      .quiet()
+      .nothrow()
+    expect(result.exitCode).toBe(0)
+    expect(result.text()).toContain('sfimage=')
+    expect(result.text()).toContain('Refresh | refresh=true')
+    expect(await file(join(root, 'swiftbar-refresh')).exists()).toBe(false)
   }, 120_000)
 })

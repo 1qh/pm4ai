@@ -426,14 +426,18 @@ const delegatesConfig = (content: string): boolean => {
   const id = DEFAULT_EXPORT_RE.exec(content)?.groups?.id
   return id !== undefined && content.split('\n').some(line => line.trimStart().startsWith('import') && line.includes(id))
 }
+const NEXT_AGENT_RULES_RE = /agentRules\s*:\s*false\b/u
 const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const configs = await glob('**/next.config.ts', projectPath)
   await Promise.all(
     configs.map(async configFile => {
       const content = await file(configFile).text()
-      if (!(content.includes('reactStrictMode') || content.includes('createNextConfig') || delegatesConfig(content)))
+      const inherited = content.includes('createNextConfig') || delegatesConfig(content)
+      if (!(content.includes('reactStrictMode') || inherited))
         issues.push(drift(`missing reactStrictMode in ${rel(configFile, projectPath)}`))
+      if (!(NEXT_AGENT_RULES_RE.test(content) || inherited))
+        issues.push(drift(`missing agentRules: false in ${rel(configFile, projectPath)}`))
     })
   )
   for (const f of await glob('**/apps/*/postcss.config.*', projectPath))

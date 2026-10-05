@@ -44,7 +44,7 @@ checks:
   vercel deployment status
   layout conventions (suppressHydrationWarning, antialiased, tracking, min-h-screen, font-sans, metadata, fonts.ts, providers.tsx, global.css, arrow function export, no RootLayout, no Provider inline)
   page conventions (arrow function export)
-  next.config (reactStrictMode, no redundant postcss in apps)
+  next.config (reactStrictMode, agentRules: false, no redundant postcss in apps)
   app tsconfig (extends lintmax, no include)
   banned packages (817 entries), bun globals, @a/ui deep imports
   deps on latest or ^major, no duplicates across workspaces

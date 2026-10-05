@@ -8,6 +8,7 @@
         "CI",
         "PM4AI_CLONE_BASE",
         "PM4AI_HOME",
+        "PM4AI_NO_SWIFTBAR_REFRESH",
         "PM4AI_LIVE",
         "PM4AI_SKIP_BOOK_WIRING",
         "PM4AI_STATE_DIR",

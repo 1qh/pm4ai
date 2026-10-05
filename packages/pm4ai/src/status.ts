@@ -121,7 +121,9 @@ const status = async (swiftbar = false, all = false, excludes: readonly string[]
       console.log(formatIssues(path, issues))
       console.log()
     }
-    if (process.platform === 'darwin') await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+    // biome-ignore lint/style/noProcessEnv: this refresh seam is scoped to the macOS side effect
+    if (process.platform === 'darwin' && process.env.PM4AI_NO_SWIFTBAR_REFRESH !== '1')
+      await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
   }
 }
 export { status, timeAgo }
