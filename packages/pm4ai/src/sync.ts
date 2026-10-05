@@ -156,6 +156,17 @@ const WS_RE = /\s/gu
 const normalizeGuide = (s: string): string =>
   s.replaceAll(SMART_SINGLE_RE, "'").replaceAll(SMART_DOUBLE_RE, '"').replaceAll(WS_RE, '')
 const lintmaxBinOf = (p: string): string => join(p, 'node_modules', '.bin', 'lintmax')
+/** The running CLI's own workspace install, found by walking up from this file: in a checkout (CI, local development) it holds lintmax even when the scaffold source has no install, and a global install has none, which keeps the skip. */
+const ancestorLintmaxBin = async (start: string): Promise<string | undefined> => {
+  const dirs: string[] = []
+  for (let dir = start; ; dir = dirname(dir)) {
+    dirs.push(dir)
+    if (dirname(dir) === dir) break
+  }
+  const candidates = dirs.map(d => lintmaxBinOf(d))
+  const present = await Promise.all(candidates.map(async c => pathExists(c)))
+  return candidates[present.indexOf(true)]
+}
 /** Canonicalize the written CLAUDE.md with lintmax so it is already lint-clean — the project's own lintmax, else self's (for `init`, where the scaffold has no install yet). Otherwise the project's later `bun run fix` reformats it and the "fix produces no changes" scaffold gate fails. */
 const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Promise<void> => {
   const projectBin = lintmaxBinOf(projectPath)
@@ -163,6 +174,7 @@ const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Prom
   let lintmaxBin: string | undefined
   if (await pathExists(projectBin)) lintmaxBin = projectBin
   else if (await pathExists(selfBin)) lintmaxBin = selfBin
+  else lintmaxBin = await ancestorLintmaxBin(import.meta.dirname)
   if (lintmaxBin === undefined) return
   await $`${lintmaxBin} fix ${CLAUDE_MD}`.cwd(projectPath).quiet().nothrow()
 }
