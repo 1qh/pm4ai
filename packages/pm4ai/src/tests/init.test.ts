@@ -1,9 +1,9 @@
 /** biome-ignore-all lint/suspicious/noMisplacedAssertion: the rule recognises test(name, fn) but not the test.skipIf(cond)(name, fn) call form, so it reads every assertion in these blocks as sitting outside a test */
 import { $, file } from 'bun'
 import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { rm, stat } from 'node:fs/promises'
+import { cp, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { checkSherifScope, checkTypescriptPin } from '../checks.js'
 import { DEFAULT_SCRIPTS, EXPECTED, REQUIRED_ROOT_DEVDEPS } from '../constants.js'
 import { init } from '../init.js'
@@ -39,8 +39,18 @@ interface FixturePackage {
 }
 const readPkg = async (path: string): Promise<FixturePackage> => parseJson<FixturePackage>(await file(path).text())
 process.env.PM4AI_SKIP_BOOK_WIRING = '1'
+const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..')
+const COPY_SKIP = new Set(['.git', '.next', '.turbo', 'dist', 'node_modules'])
+/** init scaffolds from the first pm4ai checkout discovery finds, so a machine holding an older one judges THAT tree; a private home holding only this checkout pins the source to the code under test. */
+const SOURCE_HOME = await mkdtemp(join(tmpdir(), 'pm4ai-init-home-'))
+await cp(REPO_ROOT, join(SOURCE_HOME, 'pm4ai'), { filter: src => !COPY_SKIP.has(basename(src)), recursive: true })
+const priorHome = process.env.PM4AI_HOME
+process.env.PM4AI_HOME = SOURCE_HOME
 afterAll(async () => {
   delete process.env.PM4AI_SKIP_BOOK_WIRING
+  if (priorHome === undefined) delete process.env.PM4AI_HOME
+  else process.env.PM4AI_HOME = priorHome
+  await rm(SOURCE_HOME, { force: true, recursive: true })
   await rm(TEST_DIR, { force: true, recursive: true })
 }, 60_000)
 describe('init scaffold', () => {
