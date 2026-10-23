@@ -1,0 +1,14 @@
+# Shared lane constraints (read before the task below)
+You are a coding lane in an all-Go + Next.js product. The task after this block is your ONLY task, and its "Working dir" line says which directory to operate in.
+## Absolute rules
+- NEVER weaken, delete, or narrow an assertion in a FUNCTIONAL-LAW / GUARD test to make it pass (the web guard tests like `*.test.ts` that scan source, and their helper modules e.g. `src/components/submitting-controls.ts`, `src/lib/source-scan.ts`). You satisfy those by fixing PRODUCT source. An ordinary lint fix INSIDE a Go `_test.go` file (adding `t.Parallel()`, extracting a const, `http.NoBody`, filling a struct) IS allowed and expected when the task names it — that is not weakening a check.
+- NEVER weaken, disable, or narrow a lint rule to pass. Fix the code. The lintmax gotchas live in `web/CLAUDE.md` (already loaded in this repo) — obey them.
+- NEVER add a control that does nothing (a dead button, an empty label). A refusal must offer a REAL action the reader can take, or render nothing.
+- Do not run `git commit`, `git push`, `bun run fix`, or any fleet command. `bun run fix` reformats the WHOLE tree, collides with other lanes, and can drop edits — the lead runs it once at the end. Keep your own edits formatted by hand (single quotes, no semicolons, no blank lines between statements, arrow functions, sorted object keys).
+- Comments are stripped by the gate — put no explanatory comments in code; a needed lint-ignore directive's reason goes inline on the directive itself.
+- Run with `PATH="$HOME/.bun/bin:$PATH"` so the correct bun is used.
+## How to verify
+- Run NO build, test, lint, gate, generator or formatter-write command (no go test, go build, bun test, tsc, lintmax, bun run fix, bun run check, sqlc): several lanes share one tree and the lead gates the whole batch once. THE ONE EXCEPTION: a command the brief NAMES explicitly as a targeted self-check (a `go test -count=1 -run <names>`, a named `golangci-lint run ... | grep <your files>`, `go vet`) — RUN IT and paste its output in the report, whether or not other lanes share the tree, because a named command is scoped to your own subject; a fix or guard the brief asked you to prove and you did not run is reported as UNPROVEN, never as done. Run exactly that command and nothing wider. For Go edits, also run `~/go/bin/golangci-lint run --path-mode=abs ./<your package>/ 2>&1 | grep -E '<your files>'` and clear every finding it names in your files, since a lint finding the gate meets costs a whole gate round.
+- ALLOWED cheap self-checks on your own files only: `gofmt -l <file>`, `go vet ./<package>`, and reading files.
+- Report the precise files+lines you changed, each guard's kill-edit, and anything you could not reach.
+---
