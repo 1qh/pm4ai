@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const runDistDir = (): string => `.next/test-${String(process.pid)}`
 const leadingDashes = /^--/u
@@ -56,7 +57,7 @@ const startServer = (
   return { distDir, server }
 }
 const spawnDevServer = async (dashboardDir: string, port: number) => {
-  const fixturePrefix = join(dashboardDir, 'test-fixture-')
+  const fixturePrefix = join(tmpdir(), 'pm4ai-web-fixture-')
   const temporaryDirectory = await mkdtemp(fixturePrefix)
   const fixtureDir = await realpath(temporaryDirectory)
   try {

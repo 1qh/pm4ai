@@ -205,7 +205,7 @@ describe('init scaffold', () => {
       'lintmax fix produces no changes',
       async () => {
         const result = await $`bun run fix`.cwd(TEST_DIR).quiet().nothrow()
-        expect(result.exitCode).toBe(0)
+        expect(result.exitCode === 0 ? '' : `${result.stdout.toString()}${result.stderr.toString()}`).toBe('')
         const status = await $`git status --porcelain -- .`.cwd(TEST_DIR).quiet().nothrow()
         const diff = await $`git diff -- .`.cwd(TEST_DIR).quiet().nothrow()
         expect(`${status.stdout.toString().trim()}${diff.stdout.toString()}`).toBe('')
