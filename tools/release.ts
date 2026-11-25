@@ -45,8 +45,8 @@ const pkgs = await Promise.all(
     pkg: await readPkg(path)
   }))
 )
-const resolve = async (path: string, pkg: Pkg): Promise<null | Target> => {
-  if (!(pkg.name && pkg.version) || pkg.private) return null
+const resolve = async (path: string, pkg: Pkg): Promise<Target | undefined> => {
+  if (!(pkg.name && pkg.version) || pkg.private) return undefined
   const view = await $`npm view ${pkg.name} versions --json`.quiet().nothrow()
   if (view.exitCode !== 0 && !notFoundRe.test(view.stderr.toString()))
     throw new Error(
@@ -61,44 +61,13 @@ const resolve = async (path: string, pkg: Pkg): Promise<null | Target> => {
     version: pkg.version
   }
 }
-const resolved = (await Promise.all(pkgs.map(async ({ path, pkg }) => resolve(path, pkg)))).filter(
-  (t): t is Target => t !== null
-)
-const onNpm = resolved.filter(t => t.onNpm)
-if (onNpm.length === 0) {
-  console.log('no publishable package on npm (new packages are published manually once, then auto-release takes over)')
-  process.exit(0)
-}
-const toPublish = onNpm.filter(t => !t.published)
-if (toPublish.length === 0) {
-  console.log(`already published: ${onNpm.map(nameVer).join(', ')}`)
-  process.exit(0)
-}
 const publishOne = async (t: Target): Promise<Target & { ok: boolean }> => {
   const pub = await $`bun publish --access public`.cwd(t.dir).nothrow()
   if (pub.exitCode === 0) return { ...t, ok: true }
   const recheck = await $`npm view ${t.name}@${t.version} version`.quiet().nothrow()
   return { ...t, ok: recheck.exitCode === 0 && recheck.stdout.toString().trim().length > 0 }
 }
-const results = await Promise.all(toPublish.map(publishOne))
-const failed = results.filter(r => !r.ok)
-if (failed.length > 0) {
-  console.error(`publish failed: ${failed.map(nameVer).join(', ')}`)
-  process.exit(1)
-}
-const first = results[0]
-const tag = `v${first?.version ?? '0.0.0'}`
-const tagged = await $`git tag ${tag}`.nothrow()
-const pushed = tagged.exitCode === 0 ? await $`git push origin ${tag}`.nothrow() : tagged
-const released =
-  pushed.exitCode === 0 ? await $`gh release create ${tag} --title ${tag} --generate-notes`.nothrow() : pushed
-if (released.exitCode !== 0) {
-  console.error(
-    `published ${results.map(nameVer).join(', ')} but ${tag} did not land: ${released.stderr.toString().trim()}`
-  )
-  process.exit(1)
-}
-const staleTags = async (): Promise<string[]> => {
+const staleTags = async (tag: string): Promise<string[]> => {
   const ls = await $`git ls-remote --tags origin`.quiet().nothrow()
   if (ls.exitCode !== 0)
     throw new Error(`cannot list remote tags, so whether older ones remain is unknown: ${ls.stderr.toString().trim()}`)
@@ -109,15 +78,67 @@ const staleTags = async (): Promise<string[]> => {
     .filter(t => t && t !== tag && !t.endsWith('^{}'))
   return [...new Set(names)]
 }
-await Promise.all(
-  (await staleTags()).map(async t => {
-    await $`gh release delete ${t} --yes --cleanup-tag`.nothrow()
-    await $`git push origin :refs/tags/${t}`.nothrow()
-  })
-)
-const survivors = await staleTags()
-if (survivors.length > 0) {
-  console.error(`released ${tag} but older tags remain on the remote: ${survivors.join(', ')}`)
-  process.exit(1)
+const tagAndRelease = async (results: Target[]): Promise<{ code: number; tag: string }> => {
+  const first = results[0]
+  const tag = `v${first?.version ?? '0.0.0'}`
+  const tagged = await $`git tag ${tag}`.nothrow()
+  const pushed = tagged.exitCode === 0 ? await $`git push origin ${tag}`.nothrow() : tagged
+  const released =
+    pushed.exitCode === 0 ? await $`gh release create ${tag} --title ${tag} --generate-notes`.nothrow() : pushed
+  if (released.exitCode === 0) return { code: 0, tag }
+  console.error(
+    `published ${results.map(nameVer).join(', ')} but ${tag} did not land: ${released.stderr.toString().trim()}`
+  )
+  return { code: 1, tag }
 }
-console.log(`released: ${results.map(nameVer).join(', ')}`)
+const pruneStaleTags = async (tag: string): Promise<number> => {
+  await Promise.all(
+    (await staleTags(tag)).map(async t => {
+      await $`gh release delete ${t} --yes --cleanup-tag`.nothrow()
+      await $`git push origin :refs/tags/${t}`.nothrow()
+    })
+  )
+  const survivors = await staleTags(tag)
+  if (survivors.length === 0) return 0
+  console.error(`released ${tag} but older tags remain on the remote: ${survivors.join(', ')}`)
+  return 1
+}
+const releaseTag = async (results: Target[]): Promise<number> => {
+  const { code, tag } = await tagAndRelease(results)
+  if (code !== 0) return code
+  const pruned = await pruneStaleTags(tag)
+  if (pruned !== 0) return pruned
+  console.log(`released: ${results.map(nameVer).join(', ')}`)
+  return 0
+}
+const publishAll = async (toPublish: Target[]): Promise<number> => {
+  const results = await Promise.all(toPublish.map(publishOne))
+  const failed = results.filter(r => !r.ok)
+  if (failed.length > 0) {
+    console.error(`publish failed: ${failed.map(nameVer).join(', ')}`)
+    return 1
+  }
+  const code = await releaseTag(results)
+  return code
+}
+const selectToPublish = (resolved: Target[]): Target[] | undefined => {
+  const onNpm = resolved.filter(t => t.onNpm)
+  if (onNpm.length === 0) {
+    console.log('no publishable package on npm (new packages are published manually once, then auto-release takes over)')
+    return undefined
+  }
+  const toPublish = onNpm.filter(t => !t.published)
+  if (toPublish.length > 0) return toPublish
+  console.log(`already published: ${onNpm.map(nameVer).join(', ')}`)
+  return undefined
+}
+const main = async (): Promise<number> => {
+  const resolved = (await Promise.all(pkgs.map(async ({ path, pkg }) => resolve(path, pkg)))).filter(
+    (t): t is Target => t !== undefined
+  )
+  const toPublish = selectToPublish(resolved)
+  if (toPublish === undefined) return 0
+  const code = await publishAll(toPublish)
+  return code
+}
+process.exitCode = await main()

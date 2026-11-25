@@ -5,29 +5,14 @@ import { randomUUID } from 'node:crypto'
 import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { discover } from './discover.js'
-const dirExists = async (p: string): Promise<boolean> => {
+const isDirectory = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
   } catch {
     return false
   }
 }
-const dashboard = async () => {
-  const { self } = await discover()
-  const dashboardDir = join(self.path, 'apps', 'web')
-  const dashboardExists = await dirExists(dashboardDir)
-  if (!dashboardExists) {
-    console.log('dashboard app not found at', dashboardDir)
-    console.log('run from pm4ai monorepo or ensure apps/web exists')
-    process.exitCode = 1
-    return
-  }
-  const token = randomUUID()
-  const tokenFile = join(dashboardDir, '.auth-token')
-  await write(tokenFile, token)
-  const url = `http://localhost:4200/auth/${token}`
-  console.log(`dashboard: ${url}`)
-  console.log('(token is one-time use — copy URL if port-forwarding)')
+const runDashboard = async (dashboardDir: string, tokenFile: string, url: string) => {
   // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev/fleet tool invoking a trusted PATH tool
   const proc = spawn('bun', ['run', 'dev'], { cwd: dashboardDir, stdio: 'inherit' })
   setTimeout(() => {
@@ -43,5 +28,26 @@ const dashboard = async () => {
       else reject(new Error(`dashboard exited with code ${code}`))
     })
   })
+}
+const launchDashboard = async (dashboardDir: string) => {
+  const token = randomUUID()
+  const tokenFile = join(dashboardDir, '.auth-token')
+  await write(tokenFile, token)
+  const url = `http://localhost:4200/auth/${token}`
+  console.log(`dashboard: ${url}`)
+  console.log('(token is one-time use — copy URL if port-forwarding)')
+  await runDashboard(dashboardDir, tokenFile, url)
+}
+const dashboard = async () => {
+  const { self } = await discover()
+  const dashboardDir = join(self.path, 'apps', 'web')
+  const doesDashboardExist = await isDirectory(dashboardDir)
+  if (!doesDashboardExist) {
+    console.log('dashboard app not found at', dashboardDir)
+    console.log('run from pm4ai monorepo or ensure apps/web exists')
+    process.exitCode = 1
+    return
+  }
+  await launchDashboard(dashboardDir)
 }
 export { dashboard }

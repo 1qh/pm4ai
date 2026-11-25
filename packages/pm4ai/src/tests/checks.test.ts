@@ -160,92 +160,96 @@ describe('checkGit', () => {
     await $`git -c user.name=test -c user.email=test@test commit --allow-empty -m init`.cwd(local).quiet().nothrow()
     await $`git push`.cwd(local).quiet().nothrow()
     const issues = await checkGit(local)
-    expect(issues).toEqual([])
+    expect(issues).toStrictEqual([])
     await rm(remote, { recursive: true })
     await rm(local, { recursive: true })
   })
 })
+const REMOTE = 'https://github.com/x/y.git'
+const EXT = 'https://api.example.com/v1'
+const localhostUrl = ['http:/', '/localhost:3000/api'].join('')
+const dataUrl = 'https://api.openai.com/v1'
+const HOMEDIR = 'homedir'
+const PENV = 'process.env'
+const PERFNOW = ['performance', '.now()'].join('')
+const writeFileIn = async (name: string, body: string): Promise<string> => {
+  const tmp = await makeTmp()
+  await mkdir(join(tmp, 'src'), { recursive: true })
+  await write(join(tmp, 'src', name), body)
+  return tmp
+}
 describe('checkHermeticTests', () => {
-  const REMOTE = 'https://github.com/x/y.git'
-  const EXT = 'https://api.example.com/v1'
-  const localhostUrl = ['http:/', '/localhost:3000/api'].join('')
-  const dataUrl = 'https://api.openai.com/v1'
-  const HOMEDIR = 'homedir'
-  const PENV = 'process.env'
-  const PERFNOW = ['performance', '.now()'].join('')
-  const writeFileIn = async (name: string, body: string): Promise<string> => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'src'), { recursive: true })
-    await write(join(tmp, 'src', name), body)
-    return tmp
-  }
-  test('flags a real remote git clone in a test file', async () => {
-    const tmp = await writeFileIn('a.test.ts', `await $\`git clone ${REMOTE} dest\`\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues.some(i => i.type === 'forbidden' && i.detail.includes('non-hermetic'))).toBe(true)
-    await rm(tmp, { recursive: true })
+  describe('network and git', () => {
+    test('flags a real remote git clone in a test file', async () => {
+      const tmp = await writeFileIn('a.test.ts', `await $\`git clone ${REMOTE} dest\`\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues.some(i => i.type === 'forbidden' && i.detail.includes('non-hermetic'))).toBe(true)
+      await rm(tmp, { recursive: true })
+    })
+    test('flags an external fetch in a test file', async () => {
+      const tmp = await writeFileIn('b.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues.some(i => i.type === 'forbidden')).toBe(true)
+      await rm(tmp, { recursive: true })
+    })
+    test('does not flag a local git clone from a filesystem path', async () => {
+      const tmp = await writeFileIn('c.test.ts', 'await $`git clone /tmp/local-bare.git dest`\n')
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('does not flag a localhost fetch (own spawned server)', async () => {
+      const tmp = await writeFileIn('d.test.ts', `await fetch(${JSON.stringify(localhostUrl)})\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('does not flag a URL passed as data to a pure function', async () => {
+      const tmp = await writeFileIn('e.test.ts', `expect(normalizeBaseUrl(${JSON.stringify(dataUrl)})).toBeDefined()\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('does not scan non-test source files', async () => {
+      const tmp = await makeTmp()
+      await mkdir(join(tmp, 'src'), { recursive: true })
+      await write(join(tmp, 'src', 'prod.ts'), `await fetch(${JSON.stringify(EXT)})\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('exempts a deliberate -live test file', async () => {
+      const tmp = await writeFileIn('x-live.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
   })
-  test('flags an external fetch in a test file', async () => {
-    const tmp = await writeFileIn('b.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues.some(i => i.type === 'forbidden')).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test('does not flag a local git clone from a filesystem path', async () => {
-    const tmp = await writeFileIn('c.test.ts', 'await $`git clone /tmp/local-bare.git dest`\n')
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('does not flag a localhost fetch (own spawned server)', async () => {
-    const tmp = await writeFileIn('d.test.ts', `await fetch(${JSON.stringify(localhostUrl)})\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('does not flag a URL passed as data to a pure function', async () => {
-    const tmp = await writeFileIn('e.test.ts', `expect(normalizeBaseUrl(${JSON.stringify(dataUrl)})).toBeDefined()\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('does not scan non-test source files', async () => {
-    const tmp = await makeTmp()
-    await mkdir(join(tmp, 'src'), { recursive: true })
-    await write(join(tmp, 'src', 'prod.ts'), `await fetch(${JSON.stringify(EXT)})\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('exempts a deliberate -live test file', async () => {
-    const tmp = await writeFileIn('x-live.test.ts', `await fetch(${JSON.stringify(EXT)})\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('flags a test that reads the real home dir without a HOME swap', async () => {
-    const tmp = await writeFileIn('h.test.ts', `const d = join(${HOMEDIR}(), '.x')\nawait mkdir(d)\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues.some(i => i.detail.includes('ambient state'))).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test('exempts a test that swaps the HOME env var to an isolated dir', async () => {
-    const tmp = await writeFileIn('i.test.ts', `${PENV}.HOME = tmpDir\nconst d = ${HOMEDIR}()\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('flags a wall-clock micro-benchmark (performance.now) in a test', async () => {
-    const tmp = await writeFileIn('t.test.ts', `const start = ${PERFNOW}\nexpect(start).toBeGreaterThan(0)\n`)
-    const issues = await checkHermeticTests(tmp)
-    expect(issues.some(i => i.detail.includes('non-hermetic timing'))).toBe(true)
-    await rm(tmp, { recursive: true })
-  })
-  test('does not flag Date.now used for a unique name', async () => {
-    const tmp = await writeFileIn('u.test.ts', 'const name = "x-" + Date.now()\n')
-    const issues = await checkHermeticTests(tmp)
-    expect(issues).toHaveLength(0)
-    await rm(tmp, { recursive: true })
+  describe('ambient state and timing', () => {
+    test('flags a test that reads the real home dir without a HOME swap', async () => {
+      const tmp = await writeFileIn('h.test.ts', `const d = join(${HOMEDIR}(), '.x')\nawait mkdir(d)\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues.some(i => i.detail.includes('ambient state'))).toBe(true)
+      await rm(tmp, { recursive: true })
+    })
+    test('exempts a test that swaps the HOME env var to an isolated dir', async () => {
+      const tmp = await writeFileIn('i.test.ts', `${PENV}.HOME = tmpDir\nconst d = ${HOMEDIR}()\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('flags a wall-clock micro-benchmark (performance.now) in a test', async () => {
+      const tmp = await writeFileIn('t.test.ts', `const start = ${PERFNOW}\nexpect(start).toBeGreaterThan(0)\n`)
+      const issues = await checkHermeticTests(tmp)
+      expect(issues.some(i => i.detail.includes('non-hermetic timing'))).toBe(true)
+      await rm(tmp, { recursive: true })
+    })
+    test('does not flag Date.now used for a unique name', async () => {
+      const tmp = await writeFileIn('u.test.ts', 'const name = "x-" + Date.now()\n')
+      const issues = await checkHermeticTests(tmp)
+      expect(issues).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
   })
 })
 describe('checkDrift', () => {
@@ -568,6 +572,29 @@ describe('checkBannedImports', () => {
     await rm(tmp, { recursive: true })
   })
 })
+const writeTailwindApp = async ({
+  dep,
+  isSourced,
+  name,
+  tmp
+}: {
+  dep: string
+  isSourced: boolean
+  name: string
+  tmp: string
+}) => {
+  await mkdir(join(tmp, 'apps', name, 'src', 'app'), { recursive: true })
+  await write(join(tmp, 'apps', name, 'package.json'), JSON.stringify({ name }))
+  await write(join(tmp, 'apps', name, 'src', 'app', 'page.tsx'), `import { X } from '${dep}'\nexport const P = X\n`)
+  const tail = isSourced ? `@source '../../../../node_modules/${dep}';\n` : ''
+  await write(join(tmp, 'apps', name, 'src', 'app', 'global.css'), `@import '@a/ui/globals.css';\n${tail}`)
+}
+const seedTailwindDeps = async ({ content, deps, tmp }: { content: string; deps: string[]; tmp: string }) => {
+  for (const dep of deps) {
+    await mkdir(join(tmp, 'node_modules', dep), { recursive: true })
+    await write(join(tmp, 'node_modules', dep, 'index.js'), content)
+  }
+}
 describe('checkTailwindSourceCoverage', () => {
   const scaffold = async ({
     cssTail = '',
@@ -635,19 +662,9 @@ describe('checkTailwindSourceCoverage', () => {
   })
   test('scopes per app — a package one app imports never flags a sibling app that does not import it', async () => {
     const tmp = await makeTmp()
-    const app = async (name: string, dep: string, sourced: boolean) => {
-      await mkdir(join(tmp, 'apps', name, 'src', 'app'), { recursive: true })
-      await write(join(tmp, 'apps', name, 'package.json'), JSON.stringify({ name }))
-      await write(join(tmp, 'apps', name, 'src', 'app', 'page.tsx'), `import { X } from '${dep}'\nexport const P = X\n`)
-      const tail = sourced ? `@source '../../../../node_modules/${dep}';\n` : ''
-      await write(join(tmp, 'apps', name, 'src', 'app', 'global.css'), `@import '@a/ui/globals.css';\n${tail}`)
-    }
-    for (const dep of ['fumalib', 'idecnlib']) {
-      await mkdir(join(tmp, 'node_modules', dep), { recursive: true })
-      await write(join(tmp, 'node_modules', dep, 'index.js'), jsxDist + X)
-    }
-    await app('docs', 'fumalib', false)
-    await app('web', 'idecnlib', true)
+    await seedTailwindDeps({ content: jsxDist + X, deps: ['fumalib', 'idecnlib'], tmp })
+    await writeTailwindApp({ dep: 'fumalib', isSourced: false, name: 'docs', tmp })
+    await writeTailwindApp({ dep: 'idecnlib', isSourced: true, name: 'web', tmp })
     const issues = await checkTailwindSourceCoverage(tmp)
     expect(issues).toHaveLength(1)
     expect(issues[0]?.detail).toContain('fumalib')

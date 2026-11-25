@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import { consumeToken, createSessionCookie, generateToken, validateSession } from '../lib/auth'
+import { createSessionCookie, didConsumeToken, generateToken, isValidSession } from '../lib/auth'
 const uuidRe = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/iu
 describe('generateToken', () => {
   test('returns a UUID v4 string', () => {
@@ -13,26 +13,26 @@ describe('generateToken', () => {
     expect(a).not.toBe(b)
   })
 })
-describe('consumeToken', () => {
+describe('didConsumeToken', () => {
   test('valid token returns true on first use', () => {
     const token = generateToken()
-    expect(consumeToken(token)).toBe(true)
+    expect(didConsumeToken(token)).toBe(true)
   })
   test('same token fails on second use (one-time)', () => {
     const token = generateToken()
-    consumeToken(token)
-    expect(consumeToken(token)).toBe(false)
+    didConsumeToken(token)
+    expect(didConsumeToken(token)).toBe(false)
   })
   test('invalid token returns false', () => {
-    expect(consumeToken('not-a-real-token')).toBe(false)
+    expect(didConsumeToken('not-a-real-token')).toBe(false)
   })
   test('empty string returns false', () => {
-    expect(consumeToken('')).toBe(false)
+    expect(didConsumeToken('')).toBe(false)
   })
   test('old token invalidated when new token generated', () => {
     const old = generateToken()
     generateToken()
-    expect(consumeToken(old)).toBe(false)
+    expect(didConsumeToken(old)).toBe(false)
   })
 })
 describe('createSessionCookie', () => {
@@ -52,41 +52,42 @@ describe('createSessionCookie', () => {
     expect(value).toMatch(uuidRe)
   })
 })
-describe('validateSession', () => {
+describe('isValidSession', () => {
   test('returns false for null', () => {
-    expect(validateSession(null)).toBe(false)
+    // biome-ignore lint/nursery/noNull: null is the JSON wire value clients and tests read
+    expect(isValidSession(null)).toBe(false)
   })
   test('returns false for empty string', () => {
-    expect(validateSession('')).toBe(false)
+    expect(isValidSession('')).toBe(false)
   })
   test('returns false for random cookie', () => {
-    expect(validateSession('pm4ai_session=wrong-value')).toBe(false)
+    expect(isValidSession('pm4ai_session=wrong-value')).toBe(false)
   })
   test('returns true for valid session cookie', () => {
     const cookie = createSessionCookie()
     const header = cookie.split(';')[0] ?? ''
-    expect(validateSession(header)).toBe(true)
+    expect(isValidSession(header)).toBe(true)
   })
   test('returns true when valid cookie among multiple', () => {
     const cookie = createSessionCookie()
     const sessionPart = cookie.split(';')[0] ?? ''
     const header = `other=value; ${sessionPart}; another=thing`
-    expect(validateSession(header)).toBe(true)
+    expect(isValidSession(header)).toBe(true)
   })
   test('returns false for malformed cookie', () => {
-    expect(validateSession('pm4ai_session=')).toBe(false)
+    expect(isValidSession('pm4ai_session=')).toBe(false)
   })
 })
 describe('concurrent token consumption', () => {
   test('only one consumer succeeds for same token', () => {
     const token = generateToken()
-    const results = [consumeToken(token), consumeToken(token), consumeToken(token)]
+    const results = [didConsumeToken(token), didConsumeToken(token), didConsumeToken(token)]
     expect(results.filter(Boolean)).toHaveLength(1)
   })
 })
 describe('session isolation', () => {
   test('cookie from different session secret fails', () => {
-    expect(validateSession('pm4ai_session=wrong-secret-value')).toBe(false)
+    expect(isValidSession('pm4ai_session=wrong-secret-value')).toBe(false)
   })
   test('session cookie is consistent across calls', () => {
     const a = createSessionCookie()
@@ -101,6 +102,6 @@ describe('session isolation', () => {
 })
 describe('brute force resistance', () => {
   test('100 random UUIDs all fail', () => {
-    for (let i = 0; i < 100; i += 1) expect(consumeToken(randomUUID())).toBe(false)
+    for (let i = 0; i < 100; i += 1) expect(didConsumeToken(randomUUID())).toBe(false)
   })
 })

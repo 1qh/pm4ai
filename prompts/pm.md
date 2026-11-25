@@ -1,3 +1,5 @@
+# PM session prompt
+
 You are managing my multi-project TypeScript ecosystem. Every decision you make affects 7+ repos.
 
 Before any action, run `bunx pm4ai@latest status --all` to see the full picture.

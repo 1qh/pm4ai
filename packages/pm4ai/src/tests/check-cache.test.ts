@@ -16,6 +16,20 @@ setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-cc-'))
 const leadingSepRe = /^--/u
 const toSafeName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
+const writeAndCommit = async ({
+  content,
+  cwd,
+  message,
+  name
+}: {
+  content: string
+  cwd: string
+  message: string
+  name: string
+}) => {
+  await write(join(cwd, name), content)
+  await $`git add . && git -c user.name=test -c user.email=test@test commit -m ${message}`.cwd(cwd).quiet().nothrow()
+}
 describe('writeCheckResult + readCheckResult', () => {
   test('writes and reads back a passing result', async () => {
     const tmp = await makeTmp()
@@ -93,14 +107,11 @@ describe('getCodeCommitsSince', () => {
   test('counts code commits excluding CLAUDE.md', async () => {
     const tmp = await makeTmp()
     await $`git init`.cwd(tmp).quiet().nothrow()
-    await write(join(tmp, 'code.ts'), 'const x = 1')
-    await $`git add . && git -c user.name=test -c user.email=test@test commit -m first`.cwd(tmp).quiet().nothrow()
+    await writeAndCommit({ content: 'const x = 1', cwd: tmp, message: 'first', name: 'code.ts' })
     const base = await getHeadCommit(tmp)
-    await write(join(tmp, 'CLAUDE.md'), 'generated')
-    await $`git add . && git -c user.name=test -c user.email=test@test commit -m claude`.cwd(tmp).quiet().nothrow()
+    await writeAndCommit({ content: 'generated', cwd: tmp, message: 'claude', name: 'CLAUDE.md' })
     expect(await getCodeCommitsSince(tmp, base)).toBe(0)
-    await write(join(tmp, 'code.ts'), 'const x = 2')
-    await $`git add . && git -c user.name=test -c user.email=test@test commit -m code`.cwd(tmp).quiet().nothrow()
+    await writeAndCommit({ content: 'const x = 2', cwd: tmp, message: 'code', name: 'code.ts' })
     expect(await getCodeCommitsSince(tmp, base)).toBe(1)
     await rm(tmp, { recursive: true })
   })

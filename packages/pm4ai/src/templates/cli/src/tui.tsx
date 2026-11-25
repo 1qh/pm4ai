@@ -6,6 +6,7 @@ const ITEMS = ['build', 'test', 'deploy']
 const App = () => {
   const app = useApp()
   const [selected, setSelected] = useState(0)
+  // biome-ignore lint/nursery/noNull: a component renders nothing by returning null
   const [running, setRunning] = useState<null | string>(null)
   const [done, setDone] = useState<Set<string>>(() => new Set())
   useInput((input, key) => {
@@ -18,6 +19,7 @@ const App = () => {
         setRunning(item)
         setTimeout(() => {
           setDone(prev => new Set([...prev, item]))
+          // biome-ignore lint/nursery/noNull: a component renders nothing by returning null
           setRunning(null)
         }, 1500)
       }

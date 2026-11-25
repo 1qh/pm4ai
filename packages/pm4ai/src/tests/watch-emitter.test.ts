@@ -1,17 +1,19 @@
-/* eslint-disable no-promise-executor-return */
 import type { Socket } from 'node:net'
 import { write } from 'bun'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { createConnection } from 'node:net'
 import type { WatchEvent } from '../watch-types.js'
 import { parseJson } from '../json.js'
-import { clients, emit, SOCKET_PATH, socketExists, startEmitter, stopEmitter } from '../watch-emitter.js'
+import { clients, doesSocketExist, emit, SOCKET_PATH, startEmitter, stopEmitter } from '../watch-emitter.js'
 import { createEvent } from '../watch-types.js'
-const wait = async (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
+const wait = async (ms: number): Promise<void> =>
+  new Promise(r => {
+    setTimeout(r, ms)
+  })
 /** Polls to a deadline instead of sleeping a fixed span: a loaded runner needs longer than any constant a green local run would pick, and a constant tuned for it wastes that span on every pass. */
-const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void> => {
+const waitFor = async (isReady: () => boolean, timeoutMs = 5000): Promise<void> => {
   const deadline = Date.now() + timeoutMs
-  while (!predicate()) {
+  while (!isReady()) {
     if (Date.now() > deadline) throw new Error(`condition still false after ${String(timeoutMs)}ms`)
     await wait(10)
   }
@@ -39,229 +41,288 @@ const readEvents = async (sock: Socket, count: number): Promise<WatchEvent[]> =>
   })
 const ev = (project: string, step: 'audit' | 'check' | 'done' | 'maintain' | 'sync', status: 'fail' | 'ok' | 'start') =>
   createEvent({ project, status, step })
-afterEach(async () => {
-  await stopEmitter()
-})
+const withStoppedEmitter = async (run: () => Promise<void>) => {
+  try {
+    await run()
+  } finally {
+    await stopEmitter()
+  }
+}
+const emitAll = (events: WatchEvent[]) => {
+  for (const event of events) emit(event)
+}
+const collectRawLines = (sock: Socket) => {
+  const raw: string[] = []
+  sock.on('data', chunk => {
+    raw.push(chunk.toString())
+  })
+  return () => raw.join('').split('\n').filter(Boolean)
+}
+const deliverToDroppedClient = async (event: WatchEvent) => {
+  const sock = await connectClient()
+  emit(event)
+  await wait(50)
+  sock.destroy()
+  await wait(50)
+}
+const receiveOne = async (event: WatchEvent) => {
+  const sock = await connectClient()
+  const eventsPromise = readEvents(sock, 1)
+  emit(event)
+  const events = await eventsPromise
+  sock.destroy()
+  return events
+}
 describe('socket lifecycle', () => {
   test('creates socket at expected path', async () => {
-    await startEmitter()
-    expect(await socketExists()).toBe(true)
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      expect(await doesSocketExist()).toBe(true)
+    })
   })
   test('cleans up socket on stop', async () => {
-    await startEmitter()
-    await stopEmitter()
-    expect(await socketExists()).toBe(false)
-  })
-  test('handles stale socket file', async () => {
-    await startEmitter()
-    await stopEmitter()
-    await write(SOCKET_PATH, 'stale')
-    await startEmitter()
-    expect(await socketExists()).toBe(true)
-  })
-  test('multiple start/stop cycles', async () => {
-    for (let i = 0; i < 3; i += 1) {
+    await withStoppedEmitter(async () => {
       await startEmitter()
       await stopEmitter()
-    }
-    expect(await socketExists()).toBe(false)
+      expect(await doesSocketExist()).toBe(false)
+    })
+  })
+  test('handles stale socket file', async () => {
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      await stopEmitter()
+      await write(SOCKET_PATH, 'stale')
+      await startEmitter()
+      expect(await doesSocketExist()).toBe(true)
+    })
+  })
+  test('multiple start/stop cycles', async () => {
+    await withStoppedEmitter(async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await startEmitter()
+        await stopEmitter()
+      }
+      expect(await doesSocketExist()).toBe(false)
+    })
   })
   test('second start is no-op', async () => {
-    await startEmitter()
-    await startEmitter()
-    expect(await socketExists()).toBe(true)
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      await startEmitter()
+      expect(await doesSocketExist()).toBe(true)
+    })
   })
 })
 describe('event delivery', () => {
   test('single client receives event', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const eventsPromise = readEvents(sock, 1)
-    emit(ev('lintmax', 'sync', 'start'))
-    const events = await eventsPromise
-    expect(events).toHaveLength(1)
-    expect(events[0]?.project).toBe('lintmax')
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      const eventsPromise = readEvents(sock, 1)
+      emit(ev('lintmax', 'sync', 'start'))
+      const events = await eventsPromise
+      expect(events).toHaveLength(1)
+      expect(events[0]?.project).toBe('lintmax')
+      sock.destroy()
+    })
   })
   test('multiple clients each receive all events', async () => {
-    await startEmitter()
-    const socks = await Promise.all([connectClient(), connectClient(), connectClient()])
-    const promises = socks.map(async s => readEvents(s, 2))
-    emit(ev('a', 'sync', 'start'))
-    emit(ev('b', 'audit', 'ok'))
-    const results = await Promise.all(promises)
-    for (const events of results) {
-      expect(events).toHaveLength(2)
-      expect(events[0]?.project).toBe('a')
-      expect(events[1]?.project).toBe('b')
-    }
-    for (const s of socks) s.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const socks = await Promise.all([connectClient(), connectClient(), connectClient()])
+      const promises = socks.map(async s => readEvents(s, 2))
+      emitAll([ev('a', 'sync', 'start'), ev('b', 'audit', 'ok')])
+      const results = await Promise.all(promises)
+      for (const events of results) {
+        expect(events).toHaveLength(2)
+        expect(events[0]?.project).toBe('a')
+        expect(events[1]?.project).toBe('b')
+      }
+      for (const s of socks) s.destroy()
+    })
   })
   test('events are valid newline-delimited JSON', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const raw: string[] = []
-    sock.on('data', chunk => raw.push(chunk.toString()))
-    emit(ev('test', 'sync', 'start'))
-    emit(ev('test', 'sync', 'ok'))
-    const linesSoFar = () => raw.join('').split('\n').filter(Boolean)
-    await waitFor(() => linesSoFar().length >= 2)
-    const lines = linesSoFar()
-    expect(lines).toHaveLength(2)
-    for (const line of lines)
-      expect(() => {
-        JSON.parse(line)
-      }).not.toThrow()
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      const linesSoFar = collectRawLines(sock)
+      emitAll([ev('test', 'sync', 'start'), ev('test', 'sync', 'ok')])
+      await waitFor(() => linesSoFar().length >= 2)
+      const lines = linesSoFar()
+      expect(lines).toHaveLength(2)
+      for (const line of lines)
+        expect(() => {
+          JSON.parse(line)
+        }).not.toThrow()
+      sock.destroy()
+    })
   })
   test('events arrive in emission order', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const eventsPromise = readEvents(sock, 3)
-    emit(ev('a', 'sync', 'start'))
-    emit(ev('a', 'audit', 'start'))
-    emit(ev('a', 'maintain', 'start'))
-    const events = await eventsPromise
-    expect(events.map(e => e.step)).toEqual(['sync', 'audit', 'maintain'])
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      const eventsPromise = readEvents(sock, 3)
+      emit(ev('a', 'sync', 'start'))
+      emit(ev('a', 'audit', 'start'))
+      emit(ev('a', 'maintain', 'start'))
+      const events = await eventsPromise
+      expect(events.map(e => e.step)).toStrictEqual(['sync', 'audit', 'maintain'])
+      sock.destroy()
+    })
   })
 })
 describe('no-client behavior', () => {
   test('emit is no-op with no clients', async () => {
-    await startEmitter()
-    expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
+    })
   })
   test('no errors on burst with no clients', async () => {
-    await startEmitter()
-    expect(() => {
-      for (let i = 0; i < 1000; i += 1) emit(ev('test', 'sync', 'start'))
-    }).not.toThrow()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      expect(() => {
+        for (let i = 0; i < 1000; i += 1) emit(ev('test', 'sync', 'start'))
+      }).not.toThrow()
+    })
   })
   test('10k emits with no client complete without error and keep the emitter healthy', async () => {
-    await startEmitter()
-    for (let i = 0; i < 10_000; i += 1) emit(ev('test', 'sync', 'start'))
-    expect(await socketExists()).toBe(true)
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      for (let i = 0; i < 10_000; i += 1) emit(ev('test', 'sync', 'start'))
+      expect(await doesSocketExist()).toBe(true)
+    })
   })
 })
 describe('client disconnect', () => {
   test('disconnect does not crash emitter', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    sock.destroy()
-    await wait(50)
-    expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      sock.destroy()
+      await wait(50)
+      expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
+    })
   })
   test('remaining clients still receive after one disconnects', async () => {
-    await startEmitter()
-    const sock1 = await connectClient()
-    const sock2 = await connectClient()
-    sock1.destroy()
-    await wait(50)
-    const eventsPromise = readEvents(sock2, 1)
-    emit(ev('test', 'done', 'ok'))
-    const events = await eventsPromise
-    expect(events).toHaveLength(1)
-    sock2.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock1 = await connectClient()
+      const sock2 = await connectClient()
+      sock1.destroy()
+      await wait(50)
+      const eventsPromise = readEvents(sock2, 1)
+      emit(ev('test', 'done', 'ok'))
+      const events = await eventsPromise
+      expect(events).toHaveLength(1)
+      sock2.destroy()
+    })
   })
   test('all clients disconnect returns to idle', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    expect(clients.size).toBe(1)
-    sock.destroy()
-    await waitFor(() => clients.size === 0)
-    expect(clients.size).toBe(0)
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      expect(clients.size).toBe(1)
+      sock.destroy()
+      await waitFor(() => clients.size === 0)
+      expect(clients.size).toBe(0)
+    })
   })
 })
 describe('hostile client', () => {
   test('client sending data does not crash emitter', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    sock.write('garbage data\n')
-    await wait(50)
-    expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      sock.write('garbage data\n')
+      await wait(50)
+      expect(() => emit(ev('test', 'sync', 'start'))).not.toThrow()
+      sock.destroy()
+    })
   })
   test('client sending malformed data is ignored', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    sock.write(Buffer.alloc(1024))
-    await wait(50)
-    const eventsPromise = readEvents(sock, 1)
-    emit(ev('test', 'done', 'ok'))
-    const events = await eventsPromise
-    expect(events).toHaveLength(1)
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      sock.write(Buffer.alloc(1024))
+      await wait(50)
+      const eventsPromise = readEvents(sock, 1)
+      emit(ev('test', 'done', 'ok'))
+      const events = await eventsPromise
+      expect(events).toHaveLength(1)
+      sock.destroy()
+    })
   })
 })
 describe('reconnecting client', () => {
   test('reconnecting client receives only new events', async () => {
-    await startEmitter()
-    const sock1 = await connectClient()
-    emit(ev('a', 'sync', 'start'))
-    await wait(50)
-    sock1.destroy()
-    await wait(50)
-    const sock2 = await connectClient()
-    const eventsPromise = readEvents(sock2, 1)
-    emit(ev('b', 'audit', 'ok'))
-    const events = await eventsPromise
-    expect(events).toHaveLength(1)
-    expect(events[0]?.project).toBe('b')
-    sock2.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      await deliverToDroppedClient(ev('a', 'sync', 'start'))
+      const sock2 = await connectClient()
+      const eventsPromise = readEvents(sock2, 1)
+      emit(ev('b', 'audit', 'ok'))
+      const events = await eventsPromise
+      expect(events).toHaveLength(1)
+      expect(events[0]?.project).toBe('b')
+      sock2.destroy()
+    })
   })
 })
 describe('event burst', () => {
   test('handles burst of 100 events with client', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const eventsPromise = readEvents(sock, 100)
-    for (let i = 0; i < 100; i += 1) emit(ev(`p${i}`, 'sync', 'start'))
-    const events = await eventsPromise
-    expect(events).toHaveLength(100)
-    expect(events[0]?.project).toBe('p0')
-    expect(events[99]?.project).toBe('p99')
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      const eventsPromise = readEvents(sock, 100)
+      for (let i = 0; i < 100; i += 1) emit(ev(`p${i}`, 'sync', 'start'))
+      const events = await eventsPromise
+      expect(events).toHaveLength(100)
+      expect(events[0]?.project).toBe('p0')
+      expect(events[99]?.project).toBe('p99')
+      sock.destroy()
+    })
   })
 })
 describe('concurrent clients', () => {
   test('5 clients each receive all events independently', async () => {
-    await startEmitter()
-    const socks = await Promise.all(Array.from({ length: 5 }, async () => connectClient()))
-    const promises = socks.map(async s => readEvents(s, 3))
-    emit(ev('x', 'sync', 'start'))
-    emit(ev('x', 'sync', 'ok'))
-    emit(ev('x', 'done', 'ok'))
-    const results = await Promise.all(promises)
-    for (const events of results) {
-      expect(events).toHaveLength(3)
-      expect(events.map(e => e.step)).toEqual(['sync', 'sync', 'done'])
-    }
-    for (const s of socks) s.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const socks = await Promise.all(Array.from({ length: 5 }, async () => connectClient()))
+      const promises = socks.map(async s => readEvents(s, 3))
+      emitAll([ev('x', 'sync', 'start'), ev('x', 'sync', 'ok'), ev('x', 'done', 'ok')])
+      const results = await Promise.all(promises)
+      for (const events of results) {
+        expect(events).toHaveLength(3)
+        expect(events.map(e => e.step)).toStrictEqual(['sync', 'sync', 'done'])
+      }
+      for (const s of socks) s.destroy()
+    })
   })
 })
 describe('event content', () => {
   test('event fields match WatchEvent interface', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const eventsPromise = readEvents(sock, 1)
-    emit(createEvent({ detail: 'done', project: 'test', status: 'ok', step: 'sync' }))
-    const events = await eventsPromise
-    const event = events[0]
-    expect(event).toBeDefined()
-    expect(typeof event?.at).toBe('string')
-    expect(typeof event?.project).toBe('string')
-    expect(typeof event?.step).toBe('string')
-    expect(typeof event?.status).toBe('string')
-    expect(typeof event?.detail).toBe('string')
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const events = await receiveOne(createEvent({ detail: 'done', project: 'test', status: 'ok', step: 'sync' }))
+      const event = events[0]
+      expect(event).toBeDefined()
+      expect(typeof event?.at).toBe('string')
+      expect(typeof event?.project).toBe('string')
+      expect(typeof event?.step).toBe('string')
+      expect(typeof event?.status).toBe('string')
+      expect(typeof event?.detail).toBe('string')
+    })
   })
   test('event without detail omits detail field', async () => {
-    await startEmitter()
-    const sock = await connectClient()
-    const eventsPromise = readEvents(sock, 1)
-    emit(createEvent({ project: 'test', status: 'start', step: 'sync' }))
-    const events = await eventsPromise
-    expect('detail' in (events[0] ?? {})).toBe(false)
-    sock.destroy()
+    await withStoppedEmitter(async () => {
+      await startEmitter()
+      const sock = await connectClient()
+      const eventsPromise = readEvents(sock, 1)
+      emit(createEvent({ project: 'test', status: 'start', step: 'sync' }))
+      const events = await eventsPromise
+      expect('detail' in (events[0] ?? {})).toBe(false)
+      sock.destroy()
+    })
   })
 })

@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
+/** biome-ignore-all lint/nursery/noSyncMethods: the process 'exit' handler cannot await, so socket removal there is synchronous */
 /* oxlint-disable promise/prefer-await-to-then */
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/strict-void-return */
 import type { Server, Socket } from 'node:net'
@@ -19,7 +20,7 @@ const removeSocket = async (): Promise<void> => {
     /* Socket may not exist */
   }
 }
-const socketExists = async (): Promise<boolean> => {
+const doesSocketExist = async (): Promise<boolean> => {
   try {
     await access(SOCKET_PATH)
     return true
@@ -45,6 +46,12 @@ const broadcast = (line: string, exclude?: Socket) => {
         /* Client may be disconnecting */
       }
 }
+const handleLine = (line: string, socket: Socket) => {
+  if (!line) return
+  broadcast(line, socket)
+  const event = safeParseJson(watchEventSchema, line)
+  if (event) for (const fn of listeners) fn(event)
+}
 const startEmitter = async (): Promise<void> => {
   if (server) return
   await mkdir(SOCKET_DIR, { recursive: true })
@@ -59,11 +66,7 @@ const startEmitter = async (): Promise<void> => {
         buffer += chunk.toString()
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
-        for (const line of lines.filter(Boolean)) {
-          broadcast(line, socket)
-          const event = safeParseJson(watchEventSchema, line)
-          if (event) for (const fn of listeners) fn(event)
-        }
+        for (const line of lines) handleLine(line, socket)
       })
     })
     s.on('error', reject)
@@ -89,7 +92,7 @@ const emit = (event: WatchEvent) => {
   broadcast(JSON.stringify(event))
 }
 const emitToSocket = async (event: WatchEvent): Promise<void> => {
-  if (!(await socketExists())) return
+  if (!(await doesSocketExist())) return
   try {
     const sock = createConnection(SOCKET_PATH)
     sock.on('error', () => {})
@@ -115,10 +118,12 @@ const installCleanup = () => {
   })
   process.on('SIGINT', () => {
     cleanupOnExit()
+    // biome-ignore lint/nursery/noProcessExit: a SIGINT handler must terminate with the conventional 130 status
     process.exit(130)
   })
   process.on('SIGTERM', () => {
     cleanupOnExit()
+    // biome-ignore lint/nursery/noProcessExit: a SIGTERM handler must terminate with the conventional 143 status
     process.exit(143)
   })
 }
@@ -126,4 +131,4 @@ const onEvent = (fn: Listener): (() => void) => {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }
-export { clients, emit, emitToSocket, installCleanup, onEvent, SOCKET_PATH, socketExists, startEmitter, stopEmitter }
+export { clients, doesSocketExist, emit, emitToSocket, installCleanup, onEvent, SOCKET_PATH, startEmitter, stopEmitter }

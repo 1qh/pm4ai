@@ -13,14 +13,14 @@ interface Project {
   name: string
   path: string
 }
-const dirExists = async (p: string): Promise<boolean> => {
+const isDirectory = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
   } catch {
     return false
   }
 }
-const hasDirInside = async (dir: string, sub: string): Promise<boolean> => dirExists(join(dir, sub))
+const hasDirInside = async (dir: string, sub: string): Promise<boolean> => isDirectory(join(dir, sub))
 const hasLintmaxDep = async (dir: string): Promise<boolean> => {
   const pkgFile = file(join(dir, 'package.json'))
   if (!(await pkgFile.exists())) return false
@@ -44,18 +44,27 @@ const isCnsyncRepo = async (dir: string): Promise<boolean> => {
   return url.includes(`${GH_ORG}/cnsync`)
 }
 const cloneBase = (): string => pm4aiCloneBase() ?? `https://github.com/${GH_ORG}`
-const ensureSourceRepo = async (repo: string, dest: string) => {
-  const destExists = await dirExists(dest)
-  if (!destExists) {
-    debug('cloning', repo, 'to', dest)
-    await mkdir(dirname(dest), { recursive: true })
-    await $`GIT_TERMINAL_PROMPT=0 git clone ${cloneBase()}/${repo}.git ${dest}`.quiet().nothrow()
-    return dest
-  }
-  if (await isNestedInRepo(dest)) return dest
+const cloneSourceRepo = async (repo: string, dest: string) => {
+  debug('cloning', repo, 'to', dest)
+  await mkdir(dirname(dest), { recursive: true })
+  await $`GIT_TERMINAL_PROMPT=0 git clone ${cloneBase()}/${repo}.git ${dest}`.quiet().nothrow()
+}
+const refreshSourceRepo = async (dest: string) => {
   await $`GIT_TERMINAL_PROMPT=0 git fetch --quiet --prune`.cwd(dest).quiet().nothrow()
   await $`git reset --hard @{u}`.cwd(dest).quiet().nothrow()
   await $`git clean -fd`.cwd(dest).quiet().nothrow()
+}
+const prepareSourceRepo = async (repo: string, dest: string): Promise<void> => {
+  const doesDestExist = await isDirectory(dest)
+  if (!doesDestExist) {
+    await cloneSourceRepo(repo, dest)
+    return
+  }
+  if (await isNestedInRepo(dest)) return
+  await refreshSourceRepo(dest)
+}
+const ensureSourceRepo = async (repo: string, dest: string) => {
+  await prepareSourceRepo(repo, dest)
   return dest
 }
 const rgExcludes = [
@@ -88,16 +97,9 @@ const boundedRg = async (args: readonly string[], cwd?: string): Promise<string>
   await rg.exited
   return out.trim()
 }
-const discover = async (
-  searchRoot?: string,
-  excludes: readonly string[] = [],
-  resolveSources = true
-): Promise<{
-  cnsync: Project
-  consumers: Project[]
-  self: Project
-}> => {
-  const home = searchRoot ?? pm4aiHome() ?? homedir()
+const selfProject = (path: string): Project => ({ isCnsync: false, isSelf: true, name: PKG_NAME, path })
+const cnsyncProject = (path: string): Project => ({ isCnsync: true, isSelf: false, name: 'cnsync', path })
+const findTurboRoots = async (home: string): Promise<string[]> => {
   const stdout = await boundedRg([
     '--files',
     home,
@@ -112,99 +114,111 @@ const discover = async (
   if (!stdout) debug('rg not found or returned empty')
   const found = stdout.split('\n').filter(Boolean)
   const allDirs = [...new Set(found.map(f => dirname(f)))].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
-  const turboRoots = allDirs.filter(dir => !allDirs.some(other => other !== dir && dir.startsWith(`${other}/`)))
-  const candidates = await Promise.all(
-    turboRoots.map(async dir => {
-      if (!(await hasLintmaxDep(dir))) return null
-      const name = projectName(dir)
-      const isSelf = name === MONOREPO_NAME || name === PKG_NAME
-      if (!isSelf && (excludes.includes(name) || excludes.includes(dir))) return null
-      return {
-        isCnsync: await isCnsyncRepo(dir),
-        isSelf,
-        name,
-        path: dir
-      }
-    })
-  )
-  const projects: Project[] = candidates.filter((p): p is Project => p !== null)
-  let self = projects.find(p => p.isSelf)
-  let cnsync = projects.find(p => p.isCnsync)
+  return allDirs.filter(dir => allDirs.every(other => other === dir || !dir.startsWith(`${other}/`)))
+}
+const toCandidate = async (dir: string, excludes: readonly string[]): Promise<Project | undefined> => {
+  if (!(await hasLintmaxDep(dir))) return
+  const name = projectName(dir)
+  const isSelf = name === MONOREPO_NAME || name === PKG_NAME
+  if (!isSelf && (excludes.includes(name) || excludes.includes(dir))) return
+  return {
+    isCnsync: await isCnsyncRepo(dir),
+    isSelf,
+    name,
+    path: dir
+  }
+}
+const discover = async (
+  searchRoot?: string,
+  excludes: readonly string[] = [],
+  shouldResolveSources = true
+): Promise<{
+  cnsync: Project
+  consumers: Project[]
+  self: Project
+}> => {
+  const home = searchRoot ?? pm4aiHome() ?? homedir()
+  const turboRoots = await findTurboRoots(home)
+  const candidates = await Promise.all(turboRoots.map(async dir => toCandidate(dir, excludes)))
+  const projects: Project[] = candidates.filter((p): p is Project => p !== undefined)
   const reposDir = join(home, CONFIG_DIR, 'repos')
-  if (!self) {
-    const dest = resolveSources ? await ensureSourceRepo(PKG_NAME, join(reposDir, PKG_NAME)) : ''
-    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: dest }
-  }
-  if (!cnsync) {
-    const dest = resolveSources ? await ensureSourceRepo('cnsync', join(reposDir, 'cnsync')) : ''
-    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: dest }
-  }
+  const self =
+    projects.find(p => p.isSelf) ??
+    selfProject(shouldResolveSources ? await ensureSourceRepo(PKG_NAME, join(reposDir, PKG_NAME)) : '')
+  const cnsync =
+    projects.find(p => p.isCnsync) ??
+    cnsyncProject(shouldResolveSources ? await ensureSourceRepo('cnsync', join(reposDir, 'cnsync')) : '')
   const consumers = projects.filter(p => !(p.isSelf || p.isCnsync))
   return { cnsync, consumers, self }
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- sequential source-repo resolution with layered fallbacks
+const existingSource = async (
+  repo: string,
+  dir: string,
+  make: (path: string) => Project
+): Promise<Project | undefined> => {
+  if (!(await isDirectory(dir))) return
+  await ensureSourceRepo(repo, dir)
+  return make(dir)
+}
+const fallbackSource = async (repo: string, dir: string, make: (path: string) => Project): Promise<Project> => {
+  await ensureSourceRepo(repo, dir)
+  return make(dir)
+}
+const searchSources = async (home: string): Promise<string[]> => {
+  const stdout = await boundedRg([
+    '-l',
+    `"${PKG_NAME}"`,
+    home,
+    '-g',
+    'package.json',
+    '-g',
+    '!**/node_modules/**',
+    '-g',
+    '!**/.cache/**',
+    '--max-depth',
+    '8',
+    '--max-count',
+    '1'
+  ])
+  return stdout
+    .split('\n')
+    .filter(Boolean)
+    .map(f => dirname(f))
+}
+const findSelfIn = async (found: string[]): Promise<Project | undefined> => {
+  const dir = found.find(d => {
+    const n = d.split('/').pop()
+    return n === PKG_NAME || n === MONOREPO_NAME
+  })
+  if (!dir) return
+  const gitRoot = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
+  return selfProject(gitRoot.stdout.toString().trim() || dir)
+}
+const findCnsyncIn = async (found: string[]): Promise<Project | undefined> => {
+  const checks = await Promise.all(found.map(async d => ({ d, is: await isCnsyncRepo(d) })))
+  const match = checks.find(c => c.is)
+  return match ? cnsyncProject(match.d) : undefined
+}
+const locateSources = async (
+  home: string,
+  selfDir: string,
+  cnsyncDir: string
+): Promise<{ cnsync: Project | undefined; self: Project | undefined }> => {
+  const self = await existingSource(PKG_NAME, selfDir, selfProject)
+  const cnsync = await existingSource('cnsync', cnsyncDir, cnsyncProject)
+  if (self && cnsync) return { cnsync, self }
+  const found = await searchSources(home)
+  const foundSelf = self ?? (await findSelfIn(found))
+  const foundCnsync = cnsync ?? (await findCnsyncIn(found))
+  return { cnsync: foundCnsync, self: foundSelf }
+}
 const discoverSources = async (searchRoot?: string): Promise<{ cnsync: Project; self: Project }> => {
   const home = searchRoot ?? pm4aiHome() ?? homedir()
-  const reposDir = join(home, CONFIG_DIR, 'repos')
-  const selfDir = join(reposDir, PKG_NAME)
-  const cnsyncDir = join(reposDir, 'cnsync')
-  let self: Project | undefined
-  let cnsync: Project | undefined
-  const selfDirExists = await dirExists(selfDir)
-  if (selfDirExists) {
-    await ensureSourceRepo(PKG_NAME, selfDir)
-    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
-  }
-  const cnsyncDirExists = await dirExists(cnsyncDir)
-  if (cnsyncDirExists) {
-    await ensureSourceRepo('cnsync', cnsyncDir)
-    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
-  }
-  if (!(self && cnsync)) {
-    const stdout = await boundedRg([
-      '-l',
-      `"${PKG_NAME}"`,
-      home,
-      '-g',
-      'package.json',
-      '-g',
-      '!**/node_modules/**',
-      '-g',
-      '!**/.cache/**',
-      '--max-depth',
-      '8',
-      '--max-count',
-      '1'
-    ])
-    const found = stdout
-      .split('\n')
-      .filter(Boolean)
-      .map(f => dirname(f))
-    if (!self) {
-      const dir = found.find(d => {
-        const n = d.split('/').pop()
-        return n === PKG_NAME || n === MONOREPO_NAME
-      })
-      if (dir) {
-        const gitRoot = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
-        const root = gitRoot.stdout.toString().trim() || dir
-        self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: root }
-      }
-    }
-    if (!cnsync) {
-      const checks = await Promise.all(found.map(async d => ({ d, is: await isCnsyncRepo(d) })))
-      const match = checks.find(c => c.is)
-      if (match) cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: match.d }
-    }
-  }
-  if (!self) {
-    await ensureSourceRepo(PKG_NAME, selfDir)
-    self = { isCnsync: false, isSelf: true, name: PKG_NAME, path: selfDir }
-  }
-  if (!cnsync) {
-    await ensureSourceRepo('cnsync', cnsyncDir)
-    cnsync = { isCnsync: true, isSelf: false, name: 'cnsync', path: cnsyncDir }
-  }
+  const selfDir = join(home, CONFIG_DIR, 'repos', PKG_NAME)
+  const cnsyncDir = join(home, CONFIG_DIR, 'repos', 'cnsync')
+  const located = await locateSources(home, selfDir, cnsyncDir)
+  const self = located.self ?? (await fallbackSource(PKG_NAME, selfDir, selfProject))
+  const cnsync = located.cnsync ?? (await fallbackSource('cnsync', cnsyncDir, cnsyncProject))
   return { cnsync, self }
 }
 export type { Project }

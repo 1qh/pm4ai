@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-condition, complexity */
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import type { WatchEvent } from './watch-types.js'
 interface DerivedStats {
   completedStepCount: number
@@ -85,15 +85,16 @@ const progressDots = (completed: Set<string>, current?: string): string => {
     else parts.push('·')
   return parts.join('')
 }
+const formatMinutes = (seconds: number): string => {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  const sPart = s > 0 ? `${s}s` : ''
+  return `${m}m${sPart}`
+}
 const formatTime = (seconds: number): string => {
   if (seconds <= 0) return '<1s'
   if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    const sPart = s > 0 ? `${s}s` : ''
-    return `${m}m${sPart}`
-  }
+  if (seconds < 3600) return formatMinutes(seconds)
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const mPart = m > 0 ? `${m}m` : ''
@@ -121,11 +122,11 @@ const nextProjectState = (prev: ProjectState, event: WatchEvent): ProjectState =
         }
   }
   if (event.status === 'start') {
-    const freshStart = prev.status === 'done' || prev.status === 'failed' || prev.status === 'idle'
+    const isFreshStart = prev.status === 'done' || prev.status === 'failed' || prev.status === 'idle'
     return {
-      completedSteps: freshStart ? new Set<string>() : prev.completedSteps,
+      completedSteps: isFreshStart ? new Set<string>() : prev.completedSteps,
       elapsed: 0,
-      startedAt: freshStart ? Date.now() : (prev.startedAt ?? Date.now()),
+      startedAt: isFreshStart ? Date.now() : (prev.startedAt ?? Date.now()),
       status: 'running',
       step: event.step
     }
@@ -157,81 +158,110 @@ const sortByStatus = (names: string[], projects: Record<string, ProjectState>): 
     const sb = projects[b]?.status ?? 'idle'
     return (STATUS_ORDER[sa] ?? 9) - (STATUS_ORDER[sb] ?? 9)
   })
+const tickProject = (v: ProjectState, now: number): ProjectState => {
+  if (v.status !== 'running' || v.startedAt === undefined) return v
+  const elapsed = Math.floor((now - v.startedAt) / 1000)
+  return elapsed === v.elapsed ? v : { ...v, elapsed }
+}
 const tickProjects = (projects: Record<string, ProjectState>): Record<string, ProjectState> => {
   const now = Date.now()
-  let changed = false
-  const next: Record<string, ProjectState> = {}
-  for (const [k, v] of Object.entries(projects)) {
-    const startedAt = v.status === 'running' ? v.startedAt : undefined
-    const elapsed = startedAt === undefined ? v.elapsed : Math.floor((now - startedAt) / 1000)
-    const shouldUpdate = startedAt !== undefined
-    if (shouldUpdate && elapsed !== v.elapsed) {
-      next[k] = { ...v, elapsed }
-      changed = true
-    } else next[k] = v
-  }
-  return changed ? next : projects
+  const entries = Object.entries(projects).map(([k, v]) => [k, tickProject(v, now)] as const)
+  const hasChanged = entries.some(([k, v]) => v !== projects[k])
+  return hasChanged ? Object.fromEntries(entries) : projects
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- central run-state reducer dispatching every watch action; splitting fragments the state transition
-const runReducer = (state: RunState, action: RunAction): RunState => {
-  if (action.type === 'tick') {
-    if (!state.startTime) return state
-    const projects = tickProjects(state.projects)
-    return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000), projects }
+const countStatus = (states: ProjectState[], status: ProjectState['status']): number =>
+  states.filter(s => s.status === status).length
+const isFinished = (s: ProjectState): boolean => s.status === 'done' || s.status === 'failed'
+const resetState = (state: RunState, action: Extract<RunAction, { type: 'reset' }>): RunState => {
+  const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
+  const previous = Object.values(state.projects)
+  const snapshot = sortByStatus(Object.keys(newProjects), newProjects)
+  return {
+    ...state,
+    bellPending: false,
+    elapsed: 0,
+    focused: snapshot[0] ?? state.focused,
+    history: state.elapsed > 0 ? [...state.history, state.elapsed].slice(-MAX_HISTORY) : state.history,
+    lastDone: countStatus(previous, 'done'),
+    lastElapsed: state.elapsed,
+    lastFailed: countStatus(previous, 'failed'),
+    lastTime: new Date().toLocaleTimeString(),
+    phase: 'idle',
+    projects: newProjects,
+    runCount: state.runCount + 1,
+    sortSnapshot: snapshot,
+    startTime: undefined
   }
-  if (action.type === 'bell-acked') return state.bellPending ? { ...state, bellPending: false } : state
-  if (action.type === 'focus') return state.focused === action.focused ? state : { ...state, focused: action.focused }
-  if (action.type === 'reset') {
-    const newProjects = Object.fromEntries(action.projects.map(p => [p.name, action.mkIdle(p)]))
-    let doneCount = 0
-    let failedCount = 0
-    for (const s of Object.values(state.projects)) {
-      if (s.status === 'done') doneCount += 1
-      if (s.status === 'failed') failedCount += 1
-    }
-    const snapshot = sortByStatus(Object.keys(newProjects), newProjects)
-    return {
-      ...state,
-      bellPending: false,
-      elapsed: 0,
-      focused: snapshot[0] ?? state.focused,
-      history: state.elapsed > 0 ? [...state.history, state.elapsed].slice(-MAX_HISTORY) : state.history,
-      lastDone: doneCount,
-      lastElapsed: state.elapsed,
-      lastFailed: failedCount,
-      lastTime: new Date().toLocaleTimeString(),
-      phase: 'idle',
-      projects: newProjects,
-      runCount: state.runCount + 1,
-      sortSnapshot: snapshot,
-      startTime: undefined
-    }
+}
+const nextPhase = (current: RunState['phase'], projects: Record<string, ProjectState>): RunState['phase'] => {
+  const states = Object.values(projects)
+  const finished = states.filter(isFinished).length
+  if (finished === states.length && states.length > 0) return 'done'
+  if (states.some(s => s.status === 'running')) return 'running'
+  return current
+}
+const isNextBellPending = (isBellPending: boolean, wasRunning: boolean, phase: RunState['phase']): boolean => {
+  if (wasRunning && phase === 'done') return true
+  if (phase === 'running') return false
+  return isBellPending
+}
+const applyEvent = (state: RunState, event: WatchEvent): RunState => {
+  const next = {
+    ...state.projects,
+    [event.project]: nextProjectState(state.projects[event.project] ?? IDLE_FALLBACK, event)
   }
-  const { event } = action
-  const prev = state.projects[event.project] ?? IDLE_FALLBACK
-  const nextProj = nextProjectState(prev, event)
-  const next = { ...state.projects, [event.project]: nextProj }
   const startTime = event.status === 'start' ? (state.startTime ?? Date.now()) : state.startTime
-  let finished = 0
-  let total = 0
-  let hasRunning = false
-  for (const s of Object.values(next)) {
-    total += 1
-    if (s.status === 'done' || s.status === 'failed') finished += 1
-    if (s.status === 'running') hasRunning = true
-  }
   const wasRunning = state.phase === 'running'
-  let { phase } = state
-  if (finished === total && total > 0) phase = 'done'
-  else if (hasRunning) phase = 'running'
+  const phase = nextPhase(state.phase, next)
   const shouldResort = (!wasRunning && phase === 'running') || phase === 'done'
   const sortSnapshot = shouldResort ? sortByStatus(Object.keys(next), next) : state.sortSnapshot
-  let { bellPending } = state
-  if (wasRunning && phase === 'done') bellPending = true
-  else if (phase === 'running') bellPending = false
   const focused =
     shouldResort && !sortSnapshot.includes(state.focused) ? (sortSnapshot[0] ?? state.focused) : state.focused
-  return { ...state, bellPending, focused, phase, projects: next, sortSnapshot, startTime }
+  return {
+    ...state,
+    bellPending: isNextBellPending(state.bellPending, wasRunning, phase),
+    focused,
+    phase,
+    projects: next,
+    sortSnapshot,
+    startTime
+  }
+}
+const tickState = (state: RunState): RunState => {
+  if (!state.startTime) return state
+  const projects = tickProjects(state.projects)
+  return { ...state, elapsed: Math.floor((Date.now() - state.startTime) / 1000), projects }
+}
+const runReducer = (state: RunState, action: RunAction): RunState => {
+  if (action.type === 'tick') return tickState(state)
+  if (action.type === 'bell-acked') return state.bellPending ? { ...state, bellPending: false } : state
+  if (action.type === 'focus') return state.focused === action.focused ? state : { ...state, focused: action.focused }
+  if (action.type === 'reset') return resetState(state, action)
+  return applyEvent(state, action.event)
+}
+const estimateEta = ({
+  elapsed,
+  history,
+  lastElapsed,
+  runningCount
+}: {
+  elapsed: number
+  history: number[]
+  lastElapsed: number
+  runningCount: number
+}): number | undefined => {
+  if (runningCount === 0) return
+  if (history.length > 0) {
+    let sum = 0
+    for (const h of history) sum += h
+    return Math.max(0, Math.round(sum / history.length - elapsed))
+  }
+  if (lastElapsed > 0) return Math.max(0, lastElapsed - elapsed)
+}
+const totalCompletedSteps = (states: ProjectState[], failedCount: number): number => {
+  let steps = failedCount * STEP_COUNT
+  for (const s of states) steps += s.completedSteps.size
+  return steps
 }
 const deriveStats = ({
   elapsed,
@@ -243,38 +273,17 @@ const deriveStats = ({
   history: number[]
   lastElapsed: number
   projects: Record<string, ProjectState>
-  // eslint-disable-next-line sonarjs/cognitive-complexity -- single accumulation pass over the project map computing all derived stats
 }): DerivedStats => {
-  let runningCount = 0
-  let doneCount = 0
-  let failedCount = 0
-  let steps = 0
-  let maxE = 0
-  let maxN = ''
-  for (const [n, s] of Object.entries(projects)) {
-    if (s.status === 'running') runningCount += 1
-    if (s.status === 'done') doneCount += 1
-    if (s.status === 'failed') {
-      failedCount += 1
-      steps += STEP_COUNT
-    }
-    steps += s.completedSteps.size
-    if (!((s.status === 'done' || s.status === 'failed') && s.elapsed > maxE)) continue
-
-    maxE = s.elapsed
-    maxN = n
-  }
-  let eta: number | undefined
-  if (runningCount > 0)
-    if (history.length > 0) {
-      let sum = 0
-      for (const h of history) sum += h
-      eta = Math.max(0, Math.round(sum / history.length - elapsed))
-    } else if (lastElapsed > 0) eta = Math.max(0, lastElapsed - elapsed)
+  const states = Object.values(projects)
+  const runningCount = countStatus(states, 'running')
+  const failedCount = countStatus(states, 'failed')
+  const finished = Object.entries(projects).filter(([, s]) => isFinished(s))
+  const maxE = Math.max(0, ...finished.map(([, s]) => s.elapsed))
+  const maxN = maxE > 0 ? (finished.find(([, s]) => s.elapsed === maxE)?.[0] ?? '') : ''
   return {
-    completedStepCount: steps,
-    done: doneCount,
-    eta,
+    completedStepCount: totalCompletedSteps(states, failedCount),
+    done: countStatus(states, 'done'),
+    eta: estimateEta({ elapsed, history, lastElapsed, runningCount }),
     failed: failedCount,
     running: runningCount,
     slowestElapsed: maxE,

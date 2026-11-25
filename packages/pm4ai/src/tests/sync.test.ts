@@ -30,6 +30,24 @@ const makeProject = async (rootPkg: Record<string, unknown>, subPkgs: Record<str
   return tmp
 }
 const pm4aiRoot = join(import.meta.dirname, '..', '..', '..', '..')
+const makePackageOnly = async (pkg: Record<string, unknown>) => {
+  const tmp = await makeTmp()
+  await write(join(tmp, 'package.json'), JSON.stringify(pkg))
+  return tmp
+}
+const makeRulesFixture = async (rules: [string, string][], projectPkg: Record<string, unknown>) => {
+  const selfDir = await makeTmp()
+  const projectDir = await makeTmp()
+  const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
+  await mkdir(rulesDir, { recursive: true })
+  for (const [name, content] of rules) await write(join(rulesDir, name), content)
+  await write(join(projectDir, 'package.json'), JSON.stringify(projectPkg))
+  return { projectDir, selfDir }
+}
+const removeDirs = async (dirs: string[]) => {
+  for (const dir of dirs) await rm(dir, { recursive: true })
+}
+const plainPkg = { name: 'test', private: true }
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
     const src = await makeTmp()
@@ -68,231 +86,236 @@ describe('syncConfigs', () => {
   })
 })
 describe('syncPackageJson', () => {
-  test('adds sherif and hooks to minimal package.json', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    const details = issues.map(i => i.detail)
-    expect(details).toContain('added sherif to postinstall')
-    expect(details).toContain('added simple-git-hooks')
-    expect(details).toContain('added prepare script')
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.postinstall).toContain('sherif')
-    expect(pkg.scripts?.prepare).toBe('bunx simple-git-hooks')
-    expect(pkg['simple-git-hooks']).toBeDefined()
-    expect(pkg.devDependencies?.sherif).toBe('latest')
-    await rm(tmp, { recursive: true })
+  describe('deps and trust', () => {
+    test('adds sherif and hooks to minimal package.json', async () => {
+      const tmp = await makePackageOnly({ name: 'test', private: true })
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      const details = issues.map(i => i.detail)
+      for (const detail of ['added sherif to postinstall', 'added simple-git-hooks', 'added prepare script'])
+        expect(details).toContain(detail)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.postinstall).toContain('sherif')
+      expect(pkg.scripts?.prepare).toBe('bunx simple-git-hooks')
+      expect(pkg['simple-git-hooks']).toBeDefined()
+      expect(pkg.devDependencies?.sherif).toBe('latest')
+      await rm(tmp, { recursive: true })
+    })
+    test('rewrites a required devdep spec no published version satisfies', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ devDependencies: { sherif: '^99.98.97' }, name: 'test', private: true })
+      )
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.some(i => i.detail.includes('unresolvable sherif "^99.98.97" rewritten'))).toBe(true)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.devDependencies?.sherif).toBe('latest')
+      await rm(tmp, { recursive: true })
+    })
+    test('leaves a deliberate pin that still resolves alone', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ devDependencies: { typescript: '~6.0.3' }, name: 'test', private: true })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.devDependencies?.typescript).toBe('~6.0.3')
+      await rm(tmp, { recursive: true })
+    })
+    test('leaves a workspace spec alone', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ devDependencies: { sherif: 'workspace:*' }, name: 'test', private: true })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.devDependencies?.sherif).toBe('workspace:*')
+      await rm(tmp, { recursive: true })
+    })
+    test('adds lintmax to trustedDependencies', async () => {
+      const tmp = await makeTmp()
+      await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
+      const pkg = await readJson<Record<string, unknown>>(join(tmp, 'package.json'))
+      expect(pkg.trustedDependencies).toStrictEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
+      await rm(tmp, { recursive: true })
+    })
+    test('preserves existing trustedDependencies', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ name: 'test', private: true, trustedDependencies: ['sharp'] })
+      )
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
+      const pkg = await readJson<Record<string, unknown>>(join(tmp, 'package.json'))
+      expect(pkg.trustedDependencies).toStrictEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
+      await rm(tmp, { recursive: true })
+    })
+    test('no-op when all required already trusted', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          devDependencies: { sherif: 'latest', 'simple-git-hooks': 'latest' },
+          name: 'test',
+          private: true,
+          scripts: { clean: 'sh clean.sh', postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
+          'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' },
+          trustedDependencies: ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
+        })
+      )
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.filter(i => i.detail.includes('trustedDependencies'))).toHaveLength(0)
+      await rm(tmp, { recursive: true })
+    })
+    test('adds required root devDeps', async () => {
+      const tmp = await makeTmp()
+      await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.devDependencies?.turbo).toBe('latest')
+      expect(pkg.devDependencies?.typescript).toBe('latest')
+      expect(pkg.devDependencies?.lintmax).toBe('latest')
+      await rm(tmp, { recursive: true })
+    })
+    test('adds build/check/fix scripts', async () => {
+      const tmp = await makeTmp()
+      await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.build).toContain('turbo')
+      expect(pkg.scripts?.check).toBe('lintmax check')
+      expect(pkg.scripts?.fix).toBe('lintmax fix')
+      await rm(tmp, { recursive: true })
+    })
+    test('adds an sh up.sh action when none exists', async () => {
+      const tmp = await makeTmp()
+      await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.action).toBe('sh up.sh')
+      await rm(tmp, { recursive: true })
+    })
   })
-  test('rewrites a required devdep spec no published version satisfies', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({ devDependencies: { sherif: '^99.98.97' }, name: 'test', private: true })
-    )
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    expect(issues.some(i => i.detail.includes('unresolvable sherif "^99.98.97" rewritten'))).toBe(true)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.devDependencies?.sherif).toBe('latest')
-    await rm(tmp, { recursive: true })
-  })
-  test('leaves a deliberate pin that still resolves alone', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({ devDependencies: { typescript: '~6.0.3' }, name: 'test', private: true })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.devDependencies?.typescript).toBe('~6.0.3')
-    await rm(tmp, { recursive: true })
-  })
-  test('leaves a workspace spec alone', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({ devDependencies: { sherif: 'workspace:*' }, name: 'test', private: true })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.devDependencies?.sherif).toBe('workspace:*')
-    await rm(tmp, { recursive: true })
-  })
-  test('adds lintmax to trustedDependencies', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
-    const pkg = await readJson<Record<string, unknown>>(join(tmp, 'package.json'))
-    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
-    await rm(tmp, { recursive: true })
-  })
-  test('preserves existing trustedDependencies', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true, trustedDependencies: ['sharp'] }))
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    expect(issues.some(i => i.detail.includes('trustedDependencies'))).toBe(true)
-    const pkg = await readJson<Record<string, unknown>>(join(tmp, 'package.json'))
-    expect(pkg.trustedDependencies).toEqual(['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks'])
-    await rm(tmp, { recursive: true })
-  })
-  test('no-op when all required already trusted', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        devDependencies: { sherif: 'latest', 'simple-git-hooks': 'latest' },
-        name: 'test',
-        private: true,
-        scripts: { clean: 'sh clean.sh', postinstall: 'sherif', prepare: 'bunx simple-git-hooks' },
-        'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' },
-        trustedDependencies: ['esbuild', 'lintmax', 'msw', 'sharp', 'simple-git-hooks']
-      })
-    )
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    expect(issues.filter(i => i.detail.includes('trustedDependencies'))).toHaveLength(0)
-    await rm(tmp, { recursive: true })
-  })
-  test('adds required root devDeps', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.devDependencies?.turbo).toBe('latest')
-    expect(pkg.devDependencies?.typescript).toBe('latest')
-    expect(pkg.devDependencies?.lintmax).toBe('latest')
-    await rm(tmp, { recursive: true })
-  })
-  test('adds build/check/fix scripts', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.build).toContain('turbo')
-    expect(pkg.scripts?.check).toBe('lintmax check')
-    expect(pkg.scripts?.fix).toBe('lintmax fix')
-    await rm(tmp, { recursive: true })
-  })
-  test('adds an sh up.sh action when none exists', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.action).toBe('sh up.sh')
-    await rm(tmp, { recursive: true })
-  })
-  test('leaves an action that already runs sh up.sh after a pre-step untouched', async () => {
-    const tmp = await makeTmp()
-    const preStepAction =
-      '[ -f apps/backend/.env ] || cp apps/backend/.env.example apps/backend/.env; sh up.sh && bun run test'
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({ name: 'test', private: true, scripts: { action: preStepAction } })
-    )
-    const issues = await syncPackageJson(tmp, pm4aiRoot)
-    expect(issues.some(i => i.detail.includes('action'))).toBe(false)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.action).toBe(preStepAction)
-    await rm(tmp, { recursive: true })
-  })
-  test('preserves a clean script that starts with the default plus a suffix', async () => {
-    const tmp = await makeTmp()
-    const suffixedClean = 'sh clean.sh && rm -rf .turbo'
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({ name: 'test', private: true, scripts: { clean: suffixedClean } })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.clean).toBe(suffixedClean)
-    await rm(tmp, { recursive: true })
-  })
-  test('canonicalizes existing build/check/fix scripts', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        name: 'test',
-        private: true,
-        scripts: { build: 'custom build', check: 'custom check', fix: 'custom fix' }
-      })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.build).toContain('grep -vE')
-    expect(pkg.scripts?.check).toBe('lintmax check')
-    expect(pkg.scripts?.fix).toBe('lintmax fix')
-    await rm(tmp, { recursive: true })
-  })
-  test('preserves fix preflight when lintmax fix runs last', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        name: 'test',
-        private: true,
-        scripts: { build: 'custom build', check: 'custom check', fix: 'bun run build && lintmax fix' }
-      })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.build).toContain('grep -vE')
-    expect(pkg.scripts?.check).toBe('lintmax check')
-    expect(pkg.scripts?.fix).toBe('bun run build && lintmax fix')
-    await rm(tmp, { recursive: true })
-  })
-  test('preserves self-hosted cli fix script', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        name: 'test',
-        private: true,
-        scripts: { fix: 'bun packages/lintmax/dist/cli.mjs fix' }
-      })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.fix).toBe('bun packages/lintmax/dist/cli.mjs fix')
-    await rm(tmp, { recursive: true })
-  })
-  test('preserves self-hosted cli check script', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        name: 'test',
-        private: true,
-        scripts: { check: 'bun packages/lintmax/dist/cli.mjs check' }
-      })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.check).toBe('bun packages/lintmax/dist/cli.mjs check')
-    await rm(tmp, { recursive: true })
-  })
-  test('wraps root turbo scripts with workspace warning filter', async () => {
-    const tmp = await makeTmp()
-    await write(
-      join(tmp, 'package.json'),
-      JSON.stringify({
-        name: 'test',
-        private: true,
-        scripts: { test: 'turbo test --output-logs=errors-only' }
-      })
-    )
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
-    expect(pkg.scripts?.test).toContain('grep -vE')
-    expect(pkg.scripts?.test).toContain('Could not resolve workspaces?')
-    await rm(tmp, { recursive: true })
-  })
-  test('adds packageManager if missing', async () => {
-    const tmp = await makeTmp()
-    await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
-    await syncPackageJson(tmp, pm4aiRoot)
-    const pkg = await readJson<Record<string, string>>(join(tmp, 'package.json'))
-    expect(pkg.packageManager?.startsWith('bun@')).toBe(true)
-    await rm(tmp, { recursive: true })
+  describe('scripts', () => {
+    test('leaves an action that already runs sh up.sh after a pre-step untouched', async () => {
+      const tmp = await makeTmp()
+      const preStepAction =
+        '[ -f apps/backend/.env ] || cp apps/backend/.env.example apps/backend/.env; sh up.sh && bun run test'
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ name: 'test', private: true, scripts: { action: preStepAction } })
+      )
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.some(i => i.detail.includes('action'))).toBe(false)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.action).toBe(preStepAction)
+      await rm(tmp, { recursive: true })
+    })
+    test('preserves a clean script that starts with the default plus a suffix', async () => {
+      const tmp = await makeTmp()
+      const suffixedClean = 'sh clean.sh && rm -rf .turbo'
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({ name: 'test', private: true, scripts: { clean: suffixedClean } })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.clean).toBe(suffixedClean)
+      await rm(tmp, { recursive: true })
+    })
+    test('canonicalizes existing build/check/fix scripts', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          private: true,
+          scripts: { build: 'custom build', check: 'custom check', fix: 'custom fix' }
+        })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.build).toContain('grep -vE')
+      expect(pkg.scripts?.check).toBe('lintmax check')
+      expect(pkg.scripts?.fix).toBe('lintmax fix')
+      await rm(tmp, { recursive: true })
+    })
+    test('preserves fix preflight when lintmax fix runs last', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          private: true,
+          scripts: { build: 'custom build', check: 'custom check', fix: 'bun run build && lintmax fix' }
+        })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.build).toContain('grep -vE')
+      expect(pkg.scripts?.check).toBe('lintmax check')
+      expect(pkg.scripts?.fix).toBe('bun run build && lintmax fix')
+      await rm(tmp, { recursive: true })
+    })
+    test('preserves self-hosted cli fix script', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          private: true,
+          scripts: { fix: 'bun packages/lintmax/dist/cli.mjs fix' }
+        })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.fix).toBe('bun packages/lintmax/dist/cli.mjs fix')
+      await rm(tmp, { recursive: true })
+    })
+    test('preserves self-hosted cli check script', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          private: true,
+          scripts: { check: 'bun packages/lintmax/dist/cli.mjs check' }
+        })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.check).toBe('bun packages/lintmax/dist/cli.mjs check')
+      await rm(tmp, { recursive: true })
+    })
+    test('wraps root turbo scripts with workspace warning filter', async () => {
+      const tmp = await makeTmp()
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          private: true,
+          scripts: { test: 'turbo test --output-logs=errors-only' }
+        })
+      )
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.test).toContain('grep -vE')
+      expect(pkg.scripts?.test).toContain('Could not resolve workspaces?')
+      await rm(tmp, { recursive: true })
+    })
+    test('adds packageManager if missing', async () => {
+      const tmp = await makeTmp()
+      await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, string>>(join(tmp, 'package.json'))
+      expect(pkg.packageManager?.startsWith('bun@')).toBe(true)
+      await rm(tmp, { recursive: true })
+    })
   })
 })
 describe('syncSubPackages', () => {
@@ -434,91 +457,74 @@ describe('syncTsconfig', () => {
 })
 describe('syncClaudeMd', () => {
   test('generates CLAUDE.md from always rules', async () => {
-    const selfDir = await makeTmp()
-    const projectDir = await makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
-    await mkdir(rulesDir, { recursive: true })
-    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
-    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    const { projectDir, selfDir } = await makeRulesFixture(
+      [['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase content here']],
+      plainPkg
+    )
     const issues = await syncClaudeMd(selfDir, projectDir)
     expect(issues.some(i => i.detail.includes('CLAUDE.md'))).toBe(true)
     const content = await file(join(projectDir, 'CLAUDE.md')).text()
     expect(content).toContain('base content here')
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
   test('no-op when CLAUDE.md already matches', async () => {
-    const selfDir = await makeTmp()
-    const projectDir = await makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
-    await mkdir(rulesDir, { recursive: true })
-    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase content here')
-    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    const { projectDir, selfDir } = await makeRulesFixture(
+      [['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase content here']],
+      plainPkg
+    )
     await syncClaudeMd(selfDir, projectDir)
     const issues = await syncClaudeMd(selfDir, projectDir)
     expect(issues.filter(i => i.detail.includes('CLAUDE.md'))).toHaveLength(0)
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
   test('returns error when rules dir missing', async () => {
     const selfDir = await makeTmp()
     const projectDir = await makeTmp()
     const issues = await syncClaudeMd(selfDir, projectDir)
     expect(issues.some(i => i.type === 'error')).toBe(true)
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
   test('includes dep-based rules when dep present', async () => {
-    const selfDir = await makeTmp()
-    const projectDir = await makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
-    await mkdir(rulesDir, { recursive: true })
-    await write(join(rulesDir, 'react.mdx'), '---\ntitle: React\ninfer: react\n---\nreact rules')
-    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\nbase rules')
-    await write(
-      join(projectDir, 'package.json'),
-      JSON.stringify({ dependencies: { react: 'latest' }, name: 'test', private: true })
+    const { projectDir, selfDir } = await makeRulesFixture(
+      [
+        ['react.mdx', '---\ntitle: React\ninfer: react\n---\nreact rules'],
+        ['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase rules']
+      ],
+      { dependencies: { react: 'latest' }, name: 'test', private: true }
     )
     await syncClaudeMd(selfDir, projectDir)
     const content = await file(join(projectDir, 'CLAUDE.md')).text()
     expect(content).toContain('base rules')
     expect(content).toContain('react rules')
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
   test('emits one H1, a Contents list, and topics as H2 with shifted bodies', async () => {
-    const selfDir = await makeTmp()
-    const projectDir = await makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
-    await mkdir(rulesDir, { recursive: true })
-    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule')
-    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    const { projectDir, selfDir } = await makeRulesFixture(
+      [['base.mdx', '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule']],
+      plainPkg
+    )
     await syncClaudeMd(selfDir, projectDir)
     const content = await file(join(projectDir, 'CLAUDE.md')).text()
     const h1s = content.split('\n').filter(l => l.startsWith('# '))
-    expect(h1s).toEqual(['# pm4ai — Managed Repo Guide'])
+    expect(h1s).toStrictEqual(['# pm4ai — Managed Repo Guide'])
     expect(content).toContain('## Contents')
     expect(content).toContain('- [Base](#base)')
     expect(content).toContain('## Base')
     expect(content).toContain('### MUST')
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
 })
 describe('checkClaudeMdFresh', () => {
   test('flags a stale CLAUDE.md and passes a fresh one', async () => {
-    const selfDir = await makeTmp()
-    const projectDir = await makeTmp()
-    const rulesDir = join(selfDir, 'apps', 'docs', 'content', 'rules')
-    await mkdir(rulesDir, { recursive: true })
-    await write(join(rulesDir, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule')
-    await write(join(projectDir, 'package.json'), JSON.stringify({ name: 'test', private: true }))
+    const { projectDir, selfDir } = await makeRulesFixture(
+      [['base.mdx', '---\ntitle: Base\ninfer: always\n---\n## MUST\n\n- a rule']],
+      plainPkg
+    )
     await write(join(projectDir, 'CLAUDE.md'), '# outdated hand-written content')
     expect(await checkClaudeMdFresh(selfDir, projectDir)).not.toHaveLength(0)
     await syncClaudeMd(selfDir, projectDir)
     expect(await checkClaudeMdFresh(selfDir, projectDir)).toHaveLength(0)
-    await rm(selfDir, { recursive: true })
-    await rm(projectDir, { recursive: true })
+    await removeDirs([selfDir, projectDir])
   })
 })
 describe('syncUi', () => {
@@ -580,7 +586,7 @@ describe('syncSubPackages edge cases', () => {
     )
     await syncSubPackages(selfPath, tmp)
     const pkg = await readJson<Record<string, unknown>>(join(tmp, 'packages/lib/package.json'))
-    expect(pkg.files).toEqual(['dist'])
+    expect(pkg.files).toStrictEqual(['dist'])
     await rm(tmp, { recursive: true })
   })
   test('infers a multi-entry tsdown config from default-keyed subpath exports, never clobbering to index alone', async () => {
@@ -641,7 +647,7 @@ describe('syncPackageJson edge cases', () => {
     const parsed = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
     const keys = Object.keys(parsed.devDependencies ?? {})
     const sorted = [...keys].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
-    expect(keys).toEqual(sorted)
+    expect(keys).toStrictEqual(sorted)
     await rm(tmp, { recursive: true })
   })
   test('does not overwrite existing packageManager', async () => {

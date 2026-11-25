@@ -5,26 +5,29 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inferRules, parseFrontmatter } from '../infer.js'
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-infer-'))
+const writeRuleFiles = async (rulesDir: string, files: [string, string][]) => {
+  for (const [name, content] of files) await write(join(rulesDir, name), content)
+}
 describe('parseFrontmatter', () => {
   test('standard frontmatter', () => {
-    expect(parseFrontmatter('---\ntitle: Hello\ninfer: always\n---\ncontent')).toEqual({
+    expect(parseFrontmatter('---\ntitle: Hello\ninfer: always\n---\ncontent')).toStrictEqual({
       infer: 'always',
       title: 'Hello'
     })
   })
   test('no frontmatter returns empty object', () => {
-    expect(parseFrontmatter('just content')).toEqual({})
+    expect(parseFrontmatter('just content')).toStrictEqual({})
   })
   test('missing closing --- returns empty object', () => {
-    expect(parseFrontmatter('---\ntitle: Hello\n')).toEqual({})
+    expect(parseFrontmatter('---\ntitle: Hello\n')).toStrictEqual({})
   })
   test('values with colons keeps full value', () => {
-    expect(parseFrontmatter('---\nurl: https://example.com\n---\n')).toEqual({
+    expect(parseFrontmatter('---\nurl: https://example.com\n---\n')).toStrictEqual({
       url: 'https://example.com'
     })
   })
   test('empty file returns empty object', () => {
-    expect(parseFrontmatter('')).toEqual({})
+    expect(parseFrontmatter('')).toStrictEqual({})
   })
 })
 describe('inferRules', () => {
@@ -75,9 +78,11 @@ describe('inferRules', () => {
     const tmp = await makeTmp()
     const rulesDir = join(tmp, 'rules')
     await mkdir(rulesDir)
-    await write(join(rulesDir, 'index.mdx'), '---\ntitle: Index\ninfer: always\n---\nindex')
-    await write(join(rulesDir, 'zzz.mdx'), '---\ntitle: ZZZ\ninfer: always\n---\nzzz')
-    await write(join(rulesDir, 'aaa.mdx'), '---\ntitle: AAA\ninfer: always\n---\naaa')
+    await writeRuleFiles(rulesDir, [
+      ['index.mdx', '---\ntitle: Index\ninfer: always\n---\nindex'],
+      ['zzz.mdx', '---\ntitle: ZZZ\ninfer: always\n---\nzzz'],
+      ['aaa.mdx', '---\ntitle: AAA\ninfer: always\n---\naaa']
+    ])
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true }))
     const rules = await inferRules(tmp, rulesDir)
     expect(rules[0]).toBe('index')

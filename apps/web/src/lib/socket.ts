@@ -6,16 +6,16 @@ import { safeParseJson, watchEventSchema } from 'pm4ai/schemas'
 type Listener = (event: WatchEvent) => void
 const listeners = new Set<Listener>()
 let buffer = ''
-let connected = false
-let started = false
+let hasConnection = false
+let hasStarted = false
 const scheduleReconnect = (connect: () => Promise<void>): void => {
   setTimeout(() => {
     connect().catch(() => {})
   }, 1000)
 }
 const ensureStarted = async () => {
-  if (started) return
-  started = true
+  if (hasStarted) return
+  hasStarted = true
   const { createConnection } = await import('node:net')
   const { access } = await import('node:fs/promises')
   /** Imported, never re-derived: the emitter owns where the socket lives, so a second copy of the path here drifts the moment that one moves. */
@@ -35,19 +35,20 @@ const ensureStarted = async () => {
     }
     const sock = createConnection(socketPath).on('error', () => {})
     sock.on('connect', () => {
-      connected = true
+      hasConnection = true
     })
     sock.on('data', (chunk: Buffer) => {
       buffer += chunk.toString()
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
-      for (const line of lines.filter(Boolean)) {
+      const nonEmpty = lines.filter(Boolean)
+      for (const line of nonEmpty) {
         const event = safeParseJson(watchEventSchema, line)
         if (event) for (const fn of listeners) fn(event)
       }
     })
     sock.on('close', () => {
-      connected = false
+      hasConnection = false
       scheduleReconnect(doConnect)
     })
   }
@@ -58,5 +59,5 @@ const subscribe = (fn: Listener): (() => void) => {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }
-const isConnected = () => connected
+const isConnected = () => hasConnection
 export { isConnected, subscribe }

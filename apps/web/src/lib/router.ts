@@ -5,19 +5,20 @@
 import type { WatchEvent } from 'pm4ai'
 import { os } from '@orpc/server'
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkResultSchema, safeParseJson } from 'pm4ai/schemas'
+import { stateDir } from 'pm4ai/state-dir'
 import { z } from 'zod/v4'
-import { validateSession } from './auth'
+import { isValidSession } from './auth'
 import { isConnected, subscribe } from './socket'
 type CheckResult = z.infer<typeof checkResultSchema>
-const checksDir = join(homedir(), '.pm4ai', 'checks')
+const checksDir = join(stateDir(), 'checks')
 const leadingSepRe = /^--/u
 interface AuthedContext {
   headers: Headers
 }
-const pathExists = async (p: string): Promise<boolean> => {
+const doesPathExist = async (p: string): Promise<boolean> => {
   try {
     await stat(p)
     return true
@@ -28,11 +29,13 @@ const pathExists = async (p: string): Promise<boolean> => {
 const readCheckResult = async (projectPath: string): Promise<CheckResult | null> => {
   const safeName = projectPath.replaceAll('/', '--').replace(leadingSepRe, '')
   const p = join(checksDir, `${safeName}.json`)
-  if (!(await pathExists(p))) return null
+  // biome-ignore lint/nursery/noNull: null is the JSON wire value clients and tests read
+  if (!(await doesPathExist(p))) return null
+  // biome-ignore lint/nursery/noNull: null is the JSON wire value clients and tests read
   return safeParseJson(checkResultSchema, await readFile(p, 'utf8')) ?? null
 }
 const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null; name: string; path: string }[]> => {
-  const dirExists = await pathExists(checksDir)
+  const dirExists = await doesPathExist(checksDir)
   if (!dirExists) return []
   const entries = await readdir(checksDir)
   const mapped = await Promise.all(
@@ -43,7 +46,7 @@ const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null
         const path = `/${safeName.replaceAll('--', '/')}`
         const name = path.split('/').pop() ?? ''
         const result = await readCheckResult(path)
-        const projExists = await pathExists(path)
+        const projExists = await doesPathExist(path)
         return { checkResult: result, keep: projExists && !path.startsWith(`${tmpdir()}/`), name, path }
       })
   )
@@ -55,30 +58,32 @@ const getProjectsFromCache = async (): Promise<{ checkResult: CheckResult | null
 const authed = os.middleware(async ({ context, next }) => {
   /** biome-ignore lint/nursery/noUnsafeTypeAssertion: oRPC middleware context exposes request headers through an untyped context */
   const { headers } = context as AuthedContext
-  if (!validateSession(headers.get('cookie'))) throw new Error('Unauthorized')
+  if (!isValidSession(headers.get('cookie'))) throw new Error('Unauthorized')
   return next({})
 })
 const projects = os.handler(async () => getProjectsFromCache())
-const events = os.handler(async function* generateEvents() {
+const createEventQueue = () => {
   const queue: WatchEvent[] = []
   let waiting: (() => void) | undefined
   const unsub = subscribe(event => {
     queue.push(event)
     waiting?.()
   })
-  const waitForEvent = async (): Promise<void> => {
-    const pending = new Promise<void>(resolve => {
-      waiting = resolve
-    })
-    await pending
+  const next = async (): Promise<WatchEvent[]> => {
+    if (queue.length === 0)
+      await new Promise<void>(resolve => {
+        waiting = resolve
+      })
+    return queue.splice(0)
   }
+  return { next, unsub }
+}
+const events = os.handler(async function* generateEvents() {
+  const { next, unsub } = createEventQueue()
   try {
     while (true) {
-      if (queue.length === 0) await waitForEvent()
-      while (queue.length > 0) {
-        const event = queue.shift()
-        if (event) yield event
-      }
+      const batch = await next()
+      for (const event of batch) yield event
     }
   } finally {
     unsub()
@@ -124,6 +129,7 @@ const fixProject = os
   })
 const projectStatus = os.input(z.object({ project: z.string() })).handler(async ({ input }) => {
   const found = (await getProjectsFromCache()).find(p => p.name === input.project)
+  // biome-ignore lint/nursery/noNull: null is the JSON wire value clients and tests read
   if (!found) return null
   return found
 })

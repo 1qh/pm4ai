@@ -17,118 +17,154 @@ import { createEvent } from '../watch-types.js'
 const mkProject = (name: string) => ({ name, path: `/test/${name}` })
 const mkProjects = (...names: string[]) => names.map(mkProject)
 const mkIdle = (): ProjectState => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' })
+type EventInput = Parameters<typeof createEvent>[0]
+const applyEvents = (from: ReturnType<typeof createInitState>, events: EventInput[]) => {
+  let state = from
+  for (const event of events) state = runReducer(state, { event: createEvent(event), type: 'event' })
+  return state
+}
+const statusesOf = (state: ReturnType<typeof createInitState>, names: string[]): Record<string, unknown> =>
+  Object.fromEntries(names.map(name => [name, state.projects[name]?.status]))
+const LIFECYCLE_STAGES: { events: EventInput[]; phase: string; statuses: Record<string, string> }[] = [
+  {
+    events: [
+      { project: 'a', status: 'start', step: 'sync' },
+      { project: 'b', status: 'start', step: 'sync' }
+    ],
+    phase: 'running',
+    statuses: { a: 'running', b: 'running', c: 'idle' }
+  },
+  {
+    events: [
+      { project: 'c', status: 'start', step: 'sync' },
+      { detail: 'clean', project: 'a', status: 'ok', step: 'done' }
+    ],
+    phase: 'running',
+    statuses: { a: 'done' }
+  },
+  { events: [{ detail: '2 issues', project: 'b', status: 'fail', step: 'done' }], phase: 'running', statuses: {} },
+  {
+    events: [{ detail: 'clean', project: 'c', status: 'ok', step: 'done' }],
+    phase: 'done',
+    statuses: { a: 'done', b: 'failed', c: 'done' }
+  }
+]
 describe('runReducer', () => {
-  test('tick returns same state when no startTime', () => {
-    const projects = mkProjects('a')
-    const state = createInitState(projects, mkIdle)
-    const next = runReducer(state, { type: 'tick' })
-    expect(next).toBe(state)
-  })
-  test('event transitions project to running', () => {
-    const projects = mkProjects('a', 'b')
-    const state = createInitState(projects, mkIdle)
-    const event = createEvent({ project: 'a', status: 'start', step: 'sync' })
-    const next = runReducer(state, { event, type: 'event' })
-    expect(next.projects.a?.status).toBe('running')
-    expect(next.projects.a?.step).toBe('sync')
-    expect(next.phase).toBe('running')
-    expect(next.startTime).toBeDefined()
-  })
-  test('done event transitions project to done', () => {
-    const projects = mkProjects('a')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
-    state = runReducer(state, {
-      event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
-      type: 'event'
+  describe('events and bell', () => {
+    test('tick returns same state when no startTime', () => {
+      const projects = mkProjects('a')
+      const state = createInitState(projects, mkIdle)
+      const next = runReducer(state, { type: 'tick' })
+      expect(next).toBe(state)
     })
-    expect(state.projects.a?.status).toBe('done')
-    expect(state.projects.a?.detail).toBe('clean')
-    expect(state.phase).toBe('done')
-  })
-  test('fail event transitions project to failed', () => {
-    const projects = mkProjects('a')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'check' }), type: 'event' })
-    state = runReducer(state, {
-      event: createEvent({ detail: '3 issues', project: 'a', status: 'fail', step: 'done' }),
-      type: 'event'
+    test('event transitions project to running', () => {
+      const projects = mkProjects('a', 'b')
+      const state = createInitState(projects, mkIdle)
+      const event = createEvent({ project: 'a', status: 'start', step: 'sync' })
+      const next = runReducer(state, { event, type: 'event' })
+      expect(next.projects.a?.status).toBe('running')
+      expect(next.projects.a?.step).toBe('sync')
+      expect(next.phase).toBe('running')
+      expect(next.startTime).toBeDefined()
     })
-    expect(state.projects.a?.status).toBe('failed')
-    expect(state.projects.a?.detail).toBe('3 issues')
-  })
-  test('bellPending set on completion after running phase', () => {
-    const projects = mkProjects('a')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
-    expect(state.phase).toBe('running')
-    expect(state.startTime).toBeDefined()
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'ok', step: 'sync' }), type: 'event' })
-    state = runReducer(state, {
-      event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
-      type: 'event'
+    test('done event transitions project to done', () => {
+      const projects = mkProjects('a')
+      let state = createInitState(projects, mkIdle)
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
+      state = runReducer(state, {
+        event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
+        type: 'event'
+      })
+      expect(state.projects.a?.status).toBe('done')
+      expect(state.projects.a?.detail).toBe('clean')
+      expect(state.phase).toBe('done')
     })
-    expect(state.phase).toBe('done')
-    expect(state.bellPending).toBe(true)
-  })
-  test('bellPending not set when phase goes directly to done without running', () => {
-    const projects = mkProjects('a')
-    const state = createInitState(projects, mkIdle)
-    expect(state.bellPending).toBe(false)
-  })
-  test('bell-acked clears bellPending', () => {
-    const projects = mkProjects('a')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'ok', step: 'sync' }), type: 'event' })
-    state = runReducer(state, {
-      event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
-      type: 'event'
+    test('fail event transitions project to failed', () => {
+      const projects = mkProjects('a')
+      let state = createInitState(projects, mkIdle)
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'check' }), type: 'event' })
+      state = runReducer(state, {
+        event: createEvent({ detail: '3 issues', project: 'a', status: 'fail', step: 'done' }),
+        type: 'event'
+      })
+      expect(state.projects.a?.status).toBe('failed')
+      expect(state.projects.a?.detail).toBe('3 issues')
     })
-    expect(state.bellPending).toBe(true)
-    state = runReducer(state, { type: 'bell-acked' })
-    expect(state.bellPending).toBe(false)
-  })
-  test('reset increments runCount and records history', () => {
-    const projects = mkProjects('a')
-    let state = createInitState(projects, mkIdle)
-    state = { ...state, elapsed: 42, phase: 'done', startTime: Date.now() - 42_000 }
-    state = runReducer(state, {
-      mkIdle: () => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' }),
-      projects,
-      type: 'reset'
+    test('bellPending set on completion after running phase', () => {
+      const projects = mkProjects('a')
+      let state = createInitState(projects, mkIdle)
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
+      expect(state.phase).toBe('running')
+      expect(state.startTime).toBeDefined()
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'ok', step: 'sync' }), type: 'event' })
+      state = runReducer(state, {
+        event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
+        type: 'event'
+      })
+      expect(state.phase).toBe('done')
+      expect(state.bellPending).toBe(true)
     })
-    expect(state.runCount).toBe(1)
-    expect(state.history).toContain(42)
-    expect(state.phase).toBe('idle')
-    expect(state.elapsed).toBe(0)
+    test('bellPending not set when phase goes directly to done without running', () => {
+      const projects = mkProjects('a')
+      const state = createInitState(projects, mkIdle)
+      expect(state.bellPending).toBe(false)
+    })
+    test('bell-acked clears bellPending', () => {
+      const projects = mkProjects('a')
+      let state = createInitState(projects, mkIdle)
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
+      state = runReducer(state, { event: createEvent({ project: 'a', status: 'ok', step: 'sync' }), type: 'event' })
+      state = runReducer(state, {
+        event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
+        type: 'event'
+      })
+      expect(state.bellPending).toBe(true)
+      state = runReducer(state, { type: 'bell-acked' })
+      expect(state.bellPending).toBe(false)
+    })
   })
-  test('focus action updates focused name', () => {
-    const projects = mkProjects('a', 'b')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { focused: 'b', type: 'focus' })
-    expect(state.focused).toBe('b')
-  })
-  test('focus action returns same ref when already focused', () => {
-    const projects = mkProjects('a', 'b')
-    const state = createInitState(projects, mkIdle)
-    const next = runReducer(state, { focused: state.focused, type: 'focus' })
-    expect(next).toBe(state)
-  })
-  test('bell-acked returns same ref when not pending', () => {
-    const projects = mkProjects('a')
-    const state = createInitState(projects, mkIdle)
-    expect(state.bellPending).toBe(false)
-    const next = runReducer(state, { type: 'bell-acked' })
-    expect(next).toBe(state)
-  })
-  test('sortSnapshot updates on phase transitions', () => {
-    const projects = mkProjects('a', 'b', 'c')
-    let state = createInitState(projects, mkIdle)
-    const initial = [...state.sortSnapshot]
-    state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
-    expect(state.sortSnapshot).not.toEqual(initial)
-    expect(state.sortSnapshot[0]).toBe('b')
+  describe('reset, focus and sort', () => {
+    test('reset increments runCount and records history', () => {
+      const projects = mkProjects('a')
+      let state = createInitState(projects, mkIdle)
+      state = { ...state, elapsed: 42, phase: 'done', startTime: Date.now() - 42_000 }
+      state = runReducer(state, {
+        mkIdle: () => ({ completedSteps: new Set(), elapsed: 0, status: 'idle' }),
+        projects,
+        type: 'reset'
+      })
+      expect(state.runCount).toBe(1)
+      expect(state.history).toContain(42)
+      expect(state.phase).toBe('idle')
+      expect(state.elapsed).toBe(0)
+    })
+    test('focus action updates focused name', () => {
+      const projects = mkProjects('a', 'b')
+      let state = createInitState(projects, mkIdle)
+      state = runReducer(state, { focused: 'b', type: 'focus' })
+      expect(state.focused).toBe('b')
+    })
+    test('focus action returns same ref when already focused', () => {
+      const projects = mkProjects('a', 'b')
+      const state = createInitState(projects, mkIdle)
+      const next = runReducer(state, { focused: state.focused, type: 'focus' })
+      expect(next).toBe(state)
+    })
+    test('bell-acked returns same ref when not pending', () => {
+      const projects = mkProjects('a')
+      const state = createInitState(projects, mkIdle)
+      expect(state.bellPending).toBe(false)
+      const next = runReducer(state, { type: 'bell-acked' })
+      expect(next).toBe(state)
+    })
+    test('sortSnapshot updates on phase transitions', () => {
+      const projects = mkProjects('a', 'b', 'c')
+      let state = createInitState(projects, mkIdle)
+      const initial = [...state.sortSnapshot]
+      state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
+      expect(state.sortSnapshot).not.toStrictEqual(initial)
+      expect(state.sortSnapshot[0]).toBe('b')
+    })
   })
 })
 describe('nextProjectState', () => {
@@ -362,7 +398,7 @@ describe('sortByStatus', () => {
       c: { completedSteps: new Set<string>(), elapsed: 0, status: 'idle' as const }
     }
     const sorted = sortByStatus(['a', 'b', 'c'], projects)
-    expect(sorted).toEqual(['a', 'b', 'c'])
+    expect(sorted).toStrictEqual(['a', 'b', 'c'])
   })
 })
 describe('smoothBar edge cases', () => {
@@ -408,35 +444,13 @@ describe('edge cases', () => {
     expect(next.completedSteps).toBe(running.completedSteps)
   })
   test('multi-project interleaved run lifecycle', () => {
-    const projects = mkProjects('a', 'b', 'c')
-    let state = createInitState(projects, mkIdle)
-    state = runReducer(state, { event: createEvent({ project: 'a', status: 'start', step: 'sync' }), type: 'event' })
-    state = runReducer(state, { event: createEvent({ project: 'b', status: 'start', step: 'sync' }), type: 'event' })
-    expect(state.phase).toBe('running')
-    expect(state.projects.a?.status).toBe('running')
-    expect(state.projects.b?.status).toBe('running')
-    expect(state.projects.c?.status).toBe('idle')
-    state = runReducer(state, { event: createEvent({ project: 'c', status: 'start', step: 'sync' }), type: 'event' })
-    state = runReducer(state, {
-      event: createEvent({ detail: 'clean', project: 'a', status: 'ok', step: 'done' }),
-      type: 'event'
-    })
-    expect(state.phase).toBe('running')
-    expect(state.projects.a?.status).toBe('done')
-    state = runReducer(state, {
-      event: createEvent({ detail: '2 issues', project: 'b', status: 'fail', step: 'done' }),
-      type: 'event'
-    })
-    expect(state.phase).toBe('running')
-    state = runReducer(state, {
-      event: createEvent({ detail: 'clean', project: 'c', status: 'ok', step: 'done' }),
-      type: 'event'
-    })
-    expect(state.phase).toBe('done')
+    let state = createInitState(mkProjects('a', 'b', 'c'), mkIdle)
+    for (const stage of LIFECYCLE_STAGES) {
+      state = applyEvents(state, stage.events)
+      expect(state.phase).toBe(stage.phase)
+      expect(statusesOf(state, Object.keys(stage.statuses))).toStrictEqual(stage.statuses)
+    }
     expect(state.bellPending).toBe(true)
-    expect(state.projects.a?.status).toBe('done')
-    expect(state.projects.b?.status).toBe('failed')
-    expect(state.projects.c?.status).toBe('done')
   })
   test('start event on previously-done project clears completedSteps', () => {
     const done = {

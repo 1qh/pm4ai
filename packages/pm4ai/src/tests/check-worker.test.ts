@@ -7,7 +7,7 @@ import { parseJson } from '../json.js'
 import { statePath } from '../state-dir.js'
 setDefaultTimeout(30_000)
 const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
-const dirExists = async (p: string): Promise<boolean> => {
+const isDirPresent = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
   } catch {
@@ -59,7 +59,7 @@ describe('check-worker', () => {
     await mkdir(join(tmp, '.git'))
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'test', private: true, scripts: { check: 'true' } }))
     await $`bun ${workerPath} ${tmp}`.quiet().nothrow()
-    expect(await dirExists(checksDir)).toBe(true)
+    expect(await isDirPresent(checksDir)).toBe(true)
     await rm(tmp, { recursive: true })
   })
   test('includes commit hash when in git repo', async () => {

@@ -24,7 +24,9 @@ describe('list', () => {
     const projectB = await makeProject(root, 'project-b')
     const rows: string[] = []
     try {
-      await list([projectB], root, row => rows.push(row))
+      await list([projectB], root, row => {
+        rows.push(row)
+      })
     } finally {
       await rm(root, { recursive: true })
     }

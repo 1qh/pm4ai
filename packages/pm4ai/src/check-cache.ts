@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: intentional catch-swallow */
+/** biome-ignore-all lint/nursery/noSyncMethods: readCheckResultBlocking serves the synchronous Ink reducer init/reset, which cannot await */
 /* eslint-disable no-empty */
 import { $, file, spawn, write } from 'bun'
 import { existsSync, readFileSync } from 'node:fs'
@@ -48,32 +49,32 @@ const getCodeCommitsSince = async (projectPath: string, commit: string): Promise
   if (r.exitCode === 0) return Math.trunc(Number(r.stdout.toString().trim()))
   return -1
 }
+const isLockHolderAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+const isLockLive = async (lp: string): Promise<boolean> => {
+  try {
+    const lock = safeParseJson(lockSchema, await file(lp).text())
+    if (!lock) return false
+    const age = Date.now() - new Date(lock.at).getTime()
+    if (age > 600_000) return false
+    return isLockHolderAlive(lock.pid)
+  } catch {
+    return false
+  }
+}
 const isCheckRunning = async (projectPath: string): Promise<boolean> => {
   const lp = lockPath(projectPath)
   const lpExists = await file(lp).exists()
   if (!lpExists) return false
-  try {
-    const lock = safeParseJson(lockSchema, await file(lp).text())
-    if (!lock) {
-      await rm(lp)
-      return false
-    }
-    const age = Date.now() - new Date(lock.at).getTime()
-    if (age > 600_000) {
-      await rm(lp)
-      return false
-    }
-    try {
-      process.kill(lock.pid, 0)
-      return true
-    } catch {
-      await rm(lp)
-      return false
-    }
-  } catch {
-    await rm(lp)
-    return false
-  }
+  if (await isLockLive(lp)) return true
+  await rm(lp)
+  return false
 }
 const writeCheckResult = async (opts: {
   pass: boolean

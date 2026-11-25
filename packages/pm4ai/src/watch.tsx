@@ -1,13 +1,14 @@
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: signal handler */
+/** biome-ignore-all lint/nursery/noSyncMethods: Ink key handlers and the synchronous reducer init cannot await */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-empty-function */
-import type { ReactNode } from 'react'
+import type { Dispatch } from 'react'
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink'
 import Spinner from 'ink-spinner'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { ProjectInfo, ProjectState } from './watch-state.js'
+import type { DerivedStats, ProjectInfo, ProjectState, RunAction, RunState } from './watch-state.js'
 import pkg from '../package.json' with { type: 'json' }
 import { readCheckResultBlocking } from './check-cache.js'
 import { PKG_NAME } from './constants.js'
@@ -32,9 +33,8 @@ const VERSION = pkg.version ?? '0.0.0'
 const safeReadCheck = (path: string) => {
   try {
     return readCheckResultBlocking(path)
-  } catch {
-    return null
-  }
+    // eslint-disable-next-line no-empty -- an unreadable check file is reported as absent
+  } catch {}
 }
 const mkIdleFn = (p: ProjectInfo): ProjectState => {
   const cached = safeReadCheck(p.path)
@@ -43,7 +43,7 @@ const mkIdleFn = (p: ProjectInfo): ProjectState => {
   const label = `${summary} ${timeAgo(cached.at)}`
   return { cachedPass: cached.pass, completedSteps: new Set(), detail: label, elapsed: 0, status: 'idle' }
 }
-const safeSpawn = (args: string[], cwd?: string): boolean => {
+const didSpawn = (args: string[], cwd?: string): boolean => {
   try {
     // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev/fleet tool invoking a trusted PATH tool
     const proc = spawn('bunx', args, { cwd, detached: true, stdio: 'ignore' })
@@ -61,6 +61,17 @@ interface KeyAction {
   key?: 'return'
   match?: (input: string) => boolean
 }
+const rowAppearance = (state: ProjectState): { color: 'green' | 'red' | 'yellow' | undefined; icon: string } => {
+  const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
+  const idleColor = state.cachedPass ? 'green' : 'red'
+  const colorMap: Record<string, 'green' | 'red' | 'yellow' | undefined> = {
+    done: 'green',
+    failed: 'red',
+    idle: idleColor,
+    running: 'yellow'
+  }
+  return { color: colorMap[state.status], icon: iconMap[state.status] }
+}
 const ProjectRow = ({
   focused,
   name,
@@ -74,16 +85,7 @@ const ProjectRow = ({
 }) => {
   const padded = name.padEnd(pad)
   const cursor = focused ? '›' : ' '
-  const iconMap = { done: '✔', failed: '✘', idle: state.cachedPass === undefined ? '·' : '●', running: '' }
-  const idleColor = state.cachedPass ? 'green' : 'red'
-  const colorMap: Record<string, 'green' | 'red' | 'yellow' | undefined> = {
-    done: 'green',
-    failed: 'red',
-    idle: idleColor,
-    running: 'yellow'
-  }
-  const icon = iconMap[state.status]
-  const color = colorMap[state.status]
+  const { color, icon } = rowAppearance(state)
   const isIdle = state.status === 'idle'
   const secs = state.elapsed > 0 ? state.elapsed : undefined
   const stepInfo =
@@ -109,8 +111,8 @@ const ProjectRow = ({
         <Text color={state.status === 'running' ? 'yellow' : color} dimColor={isIdle}>
           {stepInfo}
         </Text>
-      ) : null}
-      {secs === undefined ? null : <Text dimColor>{secs}s</Text>}
+      ) : undefined}
+      {secs === undefined ? undefined : <Text dimColor>{secs}s</Text>}
     </Box>
   )
 }
@@ -153,16 +155,16 @@ const DoneFooter = ({
           <Text bold color='green'>
             ✔ all clean · {formatTime(elapsed)}
           </Text>
-          {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : null}
-          {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : null}
+          {deltaLabel && deltaColor ? <Text color={deltaColor}>({deltaLabel})</Text> : undefined}
+          {history.length > 1 ? <Text dimColor>{sparkline(history)}</Text> : undefined}
         </Box>
       )}
       {slowestName && slowestElapsed > 0 ? (
         <Text dimColor>
           slowest: {slowestName} ({slowestElapsed}s)
         </Text>
-      ) : null}
-      {failed > 0 ? null : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
+      ) : undefined}
+      {failed > 0 ? undefined : <Text dimColor>resetting in {RESET_DELAY / 1000}s...</Text>}
     </Box>
   )
 }
@@ -179,12 +181,12 @@ const IdleFooter = ({
   toast: string
 }) => (
   <Box flexDirection='column' paddingLeft={1}>
-    {toast ? <Text color='cyan'>{toast}</Text> : null}
+    {toast ? <Text color='cyan'>{toast}</Text> : undefined}
     {lastTime ? (
       <Text dimColor>
         last run: {lastFailed > 0 ? `${lastFailed} failed` : 'all clean'} · {formatTime(lastElapsed)} · {lastTime}
       </Text>
-    ) : null}
+    ) : undefined}
     <Text dimColor>
       <Text bold dimColor>
         ↑↓/jk
@@ -230,15 +232,14 @@ const RunningFooter = ({
   <Box gap={1} paddingLeft={1}>
     <Text color='cyan'>{smoothBar(fraction, barWidth)}</Text>
     <Text color='yellow'>{pct}%</Text>
-    {elapsed > 0 ? <Text dimColor>{formatTime(elapsed)}</Text> : null}
-    {eta !== undefined && eta > 0 ? <Text dimColor>~{formatTime(eta)} left</Text> : null}
+    {elapsed > 0 ? <Text dimColor>{formatTime(elapsed)}</Text> : undefined}
+    {eta !== undefined && eta > 0 ? <Text dimColor>~{formatTime(eta)} left</Text> : undefined}
   </Box>
 )
 RunningFooter.displayName = 'RunningFooter'
 const readColumns = (stdout: NodeJS.WritableStream): number =>
   'columns' in stdout && typeof stdout.columns === 'number' ? stdout.columns : 80
-const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
-  const app = useApp()
+const useLayout = (projects: ProjectInfo[]): { barWidth: number; pad: number; sepWidth: number } => {
   const stdout: NodeJS.WritableStream = useStdout().stdout
   const [cols, setCols] = useState(() => readColumns(stdout))
   useEffect(() => {
@@ -248,25 +249,38 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       stdout?.off('resize', handler)
     }
   }, [stdout])
-  const barWidth = Math.min(Math.max(Math.floor(cols * 0.3), 12), 40)
   const pad = useMemo(() => Math.max(...projects.map(p => p.name.length)) + 2, [projects])
-  const projectMap = useMemo(() => new Map(projects.map(p => [p.name, p])), [projects])
-  const [state, dispatch] = useReducer(runReducer, projects, (p: ProjectInfo[]) => createInitState(p, mkIdleFn))
+  return { barWidth: Math.min(Math.max(Math.floor(cols * 0.3), 12), 40), pad, sepWidth: Math.max(0, cols - 4) }
+}
+const useToast = (): { showToast: (msg: string) => void; toast: string } => {
   const [toast, setToast] = useState('')
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast(msg)
+    toastTimerRef.current = setTimeout(() => setToast(''), 2000)
+  }, [])
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    },
+    []
+  )
+  return { showToast, toast }
+}
+const useSortedProjects = (projects: ProjectInfo[], state: RunState): { focusedIdx: number; sorted: ProjectInfo[] } => {
+  const projectMap = useMemo(() => new Map(projects.map(p => [p.name, p])), [projects])
   const sorted = useMemo(() => {
     if (state.sortSnapshot.length === 0) return projects
-    const result: ProjectInfo[] = []
-    for (const n of state.sortSnapshot) {
-      const p = projectMap.get(n)
-      if (p) result.push(p)
-    }
-    return result
+    return state.sortSnapshot.map(n => projectMap.get(n)).filter((p): p is ProjectInfo => p !== undefined)
   }, [state.sortSnapshot, projects, projectMap])
   const focusedIdx = useMemo(() => {
     const idx = sorted.findIndex(p => p.name === state.focused)
     return Math.max(idx, 0)
   }, [sorted, state.focused])
+  return { focusedIdx, sorted }
+}
+const useRunStats = (state: RunState): { hasFails: boolean; stats: DerivedStats } => {
   const stats = useMemo(
     () =>
       deriveStats({
@@ -277,13 +291,36 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       }),
     [state.projects, state.history, state.lastElapsed, state.elapsed]
   )
-  const hasFails = state.phase === 'done' && stats.failed > 0
-  const showToast = useCallback((msg: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast(msg)
-    toastTimerRef.current = setTimeout(() => setToast(''), 2000)
-  }, [])
-  const focus = useCallback((name: string) => dispatch({ focused: name, type: 'focus' }), [])
+  return { hasFails: state.phase === 'done' && stats.failed > 0, stats }
+}
+const fixFocused = (p: ProjectInfo | undefined, showToast: (msg: string) => void) => {
+  if (!p) return
+  // oxlint-disable-next-line node/no-sync -- sync Ink key handler cannot await; existence gate is best-effort
+  const doesPathExist = existsSync(p.path)
+  if (doesPathExist)
+    if (didSpawn([PKG_NAME, 'fix'], p.path)) showToast(`fixing ${p.name}...`)
+    else showToast(`${p.name}: spawn failed`)
+  else showToast(`${p.name}: ${p.path} not found`)
+}
+const useKeyBindings = ({
+  dispatch,
+  focusedIdx,
+  hasFails,
+  projects,
+  running,
+  showToast,
+  sorted
+}: {
+  dispatch: Dispatch<RunAction>
+  focusedIdx: number
+  hasFails: boolean
+  projects: ProjectInfo[]
+  running: number
+  showToast: (msg: string) => void
+  sorted: ProjectInfo[]
+}) => {
+  const app = useApp()
+  const focus = useCallback((name: string) => dispatch({ focused: name, type: 'focus' }), [dispatch])
   const keymap: KeyAction[] = useMemo(
     () => [
       {
@@ -318,87 +355,102 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
       { handler: () => app.exit(), match: (i: string) => i === 'q' },
       { guard: () => hasFails, handler: () => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), key: 'return' },
       {
-        guard: () => !hasFails && stats.running === 0,
-        handler: () => {
-          const p = sorted[focusedIdx]
-          if (!p) return
-          // oxlint-disable-next-line node/no-sync -- sync Ink key handler cannot await; existence gate is best-effort
-          const pathExists = existsSync(p.path)
-          if (pathExists)
-            if (safeSpawn([PKG_NAME, 'fix'], p.path)) showToast(`fixing ${p.name}...`)
-            else showToast(`${p.name}: spawn failed`)
-          else showToast(`${p.name}: ${p.path} not found`)
-        },
+        guard: () => !hasFails && running === 0,
+        handler: () => fixFocused(sorted[focusedIdx], showToast),
         key: 'return'
       },
       {
-        guard: () => !hasFails && stats.running === 0,
+        guard: () => !hasFails && running === 0,
         handler: () => {
-          if (safeSpawn([PKG_NAME, 'fix', '--all'])) showToast('starting fix --all...')
+          if (didSpawn([PKG_NAME, 'fix', '--all'])) showToast('starting fix --all...')
           else showToast('spawn failed')
         },
         match: (i: string) => i === 'f'
       },
       {
-        guard: () => !hasFails && stats.running === 0,
+        guard: () => !hasFails && running === 0,
         handler: () => {
-          if (safeSpawn([PKG_NAME, 'status', '--all'])) showToast('starting status --all...')
+          if (didSpawn([PKG_NAME, 'status', '--all'])) showToast('starting status --all...')
           else showToast('spawn failed')
         },
         match: (i: string) => i === 's'
       }
     ],
-    [sorted, focusedIdx, hasFails, stats.running, projects, app, focus, showToast]
+    [sorted, focusedIdx, hasFails, running, projects, app, focus, showToast, dispatch]
   )
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
       app.exit()
       return
     }
-    for (const action of keymap) {
-      const arrowMatch = (action.arrow === 'up' && key.upArrow) || (action.arrow === 'down' && key.downArrow)
-      const keyMatch = action.key === 'return' && key.return
-      const inputMatch = action.match?.(input)
-      if ((arrowMatch || keyMatch || inputMatch) && (!action.guard || action.guard())) {
-        action.handler()
-        return
-      }
-    }
+    const action = keymap.find(a => {
+      const isArrowMatch = (a.arrow === 'up' && key.upArrow) || (a.arrow === 'down' && key.downArrow)
+      const isKeyMatch = a.key === 'return' && key.return
+      const isInputMatch = a.match?.(input) ?? false
+      return (isArrowMatch || isKeyMatch || isInputMatch) && (!a.guard || a.guard())
+    })
+    action?.handler()
   })
+}
+const useRunEffects = ({
+  dispatch,
+  hasFails,
+  projects,
+  state
+}: {
+  dispatch: Dispatch<RunAction>
+  hasFails: boolean
+  projects: ProjectInfo[]
+  state: RunState
+}) => {
+  const stdout: NodeJS.WritableStream = useStdout().stdout
   useEffect(() => {
     const interval = setInterval(() => dispatch({ type: 'tick' }), 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [dispatch])
   useEffect(() => {
     const unsub = onEvent(event => dispatch({ event, type: 'event' }))
     return unsub
-  }, [])
+  }, [dispatch])
   useEffect(() => {
     if (state.bellPending) {
       stdout?.write('\u0007')
       dispatch({ type: 'bell-acked' })
     }
-  }, [state.bellPending, stdout])
+  }, [state.bellPending, stdout, dispatch])
   useEffect(() => {
     if (state.phase !== 'done' || hasFails) return
     const timer = setTimeout(() => dispatch({ mkIdle: mkIdleFn, projects, type: 'reset' }), RESET_DELAY)
     return () => clearTimeout(timer)
-  }, [state.phase, hasFails, projects])
-  useEffect(
-    () => () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    },
-    []
-  )
-  const totalSteps = projects.length * STEP_COUNT
+  }, [state.phase, hasFails, projects, dispatch])
+}
+const WatchFooter = ({
+  barWidth,
+  projectCount,
+  state,
+  stats,
+  toast
+}: {
+  barWidth: number
+  projectCount: number
+  state: RunState
+  stats: DerivedStats
+  toast: string
+}) => {
+  const totalSteps = projectCount * STEP_COUNT
   const fraction = totalSteps > 0 ? stats.completedStepCount / totalSteps : 0
-  const pct = Math.round(fraction * 100)
-  const sepWidth = Math.max(0, cols - 4)
-  let footer: ReactNode
   if (state.phase === 'running')
-    footer = <RunningFooter barWidth={barWidth} elapsed={state.elapsed} eta={stats.eta} fraction={fraction} pct={pct} />
-  else if (state.phase === 'done')
-    footer = (
+    return (
+      <RunningFooter
+        barWidth={barWidth}
+        elapsed={state.elapsed}
+        eta={stats.eta}
+        fraction={fraction}
+        pct={Math.round(fraction * 100)}
+      />
+    )
+  if (state.phase === 'done')
+    return (
       <DoneFooter
         done={stats.done}
         elapsed={state.elapsed}
@@ -409,10 +461,19 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         slowestName={stats.slowestName}
       />
     )
-  else
-    footer = (
-      <IdleFooter lastElapsed={state.lastElapsed} lastFailed={state.lastFailed} lastTime={state.lastTime} toast={toast} />
-    )
+  return (
+    <IdleFooter lastElapsed={state.lastElapsed} lastFailed={state.lastFailed} lastTime={state.lastTime} toast={toast} />
+  )
+}
+WatchFooter.displayName = 'WatchFooter'
+const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
+  const { barWidth, pad, sepWidth } = useLayout(projects)
+  const [state, dispatch] = useReducer(runReducer, projects, (p: ProjectInfo[]) => createInitState(p, mkIdleFn))
+  const { showToast, toast } = useToast()
+  const { focusedIdx, sorted } = useSortedProjects(projects, state)
+  const { hasFails, stats } = useRunStats(state)
+  useKeyBindings({ dispatch, focusedIdx, hasFails, projects, running: stats.running, showToast, sorted })
+  useRunEffects({ dispatch, hasFails, projects, state })
   return (
     <Box flexDirection='column'>
       <Box gap={1} marginBottom={1} paddingLeft={1}>
@@ -422,8 +483,8 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         <Text dimColor>
           v{VERSION} · {projects.length} projects
         </Text>
-        {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : null}
-        {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : null}
+        {state.runCount > 0 ? <Text dimColor>· run #{state.runCount}</Text> : undefined}
+        {state.history.length > 1 ? <Text dimColor>{sparkline(state.history)}</Text> : undefined}
       </Box>
       {sorted.map(p => (
         <ProjectRow
@@ -438,7 +499,7 @@ const WatchApp = ({ projects }: { projects: ProjectInfo[] }) => {
         <Text dimColor>{'─'.repeat(sepWidth)}</Text>
       </Box>
       <Box flexDirection='column' marginTop={1}>
-        {footer}
+        <WatchFooter barWidth={barWidth} projectCount={projects.length} state={state} stats={stats} toast={toast} />
       </Box>
     </Box>
   )
@@ -453,10 +514,10 @@ const watchJson = async (): Promise<void> => {
   })
   await once(ac.signal, 'abort').catch(() => {})
 }
-const watch = async (json = false) => {
+const watch = async (shouldEmitJson = false) => {
   await startEmitter()
   installCleanup()
-  if (json) return watchJson()
+  if (shouldEmitJson) return watchJson()
   const { consumers, self, cnsync } = await discover()
   const allProjects = cnsync ? [self, cnsync, ...consumers] : [self, ...consumers]
   // oxlint-disable-next-line react-perf/jsx-no-new-array-as-prop

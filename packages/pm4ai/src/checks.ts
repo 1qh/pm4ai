@@ -1,7 +1,7 @@
 import { $, file, Glob } from 'bun'
 import { readdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { Issue, IssueType } from './types.js'
+import type { Issue, IssueType, PackageJson } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
 import {
   CONDITIONAL_MUST_EXIST_FILES,
@@ -32,12 +32,12 @@ interface TsconfigCompilerOptions {
 }
 const glob = async (pattern: string, cwd: string): Promise<string[]> => {
   const results: string[] = []
-  const dot = pattern.includes('/.')
-  for await (const f of new Glob(pattern).scan({ cwd, dot, onlyFiles: true }))
-    if (!f.split('/').some(seg => SCAN_EXCLUDE.has(seg))) results.push(join(cwd, f))
+  const isDot = pattern.includes('/.')
+  const scanned = new Glob(pattern).scan({ cwd, dot: isDot, onlyFiles: true })
+  for await (const f of scanned) if (f.split('/').every(seg => !SCAN_EXCLUDE.has(seg))) results.push(join(cwd, f))
   return results
 }
-const pathExists = async (p: string): Promise<boolean> => {
+const doesPathExist = async (p: string): Promise<boolean> => {
   try {
     await stat(p)
     return true
@@ -50,15 +50,15 @@ const shell = async (projectPath: string, ...args: string[]) => {
   return result.stdout.toString().trim()
 }
 const importPattern = (ban: string): string => {
-  const exact = ban.endsWith('"')
+  const isExact = ban.endsWith('"')
   const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
-  const quote = exact ? `['"]` : ''
+  const quote = isExact ? `['"]` : ''
   return `(from|import|require)[\\s(]+['"]${name}${quote}`
 }
 const importSpecifierPattern = (ban: string): RegExp => {
-  const exact = ban.endsWith('"')
+  const isExact = ban.endsWith('"')
   const name = ban.replaceAll(/^"|"$/gu, '').replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
-  const tail = exact ? '' : `[^'"]*`
+  const tail = isExact ? '' : `[^'"]*`
   return new RegExp(`(?:from|import|require)[\\s(]+['"](${name}${tail})['"]`, 'gu')
 }
 const temporaryAllowedPackages = (ban: string): readonly string[] => TEMPORARY_ALLOWED_PACKAGES[ban] ?? []
@@ -70,7 +70,8 @@ const hasAllowDirective = (content: string, ban: string): boolean => {
 }
 const hasBlockedImport = (content: string, ban: string): boolean => {
   if (hasAllowDirective(content, ban)) return false
-  for (const match of content.matchAll(importSpecifierPattern(ban))) {
+  const matches = content.matchAll(importSpecifierPattern(ban))
+  for (const match of matches) {
     const packageName = match[1]
     if (packageName !== undefined && !isTemporarilyAllowedPackage(ban, packageName)) return true
   }
@@ -97,6 +98,22 @@ const forbidden = (detail: string) => issue('forbidden', detail)
 const providerJsxRe = /<\w+Provider/gu
 const serverProviderRe = /<\w*Server\w*Provider/u
 const providerImportRe = /from\s+['"].*providers/u
+interface CiRun {
+  conclusion: null | string
+  createdAt: string
+  status: string
+}
+const latestRunIssue = (latest: CiRun | undefined): Issue => {
+  if (!latest) return issue('ci', 'CI: no runs')
+  if (latest.status !== 'completed') return issue('info', `CI ${latest.status} ${latest.createdAt}`)
+  if (latest.conclusion === 'success') return issue('info', `CI passed ${latest.createdAt}`)
+  return issue('ci', `CI ${latest.conclusion ?? 'incomplete'} ${latest.createdAt}`)
+}
+const ciHistoryIssues = (count: number): Issue[] => {
+  if (count === 1) return [issue('info', 'CI history clean (1 run)')]
+  if (count > 1) return [issue('ci', `CI history not clean: ${count}${count >= 100 ? '+' : ''} runs`)]
+  return []
+}
 const checkCi = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)
   if (!repo) return []
@@ -107,28 +124,24 @@ const checkCi = async (projectPath: string): Promise<Issue[]> => {
     debug('command failed:', `gh run list --repo ${repo}`)
     return []
   }
-  const runs = parseJson<
-    {
-      conclusion: null | string
-      createdAt: string
-      status: string
-    }[]
-  >(result.stdout.toString().trim() || '[]')
-  const issues: Issue[] = []
-  const latest = runs.at(0)
-  if (!latest) issues.push(issue('ci', 'CI: no runs'))
-  else if (latest.status !== 'completed') issues.push(issue('info', `CI ${latest.status} ${latest.createdAt}`))
-  else if (latest.conclusion === 'success') issues.push(issue('info', `CI passed ${latest.createdAt}`))
-  else issues.push(issue('ci', `CI ${latest.conclusion ?? 'incomplete'} ${latest.createdAt}`))
-  if (runs.length === 1) issues.push(issue('info', 'CI history clean (1 run)'))
-  else if (runs.length > 1)
-    issues.push(issue('ci', `CI history not clean: ${runs.length}${runs.length >= 100 ? '+' : ''} runs`))
-  return issues
+  const runs = parseJson<CiRun[]>(result.stdout.toString().trim() || '[]')
+  return [latestRunIssue(runs.at(0)), ...ciHistoryIssues(runs.length)]
+}
+const missingVarIssues = async (repo: string): Promise<Issue[]> => {
+  const vars = await $`gh api repos/${repo}/actions/variables --jq '.variables[].name'`.quiet().nothrow()
+  if (vars.exitCode !== 0) {
+    debug('command failed:', `gh api repos/${repo}/actions/variables`)
+    return []
+  }
+  const names = new Set(vars.stdout.toString().trim().split('\n').filter(Boolean))
+  return [
+    ...(names.has('RUNNER_LABEL') ? [] : [issue('ci', 'missing RUNNER_LABEL var')]),
+    ...(names.has('NTFY_TOPIC') ? [] : [issue('ci', 'missing NTFY_TOPIC var')])
+  ]
 }
 const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
   const repo = await getGhRepo(projectPath)
   if (!repo) return []
-  const issues: Issue[] = []
   const runners = await $`gh api repos/${repo}/actions/runners --jq '[.runners[]|select(.status=="online")]|length'`
     .quiet()
     .nothrow()
@@ -136,16 +149,8 @@ const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
     debug('command failed:', `gh api repos/${repo}/actions/runners`)
     return []
   }
-  if (Number(runners.stdout.toString().trim()) < 1) issues.push(issue('ci', 'no online self-hosted runner'))
-  const vars = await $`gh api repos/${repo}/actions/variables --jq '.variables[].name'`.quiet().nothrow()
-  if (vars.exitCode !== 0) {
-    debug('command failed:', `gh api repos/${repo}/actions/variables`)
-    return issues
-  }
-  const names = new Set(vars.stdout.toString().trim().split('\n').filter(Boolean))
-  if (!names.has('RUNNER_LABEL')) issues.push(issue('ci', 'missing RUNNER_LABEL var'))
-  if (!names.has('NTFY_TOPIC')) issues.push(issue('ci', 'missing NTFY_TOPIC var'))
-  return issues
+  const runnerIssues = Number(runners.stdout.toString().trim()) < 1 ? [issue('ci', 'no online self-hosted runner')] : []
+  return [...runnerIssues, ...(await missingVarIssues(repo))]
 }
 const checkRelease = async (projectPath: string): Promise<Issue[]> => {
   const caps = await detectCapabilities(projectPath)
@@ -158,24 +163,22 @@ const checkRelease = async (projectPath: string): Promise<Issue[]> => {
     return []
   }
   const count = Number(tags.stdout.toString().trim())
-  if (count > 1) return [issue('ci', `${count} release tags (single-present-release expects 1)`)]
-  return []
+  return count > 1 ? [issue('ci', `${count} release tags (single-present-release expects 1)`)] : []
 }
+const nestedGitIssues = (dirty: string): Issue[] => [
+  issue('git', 'skipped git pull: not a repository root'),
+  ...(dirty ? [issue('git', `${dirty.split('\n').length} uncommitted changes`)] : [])
+]
 const checkGit = async (projectPath: string): Promise<Issue[]> => {
   const nested = await isNestedInRepo(projectPath)
   const dirtyCheck = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
   const dirty = dirtyCheck.stdout.toString().trim()
-  if (nested) {
-    const issues = [issue('git', 'skipped git pull: not a repository root')]
-    if (dirty) issues.push(issue('git', `${dirty.split('\n').length} uncommitted changes`))
-    return issues
-  }
+  if (nested) return nestedGitIssues(dirty)
   if (!dirty) await $`git pull --rebase`.cwd(projectPath).quiet().nothrow()
   const result = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
   if (result.exitCode !== 0) debug('command failed:', 'git status --porcelain -- .')
   const out = result.stdout.toString().trim()
-  if (!out) return []
-  return [issue('git', `${out.split('\n').length} uncommitted changes`)]
+  return out ? [issue('git', `${out.split('\n').length} uncommitted changes`)] : []
 }
 const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const managed = await resolveManagedFiles(projectPath)
@@ -212,34 +215,40 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
     issues.push(drift(`clean should start with "${DEFAULT_SCRIPTS.clean}"`))
   return issues
 }
+const rootTsconfigIssues = (ts: Record<string, unknown> | undefined): Issue[] => {
+  if (!ts) return []
+  const issues: Issue[] = []
+  if (ts.extends && ts.extends !== EXPECTED.tsconfigExtends)
+    issues.push(drift('tsconfig.json should extend lintmax/tsconfig'))
+  if (ts.include) issues.push(drift('root tsconfig.json should not have "include"'))
+  if (!getTsconfigTypes(ts)?.includes('bun-types')) issues.push(issue('missing', 'root tsconfig.json missing "bun-types"'))
+  return issues
+}
+const checkRootConfigs = async (projectPath: string, issues: Issue[]) => {
+  const pkg = await readPkg(join(projectPath, 'package.json'))
+  if (pkg && !pkg.scripts?.action) issues.push(issue('missing', '"action" script missing'))
+  const tsconfig = await readJson(join(projectPath, 'tsconfig.json'))
+  issues.push(...rootTsconfigIssues(tsconfig))
+  const v = await readJson(join(projectPath, 'vercel.json'))
+  if (v?.installCommand && v.installCommand !== EXPECTED.vercelInstall)
+    issues.push(drift('vercel.json installCommand should be "bun i"'))
+}
 const checkConfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const caps = await detectCapabilities(projectPath)
   await Promise.all(
     MUST_EXIST_FILES.map(async entry => {
-      const entryExists = await pathExists(join(projectPath, entry))
+      const entryExists = await doesPathExist(join(projectPath, entry))
       if (!entryExists) issues.push(issue('missing', entry))
     })
   )
   await Promise.all(
     CONDITIONAL_MUST_EXIST_FILES.map(async c => {
-      const cExists = await pathExists(join(projectPath, c.path))
+      const cExists = await doesPathExist(join(projectPath, c.path))
       if (caps[c.when] && !cExists) issues.push(issue('missing', c.path))
     })
   )
-  const pkg = await readPkg(join(projectPath, 'package.json'))
-  if (pkg && !pkg.scripts?.action) issues.push(issue('missing', '"action" script missing'))
-  const ts = await readJson(join(projectPath, 'tsconfig.json'))
-  if (ts) {
-    if (ts.extends && ts.extends !== EXPECTED.tsconfigExtends)
-      issues.push(drift('tsconfig.json should extend lintmax/tsconfig'))
-    if (ts.include) issues.push(drift('root tsconfig.json should not have "include"'))
-    const types = getTsconfigTypes(ts)
-    if (!types?.includes('bun-types')) issues.push(issue('missing', 'root tsconfig.json missing "bun-types"'))
-  }
-  const v = await readJson(join(projectPath, 'vercel.json'))
-  if (v?.installCommand && v.installCommand !== EXPECTED.vercelInstall)
-    issues.push(drift('vercel.json installCommand should be "bun i"'))
+  await checkRootConfigs(projectPath, issues)
   return issues
 }
 const MIN_H_RE = /min-h-(?<size>screen|dvh)/u
@@ -270,6 +279,21 @@ const checkContent = ({ content, must, mustNot, r }: ContentRules): Issue[] => {
   for (const [check, msg] of mustNot) if (content.includes(check)) issues.push(drift(`${msg}: ${r}`))
   return issues
 }
+interface LayoutTailArgs {
+  content: string
+  hasFonts: boolean
+  hasProviders: boolean
+  r: string
+}
+const layoutTailIssues = ({ content, hasFonts, hasProviders, r }: LayoutTailArgs): Issue[] => {
+  const issues: Issue[] = []
+  if (!hasFonts) issues.push(drift(`missing fonts.ts next to layout: ${r}`))
+  if (content.includes('Providers') && !hasProviders) issues.push(drift(`providers.tsx should be next to layout: ${r}`))
+  const providerMatches = content.match(providerJsxRe) ?? []
+  if (providerMatches.some(m => !serverProviderRe.test(m)) && !providerImportRe.test(content))
+    issues.push(drift(`Provider in layout, move to providers.tsx: ${r}`))
+  return issues
+}
 const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const files = await glob('**/app/layout.tsx', projectPath)
@@ -283,15 +307,10 @@ const checkLayouts = async (projectPath: string): Promise<Issue[]> => {
         issues.push(drift(`use global.css not globals.css: ${r}`))
       const dir = layoutFile.replace('/layout.tsx', '')
       const [hasFonts, hasProviders] = await Promise.all([
-        pathExists(join(dir, 'fonts.ts')),
-        pathExists(join(dir, 'providers.tsx'))
+        doesPathExist(join(dir, 'fonts.ts')),
+        doesPathExist(join(dir, 'providers.tsx'))
       ])
-      if (!hasFonts) issues.push(drift(`missing fonts.ts next to layout: ${r}`))
-      if (content.includes('Providers') && !hasProviders)
-        issues.push(drift(`providers.tsx should be next to layout: ${r}`))
-      const providerMatches = content.match(providerJsxRe) ?? []
-      if (providerMatches.some(m => !serverProviderRe.test(m)) && !providerImportRe.test(content))
-        issues.push(drift(`Provider in layout, move to providers.tsx: ${r}`))
+      issues.push(...layoutTailIssues({ content, hasFonts, hasProviders, r }))
     })
   )
   return issues
@@ -334,7 +353,7 @@ const versionTriple = (v: string): [number, number, number] => {
   const g = VERSION_RE.exec(v)?.groups
   return [Number(g?.major ?? 0), Number(g?.minor ?? 0), Number(g?.patch ?? 0)]
 }
-const gteVersion = (a: [number, number, number], b: [number, number, number]): boolean => {
+const isGteVersion = (a: [number, number, number], b: [number, number, number]): boolean => {
   if (a[0] !== b[0]) return a[0] > b[0]
   if (a[1] !== b[1]) return a[1] > b[1]
   return a[2] >= b[2]
@@ -358,15 +377,15 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
       const pkg = await readPkg(pkgFile)
       if (!pkg) return
       const r = rel(pkgFile, projectPath)
-      for (const field of ['dependencies', 'devDependencies'] as const)
-        for (const [name, version] of Object.entries(pkg[field] ?? {}))
-          if (
-            typeof version === 'string' &&
-            PINNED_VERSION_RE.test(version) &&
-            !ALLOWED_VERSION_RE.test(version) &&
-            !isPinExempt(name, version)
-          )
-            candidates.push({ name, r, version })
+      const deps = (['dependencies', 'devDependencies'] as const).flatMap(field => Object.entries(pkg[field] ?? {}))
+      for (const [name, version] of deps)
+        if (
+          typeof version === 'string' &&
+          PINNED_VERSION_RE.test(version) &&
+          !ALLOWED_VERSION_RE.test(version) &&
+          !isPinExempt(name, version)
+        )
+          candidates.push({ name, r, version })
     })
   )
   const latestByName = new Map<string, string | undefined>()
@@ -380,7 +399,7 @@ const checkDepsLatest = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   for (const c of candidates) {
     const latest = latestByName.get(c.name)
-    if (latest !== undefined && gteVersion(versionTriple(latest), versionTriple(c.version)))
+    if (latest !== undefined && isGteVersion(versionTriple(latest), versionTriple(c.version)))
       issues.push(drift(`${c.name}@${c.version} pinned, use "latest" (latest ${latest}): ${c.r}`))
   }
   return issues
@@ -405,7 +424,7 @@ const checkTypescriptPin = async (projectPath: string): Promise<Issue[]> => {
 }
 const SHERIF_SCOPE = '-i typescript'
 const checkSherifScope = async (projectPath: string): Promise<Issue[]> => {
-  const hasReadonlyUi = await pathExists(join(projectPath, READONLY_UI))
+  const hasReadonlyUi = await doesPathExist(join(projectPath, READONLY_UI))
   if (!hasReadonlyUi) return []
   const pkg = await readPkg(join(projectPath, 'package.json'))
   const postinstall = pkg?.scripts?.postinstall
@@ -422,7 +441,7 @@ const checkActionRunsTests = async (projectPath: string): Promise<Issue[]> => {
   return [drift('"action" should run "test" — a declared suite that ci never invokes rots unseen')]
 }
 const DEFAULT_EXPORT_RE = /export default (?<id>\w+)/u
-const delegatesConfig = (content: string): boolean => {
+const doesDelegateConfig = (content: string): boolean => {
   const id = DEFAULT_EXPORT_RE.exec(content)?.groups?.id
   return id !== undefined && content.split('\n').some(line => line.trimStart().startsWith('import') && line.includes(id))
 }
@@ -433,19 +452,19 @@ const checkNextConfigs = async (projectPath: string): Promise<Issue[]> => {
   await Promise.all(
     configs.map(async configFile => {
       const content = await file(configFile).text()
-      const inherited = content.includes('createNextConfig') || delegatesConfig(content)
+      const inherited = content.includes('createNextConfig') || doesDelegateConfig(content)
       if (!(content.includes('reactStrictMode') || inherited))
         issues.push(drift(`missing reactStrictMode in ${rel(configFile, projectPath)}`))
       if (!(NEXT_AGENT_RULES_RE.test(content) || inherited))
         issues.push(drift(`missing agentRules: false in ${rel(configFile, projectPath)}`))
     })
   )
-  for (const f of await glob('**/apps/*/postcss.config.*', projectPath))
-    issues.push(drift(`redundant ${rel(f, projectPath)}, remove it`))
+  const postcssConfigs = await glob('**/apps/*/postcss.config.*', projectPath)
+  for (const f of postcssConfigs) issues.push(drift(`redundant ${rel(f, projectPath)}, remove it`))
   return issues
 }
 const DOT_DIR_RE = /(?:^|\/)\.[^/]/u
-const namesADotDir = (include: unknown): boolean =>
+const doesNameADotDir = (include: unknown): boolean =>
   Array.isArray(include) && include.some(entry => typeof entry === 'string' && DOT_DIR_RE.test(entry))
 const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -456,16 +475,27 @@ const checkAppTsconfigs = async (projectPath: string): Promise<Issue[]> => {
       const r = rel(tsconfigFile, projectPath)
       if (!ts) return
       if (!ts.extends) issues.push(drift(`${r} should extend lintmax/tsconfig`))
-      if (ts.include && !namesADotDir(ts.include)) issues.push(drift(`${r} should not have "include"`))
+      if (ts.include && !doesNameADotDir(ts.include)) issues.push(drift(`${r} should not have "include"`))
     })
   )
   return issues
+}
+const strayConfigIssues = async (projectPath: string): Promise<Issue[]> => {
+  const gitignores = await glob('**/.gitignore', projectPath)
+  const nested = gitignores
+    .filter(f => f !== join(projectPath, '.gitignore'))
+    .filter(f => !NESTED_GITIGNORE_ALLOW_RE.test(rel(f, projectPath)))
+  const mjsConfigs = await glob('**/postcss.config.mjs', projectPath)
+  return [
+    ...(nested.length > 0 ? [drift(`nested .gitignore: ${nested.map(f => rel(f, projectPath)).join(', ')}`)] : []),
+    ...(mjsConfigs.length > 0 ? [drift('postcss.config.mjs should be .ts')] : [])
+  ]
 }
 const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   await Promise.all(
     FORBIDDEN_LOCKFILES.map(async f => {
-      const lockExists = await pathExists(join(projectPath, f))
+      const lockExists = await doesPathExist(join(projectPath, f))
       if (lockExists) issues.push(forbidden(`${f} found, use bun only`))
     })
   )
@@ -474,19 +504,40 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
     $`rg '^// @ts-nocheck|^/\* @ts-nocheck' ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
   ])
   if (bunLockTracked.stdout.toString().trim()) issues.push(forbidden('bun.lock tracked in git, should be gitignored'))
-  const gitignores = await glob('**/.gitignore', projectPath)
-  const nested = gitignores
-    .filter(f => f !== join(projectPath, '.gitignore'))
-    .filter(f => !NESTED_GITIGNORE_ALLOW_RE.test(rel(f, projectPath)))
-  if (nested.length > 0) issues.push(drift(`nested .gitignore: ${nested.map(f => rel(f, projectPath)).join(', ')}`))
-  const mjsConfigs = await glob('**/postcss.config.mjs', projectPath)
-  if (mjsConfigs.length > 0) issues.push(drift('postcss.config.mjs should be .ts'))
+  issues.push(...(await strayConfigIssues(projectPath)))
   const tsNoCheckFiles = tsNoCheck.stdout.toString().trim()
   if (tsNoCheckFiles) issues.push(forbidden(`@ts-nocheck in: ${relList(tsNoCheckFiles, projectPath)}`))
   return issues
 }
+const bunGlobalIssues = async (projectPath: string, pkgJsonFiles: string[]): Promise<Issue[]> => {
+  const hasNext = (
+    await Promise.all(
+      pkgJsonFiles.map(async pkgPath => {
+        const raw = await readPkg(pkgPath)
+        return raw
+          ? Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies }).includes('next')
+          : false
+      })
+    )
+  ).some(Boolean)
+  const bunGlobalResult =
+    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!*.d.ts' ${RG_EXCLUDE} -o --no-filename`
+      .quiet()
+      .nothrow()
+  const bunGlobals = bunGlobalResult.stdout.toString().trim()
+  const doesKeepBunExternal =
+    (
+      await $`rg -q 'neverBundle.*bun' ${projectPath} -g 'tsdown.config.ts' -g 'tsdown.config.js' ${RG_EXCLUDE}`
+        .quiet()
+        .nothrow()
+    ).exitCode === 0
+  if (!bunGlobals || hasNext || doesKeepBunExternal) return []
+  const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
+  if (fixable.length === 0) return []
+  const imports = fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')
+  return [forbidden(`use named imports: ${imports}`)]
+}
 const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const isLintmax = projectPath.includes('/lintmax')
   const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
   const sourceResults = await Promise.all(
@@ -512,36 +563,10 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
         .map(({ ban, fix }) => ({ ban, files: pkgPath, fix }))
     })
   )
-  for (const r of [...sourceResults, ...pkgResults.flat()])
-    if (r) issues.push(forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`))
-  const hasNext = (
-    await Promise.all(
-      pkgJsonFiles.map(async pkgPath => {
-        const raw = await readPkg(pkgPath)
-        return raw
-          ? Object.keys({ ...raw.dependencies, ...raw.devDependencies, ...raw.peerDependencies }).includes('next')
-          : false
-      })
-    )
-  ).some(Boolean)
-  const bunGlobalResult =
-    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!*.d.ts' ${RG_EXCLUDE} -o --no-filename`
-      .quiet()
-      .nothrow()
-  const bunGlobals = bunGlobalResult.stdout.toString().trim()
-  const keepsBunExternal =
-    (
-      await $`rg -q 'neverBundle.*bun' ${projectPath} -g 'tsdown.config.ts' -g 'tsdown.config.js' ${RG_EXCLUDE}`
-        .quiet()
-        .nothrow()
-    ).exitCode === 0
-  if (bunGlobals && !hasNext && !keepsBunExternal) {
-    const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
-    if (fixable.length > 0) {
-      const named = fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')
-      issues.push(forbidden(`use named imports: ${named}`))
-    }
-  }
+  const issues = [...sourceResults, ...pkgResults.flat()].flatMap(r =>
+    r ? [forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`)] : []
+  )
+  issues.push(...(await bunGlobalIssues(projectPath, pkgJsonFiles)))
   const deepUi = await shell(projectPath, `${UI_PACKAGE_NAME}/lib/`)
   if (deepUi)
     issues.push(forbidden(`use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${relList(deepUi, projectPath)}`))
@@ -552,25 +577,31 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
  * state when captured, and not the gitignored `.vercel` link dir the old check keyed on (absent on a fresh
  * checkout, so it never ran). It stays red while a manual prebuilt deploy papers over a broken push-to-deploy. */
 const DEPLOY_FAILED_STATES = new Set(['error', 'failure'])
-const deployStateFailed = (state: string): boolean => DEPLOY_FAILED_STATES.has(state.trim())
-const checkVercel = async (projectPath: string): Promise<Issue[]> => {
-  if (!(await pathExists(join(projectPath, 'vercel.json')))) return []
-  const repo = await getGhRepo(projectPath)
-  if (!repo) return []
+const isDeployStateFailed = (state: string): boolean => DEPLOY_FAILED_STATES.has(state.trim())
+const latestDeploymentId = async (repo: string): Promise<number | undefined> => {
   const deploymentsUrl = `repos/${repo}/deployments?per_page=1`
   const dep = await $`gh api ${deploymentsUrl}`.quiet().nothrow()
   if (dep.exitCode !== 0) {
     debug('gh api deployments failed for', repo)
-    return []
+    return
   }
   const deployments = parseJson<{ id?: number }[]>(dep.stdout.toString().trim() || '[]')
-  const id = deployments[0]?.id
-  if (id === undefined) return []
+  return deployments[0]?.id
+}
+const latestDeploymentState = async (repo: string, id: number): Promise<string> => {
   const statusesUrl = `repos/${repo}/deployments/${id}/statuses?per_page=1`
   const st = await $`gh api ${statusesUrl}`.quiet().nothrow()
-  if (st.exitCode !== 0) return []
+  if (st.exitCode !== 0) return ''
   const statuses = parseJson<{ state?: string }[]>(st.stdout.toString().trim() || '[]')
-  return deployStateFailed(statuses[0]?.state ?? '')
+  return statuses[0]?.state ?? ''
+}
+const checkVercel = async (projectPath: string): Promise<Issue[]> => {
+  if (!(await doesPathExist(join(projectPath, 'vercel.json')))) return []
+  const repo = await getGhRepo(projectPath)
+  if (!repo) return []
+  const id = await latestDeploymentId(repo)
+  if (id === undefined) return []
+  return isDeployStateFailed(await latestDeploymentState(repo, id))
     ? [issue('deploy', 'vercel production deploy failed — build locally then `vercel deploy --prebuilt --prod`')]
     : []
 }
@@ -587,7 +618,8 @@ const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
       if (allDeps['fumadocs-ui']) return { path: pkgPath, scripts: pkg.scripts ?? {} }
     })
   )
-  for (const entry of pkgResults.filter((e): e is { path: string; scripts: Record<string, string> } => e !== undefined))
+  const fumadocsPkgs = pkgResults.filter((e): e is { path: string; scripts: Record<string, string> } => e !== undefined)
+  for (const entry of fumadocsPkgs)
     for (const [name, script] of Object.entries(entry.scripts))
       if (FUMADOCS_NEXT_BUILD_RE.test(script) || FUMADOCS_MDX_BARE_RE.test(script))
         issues.push(drift(`${rel(entry.path, projectPath)} script "${name}" missing bunx --bun prefix`))
@@ -597,6 +629,31 @@ const checkFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
 const FUMADOCS_INLINE_NAV_RE = /<(?:DocsLayout|HomeLayout)[^>]*\bnav=\{/u
 const ALIAS_TRIM_TAIL_RE = /\/\*$/u
 const ALIAS_DOT_SLASH_RE = /^\.\//u
+const sharedLayoutPath = async (appDir: string): Promise<string> => {
+  const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
+  /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
+  const aliasTarget = (tsconfig?.compilerOptions as TsconfigCompilerOptions | undefined)?.paths?.['@/*']?.[0]
+  const libBase = aliasTarget ? aliasTarget.replace(ALIAS_TRIM_TAIL_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.' : 'src'
+  const sharedRel = libBase === '.' ? 'lib/layout.shared.tsx' : `${libBase}/lib/layout.shared.tsx`
+  return join(appDir, sharedRel)
+}
+const sharedLayoutIssues = async (sharedPath: string, projectPath: string): Promise<Issue[]> => {
+  if (!(await doesPathExist(sharedPath))) return [drift(`${rel(sharedPath, projectPath)} missing (fumadocs SSOT)`)]
+  const content = await file(sharedPath).text()
+  return content.includes('githubUrl:') ? [] : [drift(`${rel(sharedPath, projectPath)} missing githubUrl in baseOptions`)]
+}
+const inlineNavIssues = async (appDir: string, projectPath: string): Promise<Issue[]> => {
+  const tsxFiles = await glob('**/*.tsx', appDir)
+  const tsxIssues = await Promise.all(
+    tsxFiles.map(async tsxPath => {
+      const content = await file(tsxPath).text()
+      if (!content.includes('fumadocs-ui/layouts')) return
+      if (FUMADOCS_INLINE_NAV_RE.test(content) && !content.includes('baseOptions'))
+        return drift(`${rel(tsxPath, projectPath)} uses inline nav={...}; spread {...baseOptions()} instead`)
+    })
+  )
+  return tsxIssues.filter((t): t is Issue => t !== undefined)
+}
 const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   const pkgFiles = await glob('**/package.json', projectPath)
   const fumadocsDirs = (
@@ -611,32 +668,10 @@ const checkFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => 
   ).filter((d): d is string => d !== undefined)
   const perDir = await Promise.all(
     fumadocsDirs.map(async appDir => {
-      const dirIssues: Issue[] = []
-      const tsconfig = await readJson(join(appDir, 'tsconfig.json'))
-      /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
-      const aliasTarget = (tsconfig?.compilerOptions as TsconfigCompilerOptions | undefined)?.paths?.['@/*']?.[0]
-      const libBase = aliasTarget
-        ? aliasTarget.replace(ALIAS_TRIM_TAIL_RE, '').replace(ALIAS_DOT_SLASH_RE, '') || '.'
-        : 'src'
-      const sharedRel = libBase === '.' ? 'lib/layout.shared.tsx' : `${libBase}/lib/layout.shared.tsx`
-      const sharedPath = join(appDir, sharedRel)
-      const sharedExists = await pathExists(sharedPath)
-      if (sharedExists) {
-        const content = await file(sharedPath).text()
-        if (!content.includes('githubUrl:'))
-          dirIssues.push(drift(`${rel(sharedPath, projectPath)} missing githubUrl in baseOptions`))
-      } else dirIssues.push(drift(`${rel(sharedPath, projectPath)} missing (fumadocs SSOT)`))
-      const tsxFiles = await glob('**/*.tsx', appDir)
-      const tsxIssues = await Promise.all(
-        tsxFiles.map(async tsxPath => {
-          const content = await file(tsxPath).text()
-          if (!content.includes('fumadocs-ui/layouts')) return
-          if (FUMADOCS_INLINE_NAV_RE.test(content) && !content.includes('baseOptions'))
-            return drift(`${rel(tsxPath, projectPath)} uses inline nav={...}; spread {...baseOptions()} instead`)
-        })
-      )
-      for (const t of tsxIssues) if (t) dirIssues.push(t)
-      return dirIssues
+      const sharedPath = await sharedLayoutPath(appDir)
+      const sharedIssues = await sharedLayoutIssues(sharedPath, projectPath)
+      const navIssues = await inlineNavIssues(appDir, projectPath)
+      return [sharedIssues, navIssues].flat()
     })
   )
   return perDir.flat()
@@ -655,7 +690,7 @@ const parseEnvKeys = (text: string): Set<string> => {
   for (const line of text.split('\n')) {
     const m = ENV_LINE_RE.exec(line)
     const key = m?.groups?.key
-    if (key && !line.trim().startsWith('#')) keys.add(key)
+    if (key && !line.trimStart().startsWith('#')) keys.add(key)
   }
   return keys
 }
@@ -673,22 +708,60 @@ const CONVEX_ENV_SET_GLOBS = [
   '-g',
   '!**/global-setup*.ts'
 ]
-const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
-  const generated = await glob('**/convex/_generated/api.d.ts', projectPath)
-  if (generated.length === 0) return issues
+interface ConvexEnv {
+  p: string
+  text: string
+}
+const findConvexEnv = async (projectPath: string): Promise<ConvexEnv | undefined> => {
   const envFiles = await Promise.all(
     ENV_CANDIDATES.map(async cand => {
       const p = join(projectPath, cand)
-      const pExists = await pathExists(p)
-      if (!pExists) return null
+      const doesPExist = await doesPathExist(p)
+      if (!doesPExist) return
       const text = await file(p).text()
-      return text.includes('CONVEX_SELF_HOSTED_URL') ? { p, text } : null
+      return text.includes('CONVEX_SELF_HOSTED_URL') ? { p, text } : undefined
     })
   )
-  const envHit = envFiles.find((e): e is { p: string; text: string } => e !== null)
-  if (!envHit) return issues
-  const envKeys = parseEnvKeys(envHit.text)
+  return envFiles.find((e): e is ConvexEnv => e !== undefined)
+}
+const convexSourceIssues = (nodeEnvOuts: string[], setOut: string, projectPath: string): Issue[] => {
+  const nodeEnvIssues = nodeEnvOuts
+    .filter(Boolean)
+    .map(out =>
+      forbidden(
+        "NODE_ENV === 'production' branch in convex/ (always true on self-hosted; " +
+          `gate on explicit env flag instead): ${relList(out, projectPath)}`
+      )
+    )
+  return setOut
+    ? [
+        ...nodeEnvIssues,
+        forbidden(`'convex env set' outside sync.ts (.env is source of truth): ${relList(setOut, projectPath)}`)
+      ]
+    : nodeEnvIssues
+}
+interface ConvexAuthArgs {
+  envHit: ConvexEnv
+  envKeys: Set<string>
+  pkgs: (PackageJson | undefined)[]
+  projectPath: string
+}
+const convexAuthIssues = ({ envHit, envKeys, pkgs, projectPath }: ConvexAuthArgs): Issue[] => {
+  const isAuthUsed = pkgs.some(pkg => Boolean({ ...pkg?.dependencies, ...pkg?.devDependencies }['@convex-dev/auth']))
+  const authIssues = isAuthUsed
+    ? ['JWT_PRIVATE_KEY', 'JWKS']
+        .filter(k => !envKeys.has(k))
+        .map(k => issue('missing', `${k} required by @convex-dev/auth in ${rel(envHit.p, projectPath)}`))
+    : []
+  return envKeys.has('SITE_URL')
+    ? authIssues
+    : [...authIssues, issue('missing', `SITE_URL required for Convex auth callbacks in ${rel(envHit.p, projectPath)}`)]
+}
+const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
+  const generated = await glob('**/convex/_generated/api.d.ts', projectPath)
+  if (generated.length === 0) return []
+  const envHit = await findConvexEnv(projectPath)
+  if (!envHit) return []
   const convexDirs = generated.map(g => g.replace(GENERATED_API_RE, ''))
   const [nodeEnvHits, setHits, pkgFiles] = await Promise.all([
     Promise.all(
@@ -699,28 +772,13 @@ const checkConvexSelfHosted = async (projectPath: string): Promise<Issue[]> => {
     $`rg -l 'convex env set' ${projectPath} ${CONVEX_ENV_SET_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow(),
     glob('**/package.json', projectPath)
   ])
-  for (const r of nodeEnvHits) {
-    const out = r.stdout.toString().trim()
-    if (out)
-      issues.push(
-        forbidden(
-          "NODE_ENV === 'production' branch in convex/ (always true on self-hosted; " +
-            `gate on explicit env flag instead): ${relList(out, projectPath)}`
-        )
-      )
-  }
-  const setOut = setHits.stdout.toString().trim()
-  if (setOut)
-    issues.push(forbidden(`'convex env set' outside sync.ts (.env is source of truth): ${relList(setOut, projectPath)}`))
+  const sourceIssues = convexSourceIssues(
+    nodeEnvHits.map(r => r.stdout.toString().trim()),
+    setHits.stdout.toString().trim(),
+    projectPath
+  )
   const pkgs = await Promise.all(pkgFiles.map(async p => readPkg(p)))
-  const usesAuth = pkgs.some(pkg => Boolean({ ...pkg?.dependencies, ...pkg?.devDependencies }['@convex-dev/auth']))
-  if (usesAuth)
-    for (const k of ['JWT_PRIVATE_KEY', 'JWKS'])
-      if (!envKeys.has(k))
-        issues.push(issue('missing', `${k} required by @convex-dev/auth in ${rel(envHit.p, projectPath)}`))
-  if (!envKeys.has('SITE_URL'))
-    issues.push(issue('missing', `SITE_URL required for Convex auth callbacks in ${rel(envHit.p, projectPath)}`))
-  return issues
+  return [...sourceIssues, ...convexAuthIssues({ envHit, envKeys: parseEnvKeys(envHit.text), pkgs, projectPath })]
 }
 const HERMETIC_TEST_GLOBS = [
   '-g',
@@ -744,8 +802,11 @@ const LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal/
 const HOME_READ_RG = String.raw`(?:os\.)?homedir\(\)|process\.env(?:\.HOME\b|\[['"]HOME)`
 const HOME_SWAP_RE = /process\.env(?:\.HOME|\[['"]HOME['"]\])\s*=[^=]/u
 const PERF_TIME_RG = String.raw`performance\.now\(\)|process\.hrtime\b`
-const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
+const locateHit = (line: string, projectPath: string): string => {
+  const [path, lineNo] = line.split(':')
+  return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
+}
+const hermeticNetIssues = async (projectPath: string): Promise<Issue[]> => {
   const rgArgs = HERMETIC_TEST_PATTERNS.flatMap(p => ['-e', p])
   const netResult = await $`rg -n ${rgArgs} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`.quiet().nothrow()
   const netOffenders = netResult.stdout
@@ -754,17 +815,16 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
     .split('\n')
     .filter(Boolean)
     .filter(line => !LOCAL_HOST_RE.test(line))
-    .map(line => {
-      const [path, lineNo] = line.split(':')
-      return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
-    })
-  if (netOffenders.length > 0)
-    issues.push(
-      forbidden(
-        'non-hermetic network in test — use a local bare repo, mock the call, ' +
-          `or gate a live test behind a credential: ${netOffenders.join(', ')}`
-      )
+    .map(line => locateHit(line, projectPath))
+  if (netOffenders.length === 0) return []
+  return [
+    forbidden(
+      'non-hermetic network in test — use a local bare repo, mock the call, ' +
+        `or gate a live test behind a credential: ${netOffenders.join(', ')}`
     )
+  ]
+}
+const hermeticHomeIssues = async (projectPath: string): Promise<Issue[]> => {
   const homeResult = await $`rg -l -e ${HOME_READ_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
     .quiet()
     .nothrow()
@@ -774,13 +834,15 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
       homeFiles.map(async f => (HOME_SWAP_RE.test(await file(f).text()) ? undefined : rel(f, projectPath)))
     )
   ).filter((x): x is string => x !== undefined)
-  if (ambient.length > 0)
-    issues.push(
-      forbidden(
-        'non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir ' +
-          `or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
-      )
+  if (ambient.length === 0) return []
+  return [
+    forbidden(
+      'non-hermetic ambient state in test — reads the real home dir; write fixtures to a temp dir ' +
+        `or swap process.env.HOME to an isolated dir: ${ambient.join(', ')}`
     )
+  ]
+}
+const hermeticTimingIssues = async (projectPath: string): Promise<Issue[]> => {
   const timeResult = await $`rg -n -e ${PERF_TIME_RG} ${projectPath} ${HERMETIC_TEST_GLOBS} ${RG_EXCLUDE}`
     .quiet()
     .nothrow()
@@ -789,25 +851,27 @@ const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
     .trim()
     .split('\n')
     .filter(Boolean)
-    .map(line => {
-      const [path, lineNo] = line.split(':')
-      return path ? `${rel(path, projectPath)}:${lineNo ?? ''}` : line
-    })
-  if (timing.length > 0)
-    issues.push(
-      forbidden(
-        'non-hermetic timing in test — a wall-clock micro-benchmark (performance.now/hrtime) ' +
-          `flakes on a loaded runner; assert the outcome, not the elapsed time: ${timing.join(', ')}`
-      )
+    .map(line => locateHit(line, projectPath))
+  if (timing.length === 0) return []
+  return [
+    forbidden(
+      'non-hermetic timing in test — a wall-clock micro-benchmark (performance.now/hrtime) ' +
+        `flakes on a loaded runner; assert the outcome, not the elapsed time: ${timing.join(', ')}`
     )
-  return issues
+  ]
+}
+const checkHermeticTests = async (projectPath: string): Promise<Issue[]> => {
+  const netIssues = await hermeticNetIssues(projectPath)
+  const homeIssues = await hermeticHomeIssues(projectPath)
+  const timingIssues = await hermeticTimingIssues(projectPath)
+  return [...netIssues, ...homeIssues, ...timingIssues]
 }
 const UTILITY_CLASS =
   String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|` +
   String.raw`grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
 const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
 const UTILITY_GLOBS = ['-g', '*.js', '-g', '*.mjs', '-g', '*.cjs', '-g', '*.jsx', '-g', '*.tsx', '-g', '*.css']
-const shipsUtilityClasses = async (depDir: string): Promise<boolean> => {
+const doesShipUtilityClasses = async (depDir: string): Promise<boolean> => {
   const out = (
     await $`rg -c --max-count=3 --no-ignore --no-messages ${UTILITY_GLOBS} ${UTILITY_CLASS} ${depDir}`.nothrow()
   ).stdout.toString()
@@ -839,7 +903,7 @@ const appRootOf = async (cssPath: string, projectPath: string): Promise<string> 
     dirs.push(dir)
     dir = dirname(dir)
   }
-  const hasPkg = await Promise.all(dirs.map(async candidate => pathExists(join(candidate, 'package.json'))))
+  const hasPkg = await Promise.all(dirs.map(async candidate => doesPathExist(join(candidate, 'package.json'))))
   const idx = hasPkg.findIndex(Boolean)
   return idx === -1 ? projectPath : (dirs[idx] ?? projectPath)
 }
@@ -861,7 +925,7 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
       const flagged = await Promise.all(
         [...pkgs].map(async name => {
           const depDir = join(projectPath, 'node_modules', name)
-          if (!((await pathExists(depDir)) && (await shipsUtilityClasses(depDir)))) return
+          if (!((await doesPathExist(depDir)) && (await doesShipUtilityClasses(depDir)))) return
           const sourced = new RegExp(String.raw`@source[^\n]*[/'"]${escapeRe(name)}(/|['"])`, 'u')
           const importsDepCss = new RegExp(String.raw`@import\s+['"]${escapeRe(name)}/[^'"]+\.css`, 'u')
           return sourced.test(e.text) || importsDepCss.test(e.text)
@@ -911,30 +975,29 @@ const unparameterisedTemplates = (templates: ScaffoldTemplate[]): Issue[] =>
           'a project of that name scaffolds two workspace packages with one name and bun i refuses the install'
       )
     )
-const collidingTemplates = (templates: ScaffoldTemplate[]): Issue[] => {
-  const issues: Issue[] = []
-  const reported = new Set<string>()
-  for (const candidate of adversarialNames(templates)) {
-    const byProduced = new Map<string, string[]>()
-    for (const t of templates) {
-      const produced = t.name.replaceAll(PKGNAME_TOKEN, candidate)
-      byProduced.set(produced, [...(byProduced.get(produced) ?? []), t.dir])
-    }
-    for (const [produced, dirs] of byProduced) {
-      const key = dirs.join(',')
-      if (!(dirs.length > 1 && !reported.has(key))) continue
-
-      reported.add(key)
-      issues.push(
-        drift(`scaffold templates ${key} both produce workspace package "${produced}" for a project named "${candidate}"`)
-      )
-    }
+const collisionGroups = (templates: ScaffoldTemplate[], candidate: string): [string, string[]][] => {
+  const byProduced = new Map<string, string[]>()
+  for (const t of templates) {
+    const produced = t.name.replaceAll(PKGNAME_TOKEN, candidate)
+    byProduced.set(produced, [...(byProduced.get(produced) ?? []), t.dir])
   }
-  return issues
+  return [...byProduced].filter(([, dirs]) => dirs.length > 1)
+}
+const collidingTemplates = (templates: ScaffoldTemplate[]): Issue[] => {
+  const collisions = adversarialNames(templates).flatMap(candidate =>
+    collisionGroups(templates, candidate).map(([produced, dirs]) => ({ candidate, key: dirs.join(','), produced }))
+  )
+  return collisions
+    .filter((c, index) => collisions.findIndex(o => o.key === c.key) === index)
+    .map(c =>
+      drift(
+        `scaffold templates ${c.key} both produce workspace package "${c.produced}" for a project named "${c.candidate}"`
+      )
+    )
 }
 const checkScaffoldNames = async (projectPath: string): Promise<Issue[]> => {
   const templatesDir = join(projectPath, TEMPLATES_DIR)
-  if (!(await pathExists(templatesDir))) return []
+  if (!(await doesPathExist(templatesDir))) return []
   const templates = await scaffoldTemplates(templatesDir)
   if (templates.length === 0) return []
   return [...unparameterisedTemplates(templates), ...collidingTemplates(templates)]
@@ -966,5 +1029,5 @@ export {
   checkTailwindSourceCoverage,
   checkTypescriptPin,
   checkVercel,
-  deployStateFailed
+  isDeployStateFailed as deployStateFailed
 }

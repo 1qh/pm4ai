@@ -48,7 +48,7 @@ describe('checkNextConfigs', () => {
       await mkdir(app, { recursive: true })
       await write(join(app, 'next.config.ts'), source)
       const issues = await checkNextConfigs(tmp)
-      expect(issues).toEqual(details.map(detail => ({ detail, type: 'drift' })))
+      expect(issues).toStrictEqual(details.map(detail => ({ detail, type: 'drift' })))
     } finally {
       await rm(tmp, { recursive: true })
     }

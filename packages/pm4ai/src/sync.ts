@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/no-dynamic-delete, complexity, max-depth */
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/performance/noAwaitInLoops: ordered fs existence probes return first match */
 import { $, file, write } from 'bun'
 import { access, cp, mkdir, readlink, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { Issue, PackageJson } from './types.js'
+import type { DepField, Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
 import {
   CLAUDE_MD,
@@ -32,13 +31,14 @@ import {
   isExtended,
   isSkippedPath,
   mergeExtendable,
+  providedByWorkspaces,
   readJson,
   readPkg,
   resolveManagedFiles,
   staleConditionalFiles,
   writeJson
 } from './utils.js'
-const pathExists = async (path: string): Promise<boolean> => {
+const doesPathExist = async (path: string): Promise<boolean> => {
   try {
     await access(path)
     return true
@@ -65,12 +65,12 @@ const HEADING_RE = /^#{1,5} /u
 const FENCE_RE = /^\s*```/u
 /** Shift every markdown heading one level deeper, skipping fenced code blocks, so a rule authored at `##` nests under its `##` topic title in the assembled guide instead of competing as another H1. */
 const shiftHeadings = (body: string): string => {
-  let inFence = false
+  let isInFence = false
   return body
     .split('\n')
     .map(line => {
-      if (FENCE_RE.test(line)) inFence = !inFence
-      return !inFence && HEADING_RE.test(line) ? `#${line}` : line
+      if (FENCE_RE.test(line)) isInFence = !isInFence
+      return !isInFence && HEADING_RE.test(line) ? `#${line}` : line
     })
     .join('\n')
 }
@@ -126,11 +126,11 @@ const ANY_HEADING_RE = /^#{1,6} /u
 /** The formatter puts a blank line on both sides of every heading outside a code fence, so the generator emits that shape and its output is already a fixed point under `bun run fix`. */
 const spaceHeadings = (text: string): string => {
   const out: string[] = []
-  let inFence = false
+  let isInFence = false
   let afterHeading = false
   for (const line of text.split('\n')) {
-    if (FENCE_RE.test(line)) inFence = !inFence
-    const heading = !inFence && ANY_HEADING_RE.test(line)
+    if (FENCE_RE.test(line)) isInFence = !isInFence
+    const heading = !isInFence && ANY_HEADING_RE.test(line)
     if ((heading || afterHeading) && line !== '' && out.length > 0 && out.at(-1) !== '') out.push('')
     out.push(line)
     afterHeading = heading
@@ -140,7 +140,7 @@ const spaceHeadings = (text: string): string => {
 /** Single source for the generated CLAUDE.md — one doc title, a Contents list, then each rule as a `##` topic. `fix` writes what this returns; the freshness check diffs against it, so neither can drift from the other. */
 const generateClaudeMd = async (selfPath: string, projectPath: string): Promise<GeneratedGuide> => {
   const rulesDir = join(selfPath, 'apps', 'docs', 'content', 'rules')
-  if (!(await pathExists(rulesDir))) return { error: 'rules directory not found in pm4ai repo' }
+  if (!(await doesPathExist(rulesDir))) return { error: 'rules directory not found in pm4ai repo' }
   const inferred = await inferRules(projectPath, rulesDir)
   const contents = await Promise.all(inferred.map(async rule => file(join(rulesDir, `${rule}.mdx`)).text()))
   const titles = contents.map(c => frontmatterTitle(c)).filter((t): t is string => Boolean(t))
@@ -164,7 +164,7 @@ const ancestorLintmaxBin = async (start: string): Promise<string | undefined> =>
     if (dirname(dir) === dir) break
   }
   const candidates = dirs.map(d => lintmaxBinOf(d))
-  const present = await Promise.all(candidates.map(async c => pathExists(c)))
+  const present = await Promise.all(candidates.map(async c => doesPathExist(c)))
   return candidates[present.indexOf(true)]
 }
 /** Canonicalize the written CLAUDE.md with lintmax so it is already lint-clean — the project's own lintmax, else self's (for `init`, where the scaffold has no install yet). Otherwise the project's later `bun run fix` reformats it and the "fix produces no changes" scaffold gate fails. */
@@ -172,9 +172,12 @@ const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Prom
   const projectBin = lintmaxBinOf(projectPath)
   const selfBin = lintmaxBinOf(selfPath)
   let lintmaxBin: string | undefined
-  if (await pathExists(projectBin)) lintmaxBin = projectBin
-  else if (await pathExists(selfBin)) lintmaxBin = selfBin
-  else lintmaxBin = await ancestorLintmaxBin(import.meta.dirname)
+  if (await doesPathExist(projectBin)) lintmaxBin = projectBin
+  else if (await doesPathExist(selfBin)) lintmaxBin = selfBin
+  else {
+    const ancestorBin = await ancestorLintmaxBin(import.meta.dirname)
+    lintmaxBin = ancestorBin
+  }
   if (lintmaxBin === undefined) return
   await $`${lintmaxBin} fix ${CLAUDE_MD}`.cwd(projectPath).quiet().nothrow()
 }
@@ -202,177 +205,251 @@ const isLintmaxScriptCanonical = (script: string | undefined, fallback: string, 
   const value = script ?? ''
   return value.endsWith(fallback) || value.endsWith(`cli.js ${command}`) || value.endsWith(`cli.mjs ${command}`)
 }
-const rootScriptNeedsUpdate = (scripts: Record<string, string>, name: string, value: string): boolean => {
+const doesRootScriptNeedUpdate = (scripts: Record<string, string>, name: string, value: string): boolean => {
   if (name === 'fix' || name === 'check') return !isLintmaxScriptCanonical(scripts[name], value, name)
   if (name === 'clean') return !scripts[name]?.startsWith(value)
   return scripts[name] !== value
 }
-const syncTurboWarningFilter = (scripts: Record<string, string>, issues: Issue[]): boolean => {
-  let changed = false
-  for (const [name, cmd] of Object.entries(scripts))
-    if (
-      !name.startsWith('dev') &&
-      cmd.includes('turbo') &&
-      cmd.includes(TURBO_FLAG) &&
-      !cmd.includes(TURBO_WARNING_FILTER)
-    ) {
-      scripts[name] = filterTurboWorkspaceWarning(cmd)
-      changed = true
-      issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
-    }
-  return changed
+const didSyncTurboWarningFilter = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+  const targets = Object.entries(scripts).filter(
+    ([name, cmd]) =>
+      !name.startsWith('dev') && cmd.includes('turbo') && cmd.includes(TURBO_FLAG) && !cmd.includes(TURBO_WARNING_FILTER)
+  )
+  for (const [name, cmd] of targets) {
+    scripts[name] = filterTurboWorkspaceWarning(cmd)
+    issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
+  }
+  return targets.length > 0
 }
-const syncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
-  let changed = false
+const didSyncPostinstall = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+  if (scripts.postinstall?.includes('sherif')) return false
+  scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
+  issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
+  return true
+}
+interface RootScriptArgs {
+  issues: Issue[]
+  name: string
+  scripts: Record<string, string>
+  value: string
+}
+const didSyncRootScript = ({ issues, name, scripts, value }: RootScriptArgs): boolean => {
+  if (name === 'postinstall') return didSyncPostinstall(scripts, issues)
+  if (!doesRootScriptNeedUpdate(scripts, name, value)) return false
+  const action = scripts[name] ? 'updated' : 'added'
+  scripts[name] = value
+  issues.push({ detail: `${action} ${name} script`, type: 'synced' })
+  return true
+}
+const didSyncRootScripts = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+  let hasChanged = false
   for (const [name, value] of Object.entries(DEFAULT_SCRIPTS))
-    if (name === 'postinstall') {
-      if (!scripts.postinstall?.includes('sherif')) {
-        scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
-        changed = true
-        issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
-      }
-    } else if (rootScriptNeedsUpdate(scripts, name, value)) {
-      const action = scripts[name] ? 'updated' : 'added'
-      scripts[name] = value
-      changed = true
-      issues.push({ detail: `${action} ${name} script`, type: 'synced' })
-    }
-  const turboChanged = syncTurboWarningFilter(scripts, issues)
-  return changed || turboChanged
+    if (didSyncRootScript({ issues, name, scripts, value })) hasChanged = true
+  const isTurboChanged = didSyncTurboWarningFilter(scripts, issues)
+  return hasChanged || isTurboChanged
 }
 /** Ask the registry whether any PUBLISHED version satisfies the spec. A deliberate pin that still resolves is left alone; only a spec nothing can satisfy — the shape a single-present-release package leaves behind when its pinned version is pruned — is rewritten. */
-const resolvesOnRegistry = async (dep: string, spec: string): Promise<boolean> => {
+const doesResolveOnRegistry = async (dep: string, spec: string): Promise<boolean> => {
   const target = `${dep}@${spec}`
   const res = await $`npm view ${target} version`.quiet().nothrow()
   return res.exitCode === 0 && res.stdout.toString().trim().length > 0
 }
-const syncRootDevDeps = async (pkg: PackageJson, devDeps: Record<string, string>, issues: Issue[]): Promise<boolean> => {
-  let changed = false
-  const allDeps = { ...pkg.dependencies, ...devDeps }
-  const verdicts = await Promise.all(
-    REQUIRED_ROOT_DEVDEPS.map(async dep => {
-      const spec = allDeps[dep]
-      const candidate =
-        Boolean(spec) &&
-        spec !== DEFAULT_DEP_VERSION &&
-        !spec.startsWith('workspace:') &&
-        Boolean(pkg.devDependencies?.[dep])
-      return candidate && !(await resolvesOnRegistry(dep, spec))
-    })
-  )
-  for (const [index, dep] of REQUIRED_ROOT_DEVDEPS.entries()) {
-    const spec = allDeps[dep]
-    const unresolvable = verdicts[index] ?? false
-    if (!(!spec || unresolvable)) continue
-
+interface ApplyRootDevDepsArgs {
+  allDeps: Record<string, string>
+  devDeps: Record<string, string>
+  issues: Issue[]
+  verdicts: boolean[]
+}
+const didApplyRootDevDeps = ({ allDeps, devDeps, issues, verdicts }: ApplyRootDevDepsArgs): boolean => {
+  const targets = REQUIRED_ROOT_DEVDEPS.map((dep, index) => ({
+    dep,
+    isUnresolvable: verdicts[index] ?? false,
+    spec: allDeps[dep]
+  })).filter(({ isUnresolvable, spec }) => !spec || isUnresolvable)
+  for (const { dep, isUnresolvable, spec } of targets) {
     devDeps[dep] = DEFAULT_DEP_VERSION
-    changed = true
     issues.push({
-      detail: unresolvable
+      detail: isUnresolvable
         ? `unresolvable ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
         : `added ${dep} to devDependencies`,
       type: 'synced'
     })
   }
-  return changed
+  return targets.length > 0
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- root package.json sync: private, hooks, scripts, devdeps, dedupe, packageManager, trusted, action
+const didSyncRootDevDeps = async (
+  pkg: PackageJson,
+  devDeps: Record<string, string>,
+  issues: Issue[]
+): Promise<boolean> => {
+  const allDeps = { ...pkg.dependencies, ...devDeps }
+  const verdicts = await Promise.all(
+    REQUIRED_ROOT_DEVDEPS.map(async dep => {
+      const spec = allDeps[dep]
+      const isCandidate =
+        Boolean(spec) &&
+        spec !== DEFAULT_DEP_VERSION &&
+        !spec.startsWith('workspace:') &&
+        Boolean(pkg.devDependencies?.[dep])
+      return isCandidate && !(await doesResolveOnRegistry(dep, spec))
+    })
+  )
+  return didApplyRootDevDeps({ allDeps, devDeps, issues, verdicts })
+}
+const didSetPrivate = (pkg: PackageJson, issues: Issue[]): boolean => {
+  if (pkg.private) return false
+  pkg.private = true
+  issues.push({ detail: 'set root package.json to private', type: 'synced' })
+  return true
+}
+const didAddHooks = (pkg: PackageJson, issues: Issue[]): boolean => {
+  if (pkg['simple-git-hooks']) return false
+  pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
+  issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
+  return true
+}
+const didSyncRootBasics = (pkg: PackageJson, issues: Issue[]): boolean => {
+  const isPrivateSet = didSetPrivate(pkg, issues)
+  const scripts = pkg.scripts ?? {}
+  pkg.scripts = scripts
+  const areHooksAdded = didAddHooks(pkg, issues)
+  return didSyncRootScripts(scripts, issues) || isPrivateSet || areHooksAdded
+}
+interface FindRedundantArgs {
+  devDeps: Record<string, string>
+  pkg: PackageJson
+  projectPath: string
+}
+interface RedundantDevDep {
+  depName: string
+  other: string
+}
+const findRedundantDevDeps = async ({ devDeps, pkg, projectPath }: FindRedundantArgs): Promise<RedundantDevDep[]> => {
+  const allRootDepNames = Object.keys({ ...pkg.dependencies, ...devDeps })
+  const required = new Set(REQUIRED_ROOT_DEVDEPS)
+  const depPkgs = await Promise.all(
+    allRootDepNames.map(async depName => {
+      const depPkg = await readPkg(join(projectPath, 'node_modules', depName, 'package.json'))
+      return depPkg ? [{ depName, transitive: depPkg.dependencies ?? {} }] : []
+    })
+  )
+  const pairs = depPkgs
+    .flat()
+    .flatMap(dep =>
+      allRootDepNames
+        .filter(
+          other =>
+            other !== dep.depName && Boolean(dep.transitive[other]) && Boolean(devDeps[other]) && !required.has(other)
+        )
+        .map(other => ({ depName: dep.depName, other }))
+    )
+  return pairs.filter((pair, index) => pairs.findIndex(p => p.other === pair.other) === index)
+}
+const didDropRootDevDeps = (pkg: PackageJson, redundant: RedundantDevDep[], issues: Issue[]): boolean => {
+  if (redundant.length === 0) return false
+  const names = new Set(redundant.map(r => r.other))
+  pkg.devDependencies = Object.fromEntries(Object.entries(pkg.devDependencies ?? {}).filter(([n]) => !names.has(n)))
+  issues.push(
+    ...redundant.map(
+      ({ depName, other }): Issue => ({ detail: `removed redundant "${other}" (provided by ${depName})`, type: 'synced' })
+    )
+  )
+  return true
+}
+const bunVersionText = async (): Promise<string> => {
+  const r = await $`bun --version`.quiet().nothrow()
+  return r.stdout.toString().trim()
+}
+const didSetPackageManager = (pkg: PackageJson, issues: Issue[], bunVersion: string): boolean => {
+  if (pkg.packageManager || !bunVersion) return false
+  pkg.packageManager = `bun@${bunVersion}`
+  issues.push({ detail: `set packageManager to bun@${bunVersion}`, type: 'synced' })
+  return true
+}
+const readRequiredTrusted = async (selfPath?: string): Promise<string[]> => {
+  if (!selfPath) return []
+  const selfPkg = parseJson<PackageJson>(await file(join(selfPath, 'package.json')).text())
+  return selfPkg.trustedDependencies ?? []
+}
+const didSyncTrusted = (pkg: PackageJson, requiredTrusted: string[], issues: Issue[]): boolean => {
+  const trusted = pkg.trustedDependencies ?? []
+  const missingTrusted = requiredTrusted.filter(d => !trusted.includes(d))
+  if (missingTrusted.length === 0) return false
+  pkg.trustedDependencies = [...trusted, ...missingTrusted].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
+  issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
+  return true
+}
+const didSetActionScript = (scripts: Record<string, string>, issues: Issue[]): boolean => {
+  if (scripts.action?.includes('sh up.sh')) return false
+  scripts.action = scripts.action ? `sh up.sh && ${scripts.action}` : 'sh up.sh'
+  issues.push({ detail: 'action must run "sh up.sh"', type: 'synced' })
+  return true
+}
+interface SyncRootPkgArgs {
+  issues: Issue[]
+  pkg: PackageJson
+  projectPath: string
+  selfPath?: string
+}
+const didSyncRootSettings = async ({ issues, pkg, selfPath }: SyncRootPkgArgs): Promise<boolean> => {
+  const requiredTrusted = await readRequiredTrusted(selfPath)
+  const isTrustedSynced = didSyncTrusted(pkg, requiredTrusted, issues)
+  const isActionSet = didSetActionScript(pkg.scripts ?? {}, issues)
+  return isActionSet || isTrustedSynced
+}
+const didSyncRootPkg = async ({ issues, pkg, projectPath, selfPath }: SyncRootPkgArgs): Promise<boolean> => {
+  const areBasicsChanged = didSyncRootBasics(pkg, issues)
+  const devDeps = pkg.devDependencies ?? {}
+  pkg.devDependencies = devDeps
+  const areDevDepsSynced = await didSyncRootDevDeps(pkg, devDeps, issues)
+  const redundant = await findRedundantDevDeps({ devDeps, pkg, projectPath })
+  const isDeduped = didDropRootDevDeps(pkg, redundant, issues)
+  const bunVersion = await bunVersionText()
+  const isPackageManagerSet = didSetPackageManager(pkg, issues, bunVersion)
+  const areSettingsChanged = await didSyncRootSettings({ issues, pkg, projectPath, selfPath })
+  return [areBasicsChanged, areDevDepsSynced, areSettingsChanged, isDeduped, isPackageManagerSet].includes(true)
+}
 const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const pkgPath = join(projectPath, 'package.json')
   const pkg = await readPkg(pkgPath)
   if (!pkg) return issues
-  const wasPrivate = Boolean(pkg.private)
-  if (!pkg.private) {
-    pkg.private = true
-    issues.push({ detail: 'set root package.json to private', type: 'synced' })
-  }
-  const scripts = pkg.scripts ?? {}
-  pkg.scripts = scripts
-  const hadHooks = Boolean(pkg['simple-git-hooks'])
-  if (!pkg['simple-git-hooks']) {
-    pkg['simple-git-hooks'] = { 'pre-commit': EXPECTED.preCommit }
-    issues.push({ detail: 'added simple-git-hooks', type: 'synced' })
-  }
-  let changed = syncRootScripts(scripts, issues) || !wasPrivate || !hadHooks
-  const devDeps = pkg.devDependencies ?? {}
-  pkg.devDependencies = devDeps
-  changed = (await syncRootDevDeps(pkg, devDeps, issues)) || changed
-  const allRootDeps = { ...pkg.dependencies, ...devDeps }
-  const allRootDepNames = Object.keys(allRootDeps)
-  const required = new Set(REQUIRED_ROOT_DEVDEPS)
-  const depPkgs = await Promise.all(
-    allRootDepNames.map(async depName => {
-      const depPkg = await readPkg(join(projectPath, 'node_modules', depName, 'package.json'))
-      return depPkg ? { depName, transitive: depPkg.dependencies ?? {} } : undefined
-    })
-  )
-  for (const dep of depPkgs)
-    if (dep)
-      for (const other of allRootDepNames)
-        if (other !== dep.depName && dep.transitive[other] && devDeps[other] && !required.has(other)) {
-          delete devDeps[other]
-          changed = true
-          issues.push({ detail: `removed redundant "${other}" (provided by ${dep.depName})`, type: 'synced' })
-        }
-  if (!pkg.packageManager) {
-    const r = await $`bun --version`.quiet().nothrow()
-    const bunVersion = r.stdout.toString().trim()
-    if (bunVersion) {
-      pkg.packageManager = `bun@${bunVersion}`
-      changed = true
-      issues.push({ detail: `set packageManager to bun@${bunVersion}`, type: 'synced' })
-    }
-  }
-  const trusted = pkg.trustedDependencies ?? []
-  let requiredTrusted: string[] = []
-  if (selfPath) {
-    const selfPkgPath = join(selfPath, 'package.json')
-    const selfPkg = parseJson<PackageJson>(await file(selfPkgPath).text())
-    requiredTrusted = selfPkg.trustedDependencies ?? []
-  }
-  const missingTrusted = requiredTrusted.filter(d => !trusted.includes(d))
-  if (missingTrusted.length > 0) {
-    pkg.trustedDependencies = [...trusted, ...missingTrusted].toSorted((a, b) => (a < b ? -1 : Number(a > b)))
-    changed = true
-    issues.push({ detail: `added ${missingTrusted.join(', ')} to trustedDependencies`, type: 'synced' })
-  }
-  if (!scripts.action?.includes('sh up.sh')) {
-    scripts.action = scripts.action ? `sh up.sh && ${scripts.action}` : 'sh up.sh'
-    changed = true
-    issues.push({ detail: 'action must run "sh up.sh"', type: 'synced' })
-  }
-  if (changed) {
+  if (await didSyncRootPkg({ issues, pkg, projectPath, selfPath })) {
     pkg.devDependencies = sortKeys(pkg.devDependencies ?? {})
     await writeJson(pkgPath, pkg)
   }
   return issues
 }
+const didRemoveInclude = (tsconfig: Record<string, unknown>, issues: Issue[]): boolean => {
+  if (!('include' in tsconfig)) return false
+  delete tsconfig.include
+  issues.push({ detail: 'removed "include" from root tsconfig.json', type: 'synced' })
+  return true
+}
+const didSetExtends = (tsconfig: Record<string, unknown>, issues: Issue[]): boolean => {
+  if (tsconfig.extends === EXPECTED.tsconfigExtends) return false
+  tsconfig.extends = EXPECTED.tsconfigExtends
+  issues.push({ detail: `set tsconfig extends to "${EXPECTED.tsconfigExtends}"`, type: 'synced' })
+  return true
+}
+const didAddBunTypes = (tsconfig: Record<string, unknown>, issues: Issue[]): boolean => {
+  if (getTsconfigTypes(tsconfig)?.includes('bun-types')) return false
+  /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
+  const co = (tsconfig.compilerOptions ?? {}) as MutableCompilerOptions
+  co.types = ['bun-types']
+  tsconfig.compilerOptions = co
+  issues.push({ detail: 'added "bun-types" to tsconfig compilerOptions.types', type: 'synced' })
+  return true
+}
+const updateTsconfig = async (tsconfigPath: string, tsconfig: Record<string, unknown>, issues: Issue[]): Promise<void> => {
+  const changes = [didRemoveInclude(tsconfig, issues), didSetExtends(tsconfig, issues), didAddBunTypes(tsconfig, issues)]
+  if (changes.includes(true)) await writeJson(tsconfigPath, tsconfig)
+}
 const syncTsconfig = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const tsconfigPath = join(projectPath, 'tsconfig.json')
   const tsconfig = await readJson(tsconfigPath)
-  if (!tsconfig) return issues
-  let changed = false
-  if ('include' in tsconfig) {
-    delete tsconfig.include
-    changed = true
-    issues.push({ detail: 'removed "include" from root tsconfig.json', type: 'synced' })
-  }
-  if (tsconfig.extends !== EXPECTED.tsconfigExtends) {
-    tsconfig.extends = EXPECTED.tsconfigExtends
-    changed = true
-    issues.push({ detail: `set tsconfig extends to "${EXPECTED.tsconfigExtends}"`, type: 'synced' })
-  }
-  if (!getTsconfigTypes(tsconfig)?.includes('bun-types')) {
-    /** biome-ignore lint/nursery/noUnsafeTypeAssertion: compilerOptions is read from validated tsconfig JSON */
-    const co = (tsconfig.compilerOptions ?? {}) as MutableCompilerOptions
-    co.types = ['bun-types']
-    tsconfig.compilerOptions = co
-    changed = true
-    issues.push({ detail: 'added "bun-types" to tsconfig compilerOptions.types', type: 'synced' })
-  }
-  if (changed) await writeJson(tsconfigPath, tsconfig)
+  if (tsconfig) await updateTsconfig(tsconfigPath, tsconfig, issues)
   return issues
 }
 interface FixPublishedPkgArgs {
@@ -391,56 +468,58 @@ const resolveExportSource = async (key: string, importPath: string, pkgDir: stri
   const srcBase = key === '.' ? 'src/index' : `src/${key.replace(dotSlashRe, '')}`
   for (const ext of ['.ts', '.tsx']) {
     // eslint-disable-next-line no-await-in-loop
-    const srcExists = await pathExists(join(pkgDir, `${srcBase}${ext}`))
-    if (srcExists) return `${srcBase}${ext}`
+    const doesSrcExist = await doesPathExist(join(pkgDir, `${srcBase}${ext}`))
+    if (doesSrcExist) return `${srcBase}${ext}`
   }
+}
+interface ExportResolution {
+  copy?: string
+  entry?: string
+  isUnresolved: boolean
 }
 interface TsdownConfig {
   copy?: string[]
   entry: string[]
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- derives tsdown entry/copy set from exports, bin, and index fallbacks
+const resolveExport = async (
+  key: string,
+  val: Record<string, string> | string,
+  pkgDir: string
+): Promise<ExportResolution> => {
+  const importPath = typeof val === 'string' ? val : (val.import ?? val.default)
+  if (!importPath) return { isUnresolved: false }
+  if (importPath.endsWith('.css')) {
+    const srcCss = importPath.replace(distPrefixRe, 'src/')
+    return (await doesPathExist(join(pkgDir, srcCss))) ? { copy: srcCss, isUnresolved: false } : { isUnresolved: false }
+  }
+  const src = await resolveExportSource(key, importPath, pkgDir)
+  return src ? { entry: src, isUnresolved: false } : { isUnresolved: true }
+}
+const resolveBinEntries = async (pkg: PackageJson, pkgDir: string): Promise<string[]> => {
+  if (!pkg.bin) return []
+  const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
+  const srcPaths = Object.values(bins).map(binPath => binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts'))
+  const present = await Promise.all(srcPaths.map(async srcPath => doesPathExist(join(pkgDir, srcPath))))
+  return srcPaths.filter((_, index) => present[index])
+}
+const resolveIndexEntry = async (pkgDir: string): Promise<string[]> => {
+  const doesIndexTsExist = await doesPathExist(join(pkgDir, 'src/index.ts'))
+  const doesIndexTsxExist = await doesPathExist(join(pkgDir, 'src/index.tsx'))
+  if (doesIndexTsExist) return ['src/index.ts']
+  return doesIndexTsxExist ? ['src/index.tsx'] : []
+}
 const inferTsdownConfig = async (pkg: PackageJson, pkgDir: string): Promise<TsdownConfig | undefined> => {
-  const entry: string[] = []
-  const copy: string[] = []
-  let unresolvedExport = false
-  const { exports } = pkg
-  if (exports)
-    for (const [key, val] of Object.entries(exports)) {
-      const importPath = typeof val === 'string' ? val : (val.import ?? val.default)
-      if (importPath)
-        if (importPath.endsWith('.css')) {
-          const srcCss = importPath.replace(distPrefixRe, 'src/')
-          // eslint-disable-next-line no-await-in-loop
-          const srcCssExists = await pathExists(join(pkgDir, srcCss))
-          if (srcCssExists) copy.push(srcCss)
-        } else {
-          // eslint-disable-next-line no-await-in-loop
-          const src = await resolveExportSource(key, importPath, pkgDir)
-          if (src) entry.push(src)
-          else unresolvedExport = true
-        }
-    }
-  if (unresolvedExport) return
-  if (pkg.bin) {
-    const bins = typeof pkg.bin === 'string' ? { default: pkg.bin } : pkg.bin
-    for (const binPath of Object.values(bins)) {
-      const srcPath = binPath.replace(distPrefixRe, 'src/').replace(mjsExtRe, '.ts')
-      // eslint-disable-next-line no-await-in-loop
-      const binSrcExists = await pathExists(join(pkgDir, srcPath))
-      if (binSrcExists && !entry.includes(srcPath)) entry.push(srcPath)
-    }
-  }
-  if (entry.length === 0 && !pkg.bin) {
-    const indexTsExists = await pathExists(join(pkgDir, 'src/index.ts'))
-    const indexTsxExists = await pathExists(join(pkgDir, 'src/index.tsx'))
-    if (indexTsExists) entry.push('src/index.ts')
-    else if (indexTsxExists) entry.push('src/index.tsx')
-  }
+  const exportResults = await Promise.all(
+    Object.entries(pkg.exports ?? {}).map(async ([key, val]) => resolveExport(key, val, pkgDir))
+  )
+  if (exportResults.some(r => r.isUnresolved)) return
+  const exportEntries = exportResults.flatMap(r => (r.entry === undefined ? [] : [r.entry]))
+  const copy = exportResults.flatMap(r => (r.copy === undefined ? [] : [r.copy]))
+  const merged = [...exportEntries, ...(await resolveBinEntries(pkg, pkgDir))]
+  const withBins = merged.filter((path, index) => index < exportEntries.length || merged.indexOf(path) === index)
+  const entry = withBins.length === 0 && !pkg.bin ? await resolveIndexEntry(pkgDir) : withBins
   if (entry.length === 0) return
-  const config: TsdownConfig = { entry }
-  if (copy.length > 0) config.copy = copy
-  return config
+  return copy.length > 0 ? { copy, entry } : { entry }
 }
 const quoteList = (items: readonly string[]): string => items.map(i => `'${i}'`).join(', ')
 const serializeTsdownConfig = (config: TsdownConfig): string => {
@@ -457,7 +536,22 @@ const serializeTsdownConfig = (config: TsdownConfig): string => {
   )
   return `import { defineConfig } from 'tsdown'\n\nexport default defineConfig({\n${fields.join('\n')}\n})\n`
 }
-const syncReadmeSymlink = async ({
+const isSymlinkPath = async (path: string): Promise<boolean> => {
+  try {
+    await readlink(path)
+    return true
+  } catch {
+    return false
+  }
+}
+const isReadmeCurrent = async (readmeDst: string, srcContent: string): Promise<boolean> => {
+  if (!(await doesPathExist(readmeDst))) return false
+  const isSymlink = await isSymlinkPath(readmeDst)
+  if (!isSymlink && (await file(readmeDst).text()) === srcContent) return true
+  if (isSymlink) await rm(readmeDst)
+  return false
+}
+const didSyncReadmeSymlink = async ({
   issues,
   monorepoRoot,
   pkgDir,
@@ -473,19 +567,7 @@ const syncReadmeSymlink = async ({
   const srcFile = file(readmeSrc)
   if (!(await srcFile.exists())) return false
   const srcContent = await srcFile.text()
-  const readmeDstExists = await pathExists(readmeDst)
-  if (readmeDstExists) {
-    let isSymlink: boolean
-    try {
-      await readlink(readmeDst)
-      isSymlink = true
-    } catch {
-      isSymlink = false
-    }
-    const dstMatches = !isSymlink && (await file(readmeDst).text()) === srcContent
-    if (dstMatches) return false
-    if (isSymlink) await rm(readmeDst)
-  }
+  if (await isReadmeCurrent(readmeDst, srcContent)) return false
   await write(readmeDst, srcContent)
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
@@ -494,7 +576,7 @@ const PRUNE_POSTPUBLISH = 'bun ../../tools/prune-versions.ts'
 /** A package that is no longer published keeps the postpublish prune hook fixPublishedPkg set while it WAS
  * published — a script pointing at the tools/prune-versions.ts that syncConfigs now removes, so leaving it
  * dangles the reference. Remove only the pm4ai-set hook, never a project's own custom postpublish. */
-const removeStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
+const didRemoveStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
   const { scripts } = pkg
   if (scripts?.postpublish !== PRUNE_POSTPUBLISH) return false
   delete scripts.postpublish
@@ -502,82 +584,105 @@ const removeStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[
   issues.push({ detail: `${rel} removed stale postpublish prune hook`, type: 'synced' })
   return true
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- published-package normalizer: type, files, license, repo, build/tsdown, readme, publish scripts
-const fixPublishedPkg = async ({ issues, pkg, pkgPath, rel, repo }: FixPublishedPkgArgs): Promise<boolean> => {
-  let changed = false
-  if (pkg.type !== 'module') {
-    pkg.type = 'module'
-    changed = true
-    issues.push({ detail: `${rel} set "type": "module"`, type: 'synced' })
-  }
-  if (!pkg.files) {
-    pkg.files = DEFAULT_FILES
-    changed = true
-    issues.push({ detail: `${rel} set "files": ${JSON.stringify(DEFAULT_FILES)}`, type: 'synced' })
-  }
-  if (!pkg.license) {
-    pkg.license = DEFAULT_LICENSE
-    changed = true
-    issues.push({ detail: `${rel} set "license": "${DEFAULT_LICENSE}"`, type: 'synced' })
-  }
-  if (!pkg.repository && repo) {
-    pkg.repository = { directory: dirname(rel), type: 'git', url: `https://github.com/${repo}` }
-    changed = true
-    issues.push({ detail: `${rel} added repository`, type: 'synced' })
-  }
-  const pubScripts = pkg.scripts ?? {}
-  if (pubScripts.build && pubScripts.build !== 'tsdown') {
-    pubScripts.build = 'tsdown'
-    pkg.scripts = pubScripts
-    changed = true
-    issues.push({ detail: `${rel} set build to "tsdown"`, type: 'synced' })
-  }
+const didSetModuleType = ({ issues, pkg, rel }: FixPublishedPkgArgs): boolean => {
+  if (pkg.type === 'module') return false
+  pkg.type = 'module'
+  issues.push({ detail: `${rel} set "type": "module"`, type: 'synced' })
+  return true
+}
+const didSetFiles = ({ issues, pkg, rel }: FixPublishedPkgArgs): boolean => {
+  if (pkg.files) return false
+  pkg.files = DEFAULT_FILES
+  issues.push({ detail: `${rel} set "files": ${JSON.stringify(DEFAULT_FILES)}`, type: 'synced' })
+  return true
+}
+const didSetLicense = ({ issues, pkg, rel }: FixPublishedPkgArgs): boolean => {
+  if (pkg.license) return false
+  pkg.license = DEFAULT_LICENSE
+  issues.push({ detail: `${rel} set "license": "${DEFAULT_LICENSE}"`, type: 'synced' })
+  return true
+}
+const didSetRepository = ({ issues, pkg, rel, repo }: FixPublishedPkgArgs): boolean => {
+  if (pkg.repository || !repo) return false
+  pkg.repository = { directory: dirname(rel), type: 'git', url: `https://github.com/${repo}` }
+  issues.push({ detail: `${rel} added repository`, type: 'synced' })
+  return true
+}
+const didSetBuildScript = ({ issues, pkg, rel }: FixPublishedPkgArgs, pubScripts: Record<string, string>): boolean => {
+  if (!pubScripts.build || pubScripts.build === 'tsdown') return false
+  pubScripts.build = 'tsdown'
+  pkg.scripts = pubScripts
+  issues.push({ detail: `${rel} set build to "tsdown"`, type: 'synced' })
+  return true
+}
+const syncTsdownConfig = async ({ issues, pkg, pkgPath, rel }: FixPublishedPkgArgs): Promise<void> => {
   const pkgDir = dirname(pkgPath)
   const tsdownConfigPath = join(pkgDir, 'tsdown.config.ts')
   const tsdownConfig = await inferTsdownConfig(pkg, pkgDir)
-  if (tsdownConfig) {
-    const tsdownExists = await pathExists(tsdownConfigPath)
-    const existingContent = tsdownExists ? await file(tsdownConfigPath).text() : ''
-    if (existingContent.includes('dts: false') || existingContent.includes('onSuccess')) {
-      /* Skip — existing config has custom overrides */
-    } else {
-      const generatedContent = serializeTsdownConfig(tsdownConfig)
-      if (existingContent !== generatedContent) {
-        await write(tsdownConfigPath, generatedContent)
-        issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
-      }
-    }
-  }
-  const monorepoRoot = pkgDir.replace(monorepoRootRe, '')
-  await syncReadmeSymlink({ issues, monorepoRoot, pkgDir, rel })
-  if (pubScripts.postpublish !== PRUNE_POSTPUBLISH) {
+  if (!tsdownConfig) return
+  const existingContent = (await doesPathExist(tsdownConfigPath)) ? await file(tsdownConfigPath).text() : ''
+  if (existingContent.includes('dts: false') || existingContent.includes('onSuccess')) return
+  const generatedContent = serializeTsdownConfig(tsdownConfig)
+  if (existingContent === generatedContent) return
+  await write(tsdownConfigPath, generatedContent)
+  issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
+}
+interface PublishScriptPlan {
+  willSetPostpublish: boolean
+  willSetPrepublish: boolean
+}
+const applyPublishScripts = (
+  { issues, rel }: FixPublishedPkgArgs,
+  pubScripts: Record<string, string>,
+  plan: PublishScriptPlan
+): void => {
+  if (plan.willSetPostpublish) {
     pubScripts.postpublish = PRUNE_POSTPUBLISH
     delete pubScripts['cleanup-old-versions']
-    pkg.scripts = pubScripts
-    changed = true
     issues.push({ detail: `${rel} set postpublish to prune-versions script`, type: 'synced' })
   }
-  if (pubScripts.build && pubScripts.prepublishOnly !== 'bun run build') {
+  if (plan.willSetPrepublish) {
     pubScripts.prepublishOnly = 'bun run build'
-    pkg.scripts = pubScripts
-    changed = true
     issues.push({ detail: `${rel} set prepublishOnly to always build before publish`, type: 'synced' })
   }
-  return changed
 }
-const fixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
-  let changed = false
+const didFixPublishedPkg = async (args: FixPublishedPkgArgs): Promise<boolean> => {
+  const pubScripts = args.pkg.scripts ?? {}
+  const isMetaChanged = [
+    didSetBuildScript(args, pubScripts),
+    didSetFiles(args),
+    didSetLicense(args),
+    didSetModuleType(args),
+    didSetRepository(args)
+  ].includes(true)
+  const plan: PublishScriptPlan = {
+    willSetPostpublish: pubScripts.postpublish !== PRUNE_POSTPUBLISH,
+    willSetPrepublish: Boolean(pubScripts.build) && pubScripts.prepublishOnly !== 'bun run build'
+  }
+  if (plan.willSetPostpublish || plan.willSetPrepublish) args.pkg.scripts = pubScripts
+  await syncTsdownConfig(args)
+  const pkgDir = dirname(args.pkgPath)
+  await didSyncReadmeSymlink({
+    issues: args.issues,
+    monorepoRoot: pkgDir.replace(monorepoRootRe, ''),
+    pkgDir,
+    rel: args.rel
+  })
+  applyPublishScripts(args, pubScripts, plan)
+  return isMetaChanged || plan.willSetPostpublish || plan.willSetPrepublish
+}
+const didFixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
   const scripts = pkg.scripts ?? {}
-  for (const [name, cmd] of Object.entries(scripts)) {
+  const targets = Object.entries(scripts).filter(([, cmd]) => {
     gitCleanRe.lastIndex = 0
-    if (!gitCleanRe.test(cmd)) continue
-
+    return gitCleanRe.test(cmd)
+  })
+  for (const [name, cmd] of targets) {
     gitCleanRe.lastIndex = 0
     scripts[name] = cmd.replace(gitCleanRe, 'rm -rf ')
-    changed = true
     issues.push({ detail: `${rel} "${name}" replaced git clean with rm -rf`, type: 'synced' })
   }
-  return changed
+  return targets.length > 0
 }
 interface HoistArgs {
   issues: Issue[]
@@ -594,15 +699,13 @@ const hoistDevDeps = ({
   const external = Object.entries(subDevDeps).filter(([, v]) => !v.startsWith('workspace:'))
   if (external.length === 0)
     return { hoisted: false, remaining: Object.keys(subDevDeps).length === 0 ? undefined : subDevDeps }
-  let hoisted = false
-  for (const [name, version] of external)
-    if (!rootDevDeps[name]) {
-      rootDevDeps[name] = version
-      hoisted = true
-      issues.push({ detail: `hoisted ${name} from ${rel} to root`, type: 'synced' })
-    }
+  const toHoist = external.filter(([name]) => !rootDevDeps[name])
+  for (const [name, version] of toHoist) {
+    rootDevDeps[name] = version
+    issues.push({ detail: `hoisted ${name} from ${rel} to root`, type: 'synced' })
+  }
   const ws = Object.fromEntries(Object.entries(subDevDeps).filter(([, v]) => v.startsWith('workspace:')))
-  return { hoisted, remaining: Object.keys(ws).length === 0 ? undefined : ws }
+  return { hoisted: toHoist.length > 0, remaining: Object.keys(ws).length === 0 ? undefined : ws }
 }
 interface FixSubEntryArgs {
   entry: { path: string; pkg: PackageJson }
@@ -610,26 +713,29 @@ interface FixSubEntryArgs {
   projectPath: string
   repo: string | undefined
 }
-const fixSubEntry = async ({ entry, issues, projectPath, repo }: FixSubEntryArgs): Promise<boolean> => {
+const didSetAppPrivate = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
+  if (!rel.startsWith('apps/') || pkg.private) return false
+  pkg.private = true
+  issues.push({ detail: `${rel} set to private`, type: 'synced' })
+  return true
+}
+const didRemoveCleanScript = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
+  const { scripts } = pkg
+  if (!scripts?.clean) return false
+  delete scripts.clean
+  if (Object.keys(scripts).length === 0) delete pkg.scripts
+  issues.push({ detail: `${rel} removed redundant "clean" script`, type: 'synced' })
+  return true
+}
+const didFixSubEntry = async ({ entry, issues, projectPath, repo }: FixSubEntryArgs): Promise<boolean> => {
   const rel = entry.path.replace(`${projectPath}/`, '')
   if (isSkippedPath(rel)) return false
-  let changed = false
-  if (rel.startsWith('apps/') && !entry.pkg.private) {
-    entry.pkg.private = true
-    changed = true
-    issues.push({ detail: `${rel} set to private`, type: 'synced' })
-  }
-  const pubChange = isPublishedPkg(entry.pkg)
-    ? await fixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })
-    : removeStalePublishScripts(entry.pkg, rel, issues)
-  changed = pubChange || changed
-  if (entry.pkg.scripts?.clean) {
-    delete entry.pkg.scripts.clean
-    if (Object.keys(entry.pkg.scripts).length === 0) delete entry.pkg.scripts
-    changed = true
-    issues.push({ detail: `${rel} removed redundant "clean" script`, type: 'synced' })
-  }
-  return fixGitClean(entry.pkg, rel, issues) || changed
+  const isPrivateSet = didSetAppPrivate(entry.pkg, rel, issues)
+  const isPubChanged = isPublishedPkg(entry.pkg)
+    ? await didFixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })
+    : didRemoveStalePublishScripts(entry.pkg, rel, issues)
+  const isCleanRemoved = didRemoveCleanScript(entry.pkg, rel, issues)
+  return didFixGitClean(entry.pkg, rel, issues) || isPrivateSet || isPubChanged || isCleanRemoved
 }
 interface HoistSubEntryArgs {
   entry: { path: string; pkg: PackageJson }
@@ -646,96 +752,125 @@ const hoistSubEntry = ({
   const rel = entry.path.replace(`${projectPath}/`, '')
   const originalDevDeps = entry.pkg.devDependencies
   const { hoisted, remaining } = hoistDevDeps({ issues, rel, rootDevDeps, subDevDeps: originalDevDeps ?? {} })
-  const changed = remaining !== originalDevDeps && !(remaining === undefined && !originalDevDeps)
-  if (changed) entry.pkg.devDependencies = remaining
-  return { changed, hoisted, pkg: entry.pkg, pkgPath: entry.path }
+  const isChanged = remaining !== originalDevDeps && !(remaining === undefined && !originalDevDeps)
+  if (isChanged) entry.pkg.devDependencies = remaining
+  return { changed: isChanged, hoisted, pkg: entry.pkg, pkgPath: entry.path }
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- workspace sub-package orchestrator: fix, dedupe, hoist devdeps across every entry
+interface DedupeFieldArgs {
+  entry: WorkspaceEntry
+  field: DepField
+  issues: Issue[]
+  providedByWs: Set<string>
+  rel: string
+}
+interface WorkspaceEntry {
+  path: string
+  pkg: PackageJson
+}
+const didDedupeField = ({ entry, field, issues, providedByWs, rel }: DedupeFieldArgs): boolean => {
+  const deps = entry.pkg[field]
+  if (!deps) return false
+  const duplicates = Object.entries(deps)
+    .filter(([name, version]) => !version.startsWith('workspace:') && providedByWs.has(name))
+    .map(([name]) => name)
+  issues.push(
+    ...duplicates.map(
+      (name): Issue => ({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
+    )
+  )
+  const kept = Object.entries(deps).filter(([name]) => !duplicates.includes(name))
+  if (kept.length === 0) Reflect.deleteProperty(entry.pkg, field)
+  else if (duplicates.length > 0) entry.pkg[field] = Object.fromEntries(kept)
+  return duplicates.length > 0
+}
+interface DedupeEntryArgs {
+  entry: WorkspaceEntry
+  issues: Issue[]
+  pkgDepsByName: Map<string, Set<string>>
+  projectPath: string
+}
+const didDedupeEntry = ({ entry, issues, pkgDepsByName, projectPath }: DedupeEntryArgs): boolean => {
+  const rel = entry.path.replace(`${projectPath}/`, '')
+  const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
+  const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
+  const providedByWs = providedByWorkspaces(wsDeps, pkgDepsByName)
+  return DEP_FIELDS.map(field => didDedupeField({ entry, field, issues, providedByWs, rel })).includes(true)
+}
+const isDedupeTarget = (entry: WorkspaceEntry, projectPath: string): boolean => {
+  const rel = entry.path.replace(`${projectPath}/`, '')
+  return !(isSkippedPath(rel) || rel.startsWith('apps/'))
+}
+interface HoistRootArgs {
+  issues: Issue[]
+  projectPath: string
+  rootPkgPath: string
+  subEntries: WorkspaceEntry[]
+}
+const hoistRootDevDeps = async ({ issues, projectPath, rootPkgPath, subEntries }: HoistRootArgs): Promise<void> => {
+  const rootPkg = await readPkg(rootPkgPath)
+  if (!rootPkg) return
+  const rootDevDeps = rootPkg.devDependencies ?? {}
+  const results = subEntries
+    .filter(e => !isSkippedPath(e.path.replace(`${projectPath}/`, '')))
+    .map(entry => hoistSubEntry({ entry, issues, projectPath, rootDevDeps }))
+  await Promise.all(results.filter(r => r.changed).map(async r => writeJson(r.pkgPath, r.pkg)))
+  if (results.every(r => !r.hoisted)) return
+  rootPkg.devDependencies = sortKeys(rootDevDeps)
+  await writeJson(rootPkgPath, rootPkg)
+}
+interface DedupeSubEntriesArgs {
+  entries: WorkspaceEntry[]
+  issues: Issue[]
+  projectPath: string
+  subEntries: WorkspaceEntry[]
+}
+const dedupeSubEntries = ({ entries, issues, projectPath, subEntries }: DedupeSubEntriesArgs): Promise<number>[] => {
+  const pkgDepsByName = buildPkgDepMap(entries)
+  return subEntries
+    .filter(entry => isDedupeTarget(entry, projectPath))
+    .filter(entry => didDedupeEntry({ entry, issues, pkgDepsByName, projectPath }))
+    .map(async entry => writeJson(entry.path, entry.pkg))
+}
 const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
   const rootPkgPath = join(projectPath, 'package.json')
   const repo = await getGhRepo(projectPath)
   const subEntries = entries.filter(e => e.path !== rootPkgPath)
-  const writes: Promise<number>[] = []
   const fixed = await Promise.all(
-    subEntries.map(async entry => ({ changed: await fixSubEntry({ entry, issues, projectPath, repo }), entry }))
+    subEntries.map(async entry => ({ changed: await didFixSubEntry({ entry, issues, projectPath, repo }), entry }))
   )
-  for (const { changed, entry } of fixed) if (changed) writes.push(writeJson(entry.path, entry.pkg))
-  const pkgDepsByName = buildPkgDepMap(entries)
-  for (const entry of subEntries) {
-    const rel = entry.path.replace(`${projectPath}/`, '')
-    if (!(isSkippedPath(rel) || rel.startsWith('apps/'))) {
-      const allDeps = [...Object.entries(entry.pkg.dependencies ?? {}), ...Object.entries(entry.pkg.devDependencies ?? {})]
-      const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
-      const providedByWs = new Set<string>()
-      for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
-      let dedupChanged = false
-      for (const field of DEP_FIELDS) {
-        const deps = entry.pkg[field]
-        if (!deps) continue
-
-        for (const [name, version] of Object.entries(deps))
-          if (!version.startsWith('workspace:') && providedByWs.has(name)) {
-            delete deps[name]
-            dedupChanged = true
-            issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
-          }
-        if (Object.keys(deps).length === 0) delete entry.pkg[field]
-      }
-      if (dedupChanged) writes.push(writeJson(entry.path, entry.pkg))
-    }
-  }
-  await Promise.all(writes)
-  const rootPkg = await readPkg(rootPkgPath)
-  if (!rootPkg) return issues
-  let rootChanged = false
-  const rootDevDeps = rootPkg.devDependencies ?? {}
-  const subWrites: Promise<number>[] = []
-  const nonSkipped = subEntries.filter(e => !isSkippedPath(e.path.replace(`${projectPath}/`, '')))
-  for (const entry of nonSkipped) {
-    const result = hoistSubEntry({ entry, issues, projectPath, rootDevDeps })
-    if (result.hoisted) rootChanged = true
-    if (result.changed) subWrites.push(writeJson(result.pkgPath, result.pkg))
-  }
-  await Promise.all(subWrites)
-  if (rootChanged) {
-    rootPkg.devDependencies = sortKeys(rootDevDeps)
-    await writeJson(rootPkgPath, rootPkg)
-  }
+  const writes = fixed.filter(f => f.changed).map(async f => writeJson(f.entry.path, f.entry.pkg))
+  await Promise.all([...writes, ...dedupeSubEntries({ entries, issues, projectPath, subEntries })])
+  await hoistRootDevDeps({ issues, projectPath, rootPkgPath, subEntries })
   return issues
 }
+const syncUiWorkspace = async (projectPath: string, issues: Issue[]): Promise<void> => {
+  const pkgPath = join(projectPath, 'package.json')
+  const pkgFile = file(pkgPath)
+  if (!(await pkgFile.exists())) return
+  const pkg = parseJson<Record<string, unknown>>(await pkgFile.text())
+  const { workspaces } = pkg
+  if (!Array.isArray(workspaces) || workspaces.some(w => w === READONLY_UI || w === 'readonly/*' || w === 'readonly/**'))
+    return
+  workspaces.push(READONLY_UI)
+  await write(pkgPath, `${JSON.stringify(pkg, undefined, 2)}\n`)
+  issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
+}
 const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const src = join(cnsyncPath, READONLY_UI)
   const dst = join(projectPath, READONLY_UI)
-  const srcExists = await pathExists(src)
-  if (!srcExists) {
-    issues.push({ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' })
-    return issues
-  }
-  if (projectPath === cnsyncPath) return issues
+  if (!(await doesPathExist(src))) return [{ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' }]
+  if (projectPath === cnsyncPath) return []
   await cp(src, dst, { recursive: true })
   await Promise.all(
     ['mjs', 'ts', 'js'].map(async ext => {
       const p = join(dst, `postcss.config.${ext}`)
-      if (await pathExists(p)) await rm(p)
+      if (await doesPathExist(p)) await rm(p)
     })
   )
-  const pkgPath = join(projectPath, 'package.json')
-  const pkgFile = file(pkgPath)
-  if (await pkgFile.exists()) {
-    const pkg = parseJson<Record<string, unknown>>(await pkgFile.text())
-    const { workspaces } = pkg
-    if (
-      Array.isArray(workspaces) &&
-      !workspaces.some(w => w === READONLY_UI || w === 'readonly/*' || w === 'readonly/**')
-    ) {
-      workspaces.push(READONLY_UI)
-      await write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
-      issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
-    }
-  }
+  const issues: Issue[] = []
+  await syncUiWorkspace(projectPath, issues)
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })
   return issues
 }
@@ -759,17 +894,11 @@ const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
   const results = await Promise.all(
     fumadocsApps.map(async app => {
       const scripts = app.pkg.scripts ?? {}
-      let changed = false
-      const next = { ...scripts }
-      for (const [k, v] of Object.entries(scripts)) {
-        const patched = patchFumadocsScript(v)
-        if (!(patched !== v)) continue
-
-        next[k] = patched
-        changed = true
-      }
-      if (!changed) return
-      await write(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)
+      const next = Object.fromEntries(
+        Object.entries(scripts).map(([k, v]): [string, string] => [k, patchFumadocsScript(v)])
+      )
+      if (Object.entries(next).every(([k, v]) => v === scripts[k])) return
+      await write(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, undefined, 2)}\n`)
       const rel = app.path.replace(`${projectPath}/`, '')
       return { detail: `${rel} prefixed fumadocs/next build with bunx --bun`, type: 'synced' } satisfies Issue
     })
@@ -813,14 +942,16 @@ interface PatchArgs {
   sharedPath: string
   title: string
 }
-const patchSharedFile = async ({ githubUrl, projectPath, sharedPath, title }: PatchArgs): Promise<Issue | undefined> => {
+const createSharedFile = async ({ githubUrl, sharedPath, title }: PatchArgs, relShared: string): Promise<Issue> => {
+  await mkdir(dirname(sharedPath), { recursive: true })
+  await write(sharedPath, layoutSharedTemplate(title, githubUrl))
+  return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
+}
+const patchSharedFile = async (args: PatchArgs): Promise<Issue | undefined> => {
+  const { githubUrl, projectPath, sharedPath } = args
   const relShared = sharedPath.replace(`${projectPath}/`, '')
   const sharedFile = file(sharedPath)
-  if (!(await sharedFile.exists())) {
-    await mkdir(dirname(sharedPath), { recursive: true })
-    await write(sharedPath, layoutSharedTemplate(title, githubUrl))
-    return { detail: `${relShared} created with baseOptions + githubUrl`, type: 'synced' }
-  }
+  if (!(await sharedFile.exists())) return createSharedFile(args, relShared)
   const content = await sharedFile.text()
   if (GITHUB_URL_KEY_RE.test(content)) return
   const next = content.replace(BASEOPTIONS_OPEN_RE, `$<open>  githubUrl: '${githubUrl}',\n`)
@@ -854,7 +985,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
 export {
   checkClaudeMdFresh,
   patchFumadocsScript,
-  removeStalePublishScripts,
+  didRemoveStalePublishScripts as removeStalePublishScripts,
   serializeTsdownConfig,
   syncClaudeMd,
   syncConfigs,

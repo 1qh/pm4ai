@@ -2,7 +2,7 @@
 /* eslint-disable no-console */
 import pkg from '../package.json' with { type: 'json' }
 import { guide } from './guide.js'
-import { preflight } from './preflight.js'
+import { didPassPreflight } from './preflight.js'
 import { setVerbose } from './utils.js'
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('-')))
@@ -26,7 +26,7 @@ else if (command === 'init') {
   const { setup } = await import('./setup.js')
   await setup()
 } else {
-  if (!(await preflight())) throw new Error('missing required tools')
+  if (!(await didPassPreflight())) throw new Error('missing required tools')
   if (command === 'status') {
     const { status } = await import('./status.js')
     await status(flags.has('--swiftbar'), flags.has('--all'), excludes)

@@ -1,3 +1,5 @@
+# Project session prompt
+
 You are working on this specific project which is part of a managed ecosystem.
 
 Before starting, run `bunx pm4ai@latest status` to check project health. If it shows issues, fix them first.

@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
 import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
 import { parseJson } from './json.js'
-const pathExists = async (path: string): Promise<boolean> => {
+const doesPathExist = async (path: string): Promise<boolean> => {
   try {
     await access(path)
     return true
@@ -37,51 +37,56 @@ const getGhRepo = async (projectPath: string): Promise<string | undefined> => {
   const result = await $`git remote get-url origin`.cwd(projectPath).quiet().nothrow()
   return ghRepoRe.exec(result.stdout.toString().trim())?.groups?.repo
 }
-const collectWorkspacePackages = async (projectPath: string): Promise<{ path: string; pkg: PackageJson }[]> => {
+interface WorkspacePackage {
+  path: string
+  pkg: PackageJson
+}
+const scanWorkspaceDirs = async (projectPath: string, workspaces: string[]): Promise<string[]> => {
+  const negated = new Set(workspaces.filter(w => w.startsWith('!')).map(w => w.slice(1)))
+  const positive = workspaces.filter(w => !w.startsWith('!'))
+  const scanned = await Promise.all(
+    positive.map(async ws => Array.fromAsync(new Glob(ws).scan({ cwd: projectPath, onlyFiles: false })))
+  )
+  return [...new Set(scanned.flat().filter(m => !negated.has(m)))]
+}
+const readWorkspacePkgs = async (projectPath: string, dirs: string[]): Promise<WorkspacePackage[]> => {
+  const candidatePaths = dirs.map(m => join(projectPath, m, 'package.json'))
+  const candidateExists = await Promise.all(candidatePaths.map(async p => doesPathExist(p)))
+  const wsPkgs = await Promise.all(
+    candidatePaths
+      .filter((_, i) => candidateExists[i])
+      .map(async p => {
+        const pkg = await readPkg(p)
+        return pkg ? { path: p, pkg } : undefined
+      })
+  )
+  return wsPkgs.filter((wp): wp is WorkspacePackage => wp !== undefined)
+}
+const collectWorkspacePackages = async (projectPath: string): Promise<WorkspacePackage[]> => {
   const rootPkgPath = join(projectPath, 'package.json')
   const rootPkg = await readPkg(rootPkgPath)
   if (!rootPkg) return []
-  const results = [{ path: rootPkgPath, pkg: rootPkg }]
-  const workspaces = rootPkg.workspaces ?? []
-  const negated = new Set(workspaces.filter(w => w.startsWith('!')).map(w => w.slice(1)))
-  const positive = workspaces.filter(w => !w.startsWith('!'))
-  const matched = new Set<string>()
-  await Promise.all(
-    positive.map(async ws => {
-      const glob = new Glob(ws)
-      for await (const match of glob.scan({ cwd: projectPath, onlyFiles: false }))
-        if (!negated.has(match)) matched.add(match)
-    })
-  )
-  const candidatePaths = [...matched].map(m => join(projectPath, m, 'package.json'))
-  const candidateExists = await Promise.all(candidatePaths.map(async p => pathExists(p)))
-  const wsPkgPaths = candidatePaths.filter((_, i) => candidateExists[i])
-  const wsPkgs = await Promise.all(
-    wsPkgPaths.map(async p => {
-      const pkg = await readPkg(p)
-      return pkg ? { path: p, pkg } : undefined
-    })
-  )
-  for (const wp of wsPkgs) if (wp) results.push(wp)
-  return results
+  const dirs = await scanWorkspaceDirs(projectPath, rootPkg.workspaces ?? [])
+  const wsPkgs = await readWorkspacePkgs(projectPath, dirs)
+  return [{ path: rootPkgPath, pkg: rootPkg }, ...wsPkgs]
 }
-let verbose = false
-const setVerbose = (v: boolean) => {
-  verbose = v
+let isVerbose = false
+const setVerbose = (shouldLog: boolean) => {
+  isVerbose = shouldLog
 }
 const debug = (...args: unknown[]) => {
-  if (verbose) console.error('[pm4ai]', ...args) // eslint-disable-line no-console
+  if (isVerbose) console.error('[pm4ai]', ...args) // eslint-disable-line no-console
 }
 const findGitRoot = async (): Promise<string | undefined> => {
   let dir = process.cwd()
   while (dir !== '/') {
     // eslint-disable-next-line no-await-in-loop
-    const hasGit = await pathExists(join(dir, '.git'))
+    const hasGit = await doesPathExist(join(dir, '.git'))
     if (hasGit) return dir
     dir = dirname(dir)
   }
 }
-const isInsideProject = async (): Promise<string | undefined> => {
+const projectRootOf = async (): Promise<string | undefined> => {
   const root = await findGitRoot()
   if (!root) return
   const allPkgs = await collectWorkspacePackages(root)
@@ -91,10 +96,14 @@ const isInsideProject = async (): Promise<string | undefined> => {
   })
   if (hasLintmax) return root
 }
-const isNestedInRepo = async (dir: string): Promise<boolean> => {
+const gitTopLevel = async (dir: string): Promise<string | undefined> => {
   const root = await $`git rev-parse --show-toplevel`.cwd(dir).quiet().nothrow()
-  if (root.exitCode !== 0) return false
+  if (root.exitCode !== 0) return
   const top = root.stdout.toString().trim()
+  return top === '' ? undefined : top
+}
+const isNestedInRepo = async (dir: string): Promise<boolean> => {
+  const top = await gitTopLevel(dir)
   if (!top) return false
   try {
     const [realTop, realDir] = await Promise.all([realpath(top), realpath(dir)])
@@ -103,7 +112,7 @@ const isNestedInRepo = async (dir: string): Promise<boolean> => {
     return false
   }
 }
-const isInsideExistingRepo = async (dir: string): Promise<boolean> => {
+const ancestorChain = (dir: string): string[] => {
   const chain: string[] = [dir]
   let current = dir
   let parent = dirname(current)
@@ -112,15 +121,17 @@ const isInsideExistingRepo = async (dir: string): Promise<boolean> => {
     current = parent
     parent = dirname(current)
   }
-  const existing = chain[(await Promise.all(chain.map(pathExists))).findIndex(Boolean)]
+  return chain
+}
+const isInsideExistingRepo = async (dir: string): Promise<boolean> => {
+  const chain = ancestorChain(dir)
+  const existing = chain[(await Promise.all(chain.map(doesPathExist))).findIndex(Boolean)]
   if (existing === undefined) return false
-  const root = await $`git rev-parse --show-toplevel`.cwd(existing).quiet().nothrow()
-  if (root.exitCode !== 0) return false
-  const top = root.stdout.toString().trim()
+  const top = await gitTopLevel(existing)
   if (!top) return false
   try {
     const [realTop, realExisting] = await Promise.all([realpath(top), realpath(existing)])
-    return realTop !== realExisting || !(await pathExists(dir))
+    return realTop !== realExisting || !(await doesPathExist(dir))
   } catch {
     return false
   }
@@ -138,7 +149,7 @@ const getTsconfigTypes = (config: Record<string, unknown>): string[] | undefined
     ? options.types
     : undefined
 }
-const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, null, 2)}\n`)
+const writeJson = async (path: string, data: unknown) => write(file(path), `${JSON.stringify(data, undefined, 2)}\n`)
 const isSkippedPath = (path: string) => path.includes('readonly/') || path.includes('.next/')
 const gitCleanRe = /\bgit\s+clean\s+\S+\s*/gu
 interface Capabilities {
@@ -149,19 +160,17 @@ interface Capabilities {
 }
 const detectCapabilities = async (projectPath: string): Promise<Capabilities> => {
   const entries = await collectWorkspacePackages(projectPath)
-  const allDeps = new Set<string>()
-  for (const { pkg } of entries) {
-    for (const k of Object.keys(pkg.dependencies ?? {})) allDeps.add(k)
-    for (const k of Object.keys(pkg.devDependencies ?? {})) allDeps.add(k)
-  }
-  const github = Boolean(await getGhRepo(projectPath))
+  const allDeps = new Set(
+    entries.flatMap(({ pkg }) => [Object.keys(pkg.dependencies ?? {}), Object.keys(pkg.devDependencies ?? {})].flat())
+  )
+  const hasGithub = Boolean(await getGhRepo(projectPath))
   const tailwind =
     allDeps.has('tailwindcss') ||
     allDeps.has('@tailwindcss/postcss') ||
     [...allDeps].some(d => d.startsWith('@tailwindcss/'))
   const fumadocs = allDeps.has('fumadocs-ui')
-  const publishable = entries.some(({ pkg }) => pkg.name && !pkg.private)
-  return { fumadocs, github, publishable, tailwind }
+  const isPublishable = entries.some(({ pkg }) => pkg.name && !pkg.private)
+  return { fumadocs, github: hasGithub, publishable: isPublishable, tailwind }
 }
 interface ManagedFile {
   extendable: boolean
@@ -234,6 +243,14 @@ const buildPkgDepMap = (entries: { pkg: PackageJson }[]): Map<string, Set<string
     }
   return result
 }
+const providedByWorkspaces = (wsDeps: string[], pkgDepsByName: Map<string, Set<string>>): Set<string> => {
+  const provided = new Set<string>()
+  for (const ws of wsDeps) {
+    const deps = pkgDepsByName.get(ws) ?? []
+    for (const dep of deps) provided.add(dep)
+  }
+  return provided
+}
 export {
   buildPkgDepMap,
   collectWorkspacePackages,
@@ -245,11 +262,13 @@ export {
   gitCleanRe,
   isExtended,
   isInsideExistingRepo,
-  isInsideProject,
   isNestedInRepo,
   isSkippedPath,
+  type ManagedFile,
   mergeExtendable,
   projectName,
+  projectRootOf,
+  providedByWorkspaces,
   readJson,
   readPkg,
   rel,
@@ -258,5 +277,4 @@ export {
   staleConditionalFiles,
   writeJson
 }
-export type { ManagedFile }
 export type { Capabilities }

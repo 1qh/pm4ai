@@ -7,12 +7,16 @@ import {
   collectWorkspacePackages,
   getBunVersion,
   getGhRepo,
-  isInsideProject,
   projectName,
+  projectRootOf,
   readJson,
   readPkg
 } from '../utils.js'
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-utils-'))
+const writePkgAt = async (dir: string, pkg: Record<string, unknown>) => {
+  await mkdir(dir, { recursive: true })
+  await write(join(dir, 'package.json'), JSON.stringify(pkg))
+}
 describe('projectName', () => {
   test('extracts last segment', () => {
     expect(projectName('/Users/o/z/pm4ai')).toBe('pm4ai')
@@ -29,7 +33,7 @@ describe('readJson', () => {
   test('valid JSON file returns parsed object', async () => {
     const p = join(tmpdir(), `test-${Date.now()}.json`)
     await write(p, '{"a":1}')
-    expect(await readJson(p)).toEqual({ a: 1 })
+    expect(await readJson(p)).toStrictEqual({ a: 1 })
   })
   test('malformed JSON returns undefined', async () => {
     const p = join(tmpdir(), `test-bad-${Date.now()}.json`)
@@ -133,14 +137,12 @@ describe('collectWorkspacePackages', () => {
   })
   test('handles negated workspace patterns', async () => {
     const tmp = await makeTmp()
-    await mkdir(join(tmp, 'packages', 'lib'), { recursive: true })
-    await mkdir(join(tmp, 'packages', 'internal'), { recursive: true })
     await write(
       join(tmp, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*', '!packages/internal'] })
     )
-    await write(join(tmp, 'packages', 'lib', 'package.json'), JSON.stringify({ name: '@a/lib' }))
-    await write(join(tmp, 'packages', 'internal', 'package.json'), JSON.stringify({ name: '@a/internal' }))
+    await writePkgAt(join(tmp, 'packages', 'lib'), { name: '@a/lib' })
+    await writePkgAt(join(tmp, 'packages', 'internal'), { name: '@a/internal' })
     const entries = await collectWorkspacePackages(tmp)
     expect(entries).toHaveLength(2)
     expect(entries.some(e => e.pkg.name === '@a/lib')).toBe(true)
@@ -158,12 +160,12 @@ describe('collectWorkspacePackages', () => {
     await rm(tmp, { recursive: true })
   })
 })
-describe('isInsideProject', () => {
+describe('projectRootOf', () => {
   test('returns path when inside a git repo with lintmax', async () => {
     const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
     const saved = process.cwd()
     process.chdir(pm4aiPath)
-    const result = await isInsideProject()
+    const result = await projectRootOf()
     process.chdir(saved)
     expect(result).toBe(pm4aiPath)
   })
@@ -171,7 +173,7 @@ describe('isInsideProject', () => {
     const tmp = await makeTmp()
     const saved = process.cwd()
     process.chdir(tmp)
-    const result = await isInsideProject()
+    const result = await projectRootOf()
     process.chdir(saved)
     expect(result).toBeUndefined()
     await rm(tmp, { recursive: true })

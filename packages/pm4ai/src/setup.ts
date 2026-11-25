@@ -3,6 +3,7 @@ import { write } from 'bun'
 import { access, chmod, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { stateDir } from './state-dir.js'
 const SWIFTBAR_PLUGIN = `#!/bin/bash
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
@@ -21,10 +22,9 @@ const SWIFTBAR_STREAMING_PLUGIN = `#!/usr/bin/env bun
 // <swiftbar.type>streamable</swiftbar.type>
 import { createConnection } from 'node:net'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-const SOCK = join(homedir(), '.pm4ai', 'watch.sock')
-const CHECKS = join(homedir(), '.pm4ai', 'checks')
+const SOCK = ${JSON.stringify(join(stateDir(), 'watch.sock'))}
+const CHECKS = ${JSON.stringify(join(stateDir(), 'checks'))}
 const f = '| font=Menlo size=13'
 const SPINNER = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 const state = new Map()
@@ -140,7 +140,7 @@ const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>
 `
-const pathExists = async (path: string): Promise<boolean> => {
+const doesPathExist = async (path: string): Promise<boolean> => {
   try {
     await access(path)
     return true
@@ -148,25 +148,30 @@ const pathExists = async (path: string): Promise<boolean> => {
     return false
   }
 }
-const setup = async () => {
-  const swiftbarDir = join(homedir(), 'Library', 'Application Support', 'SwiftBar', 'plugins')
-  const swiftbarInstalled = await pathExists(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))
-  if (swiftbarInstalled) {
-    await mkdir(swiftbarDir, { recursive: true })
-    const pollingPath = join(swiftbarDir, 'pm4ai.1h.sh')
-    const streamingPath = join(swiftbarDir, 'pm4ai-stream.1h.ts')
-    await write(pollingPath, SWIFTBAR_PLUGIN)
-    await write(streamingPath, SWIFTBAR_STREAMING_PLUGIN)
-    await chmod(pollingPath, 0o755)
-    await chmod(streamingPath, 0o755)
-    console.log(`swiftbar polling plugin: ${pollingPath}`)
-    console.log(`swiftbar streaming plugin: ${streamingPath}`)
-  } else console.log('swiftbar not found, install with: brew install swiftbar')
+const installSwiftbarPlugins = async (swiftbarDir: string) => {
+  await mkdir(swiftbarDir, { recursive: true })
+  const pollingPath = join(swiftbarDir, 'pm4ai.1h.sh')
+  const streamingPath = join(swiftbarDir, 'pm4ai-stream.1h.ts')
+  await write(pollingPath, SWIFTBAR_PLUGIN)
+  await write(streamingPath, SWIFTBAR_STREAMING_PLUGIN)
+  await chmod(pollingPath, 0o755)
+  await chmod(streamingPath, 0o755)
+  console.log(`swiftbar polling plugin: ${pollingPath}`)
+  console.log(`swiftbar streaming plugin: ${streamingPath}`)
+}
+const installLaunchd = async () => {
   const launchdDir = join(homedir(), 'Library', 'LaunchAgents')
   await mkdir(launchdDir, { recursive: true })
   const plistPath = join(launchdDir, 'com.pm4ai.fix.plist')
   await write(plistPath, launchdPlist)
   console.log(`launchd plist: ${plistPath}`)
   console.log('load with: launchctl load ~/Library/LaunchAgents/com.pm4ai.fix.plist')
+}
+const setup = async () => {
+  const swiftbarDir = join(homedir(), 'Library', 'Application Support', 'SwiftBar', 'plugins')
+  const isSwiftbarInstalled = await doesPathExist(join(homedir(), 'Library', 'Application Support', 'SwiftBar'))
+  if (isSwiftbarInstalled) await installSwiftbarPlugins(swiftbarDir)
+  else console.log('swiftbar not found, install with: brew install swiftbar')
+  await installLaunchd()
 }
 export { setup }

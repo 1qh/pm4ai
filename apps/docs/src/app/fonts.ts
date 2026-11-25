@@ -1,4 +1,4 @@
-import { Inter, JetBrains_Mono } from 'next/font/google'
-const sans = Inter({ subsets: ['vietnamese'], variable: '--font-sans' })
-const mono = JetBrains_Mono({ variable: '--font-mono' })
+import { Inter as inter, JetBrains_Mono as jetBrainsMono } from 'next/font/google'
+const sans = inter({ subsets: ['vietnamese'], variable: '--font-sans' })
+const mono = jetBrainsMono({ variable: '--font-mono' })
 export { mono, sans }

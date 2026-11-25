@@ -9,7 +9,7 @@ const metadata: Metadata = {
 }
 const Layout = ({ children }: LayoutProps<'/'>) => (
   <html className={cn('font-sans tracking-[-0.02em]', sans.variable, mono.variable)} lang='en' suppressHydrationWarning>
-    <body className='flex flex-col min-h-screen antialiased'>
+    <body className='flex min-h-screen flex-col antialiased'>
       <Providers>{children}</Providers>
     </body>
   </html>

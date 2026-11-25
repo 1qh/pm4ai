@@ -15,7 +15,7 @@ const parseFrontmatter = (content: string): Record<string, string> => {
   }
   return fm
 }
-const dirExists = async (dir: string): Promise<boolean> => {
+const isReadableDir = async (dir: string): Promise<boolean> => {
   try {
     await readdir(dir)
     return true
@@ -29,7 +29,7 @@ const getRulesDir = async (): Promise<string | undefined> => {
     join(import.meta.dir, '..', 'apps', 'web', 'content', 'rules')
   ]
   // eslint-disable-next-line no-await-in-loop
-  for (const c of candidates) if (await dirExists(c)) return c
+  for (const c of candidates) if (await isReadableDir(c)) return c
 }
 const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
   const deps = new Set<string>()
@@ -41,24 +41,24 @@ const getAllDeps = async (projectPath: string): Promise<Set<string>> => {
     }
   return deps
 }
-const inferRules = async (projectPath: string, rulesDir?: string): Promise<string[]> => {
-  const dir = rulesDir ?? (await getRulesDir())
-  if (!(dir && (await dirExists(dir)))) return []
-  const deps = await getAllDeps(projectPath)
+const orderedMdxFiles = async (dir: string): Promise<string[]> => {
   const mdxFiles = (await readdir(dir)).filter(f => f.endsWith('.mdx'))
   const indexFile = mdxFiles.find(f => f === 'index.mdx')
-  const sorted = [
+  return [
     ...(indexFile ? [indexFile] : []),
     ...mdxFiles.filter(f => f !== 'index.mdx').toSorted((a, b) => (a < b ? -1 : Number(a > b)))
   ]
+}
+const inferRules = async (projectPath: string, rulesDir?: string): Promise<string[]> => {
+  const dir = rulesDir ?? (await getRulesDir())
+  if (!(dir && (await isReadableDir(dir)))) return []
+  const deps = await getAllDeps(projectPath)
+  const sorted = await orderedMdxFiles(dir)
   const parsed = await Promise.all(
     sorted.map(async mdxFile => ({ fm: parseFrontmatter(await file(join(dir, mdxFile)).text()), mdxFile }))
   )
-  const rules: string[] = []
-  for (const { fm, mdxFile } of parsed) {
-    const { infer } = fm
-    if (infer && (infer === 'always' || deps.has(infer))) rules.push(mdxFile.replace('.mdx', ''))
-  }
-  return rules
+  return parsed
+    .filter(({ fm: { infer } }) => infer && (infer === 'always' || deps.has(infer)))
+    .map(({ mdxFile }) => mdxFile.replace('.mdx', ''))
 }
 export { inferRules, parseFrontmatter }

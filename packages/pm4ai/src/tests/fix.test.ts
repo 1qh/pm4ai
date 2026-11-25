@@ -11,6 +11,67 @@ const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
 const leadingSepRe = /^--/u
 const toFileName = (p: string) => p.replaceAll('/', '--').replace(leadingSepRe, '')
+const resetLock = async (lockFile: string) => {
+  await rm(lockFile, { force: true })
+  await mkdir(stateDir(), { recursive: true })
+}
+const createLockExclusive = async (lockFile: string) => {
+  const fd = await open(lockFile, 'wx')
+  await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
+  await fd.close()
+}
+const canOpenExclusive = async (lockFile: string): Promise<boolean> => {
+  try {
+    const fd = await open(lockFile, 'wx')
+    await fd.close()
+    return true
+  } catch {
+    return false
+  }
+}
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+const canParseJson = async (path: string): Promise<boolean> => {
+  try {
+    await file(path).json()
+    return true
+  } catch {
+    return false
+  }
+}
+const runFixIn = async (dir: string) => {
+  const saved = process.cwd()
+  process.chdir(dir)
+  await fix()
+  process.chdir(saved)
+}
+const makeDirtyRepo = async () => {
+  const repo = await makeTmp()
+  await $`git init -q .`.cwd(repo).quiet().nothrow()
+  await write(join(repo, 'package.json'), JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe' }))
+  await $`git add -A`.cwd(repo).quiet().nothrow()
+  await $`git -c user.email=t@t -c user.name=t commit -qm init`.cwd(repo).quiet().nothrow()
+  await write(
+    join(repo, 'package.json'),
+    JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe', x: 1 })
+  )
+  return repo
+}
+const makeFakeHome = async () => {
+  const fakeHome = await makeTmp()
+  for (const name of ['pm4ai', 'cnsync']) {
+    const src = join(fakeHome, '.pm4ai', 'repos', name)
+    await mkdir(src, { recursive: true })
+    await $`git init -q .`.cwd(src).quiet().nothrow()
+  }
+  return fakeHome
+}
 describe('maintain', () => {
   test('returns missing issue when up.sh does not exist', async () => {
     const tmp = await makeTmp()
@@ -70,84 +131,49 @@ describe('maintain', () => {
 describe('lockfile', () => {
   const lockFile = statePath('fix.lock')
   test('atomic exclusive create prevents double acquisition', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
-    const fd = await open(lockFile, 'wx')
-    await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    await fd.close()
+    await resetLock(lockFile)
+    await createLockExclusive(lockFile)
     expect(await file(lockFile).exists()).toBe(true)
-    let secondAcquired = true
-    try {
-      const fd2 = await open(lockFile, 'wx')
-      await fd2.close()
-    } catch {
-      secondAcquired = false
-    }
-    expect(secondAcquired).toBe(false)
+    const isSecondAcquired = await canOpenExclusive(lockFile)
+    expect(isSecondAcquired).toBe(false)
     await rm(lockFile, { force: true })
   })
   test('stale lock with dead PID is removable', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
+    await resetLock(lockFile)
     await write(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
     const lock = await readJson<{ at: string; pid: number }>(lockFile)
     const age = Date.now() - new Date(lock.at).getTime()
     expect(age).toBeGreaterThan(600_000)
-    let alive = false
-    try {
-      process.kill(lock.pid, 0)
-      alive = true
-    } catch {
-      /* Expected */
-    }
-    expect(alive).toBe(false)
+    const isAlive = isProcessAlive(lock.pid)
+    expect(isAlive).toBe(false)
     await rm(lockFile, { force: true })
     expect(await file(lockFile).exists()).toBe(false)
   })
   test('lock contains valid JSON with pid and timestamp', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
-    const fd = await open(lockFile, 'wx')
-    await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    await fd.close()
+    await resetLock(lockFile)
+    await createLockExclusive(lockFile)
     const lock = await readJson<{ at: string; pid: number }>(lockFile)
     expect(lock.pid).toBe(process.pid)
     expect(new Date(lock.at).getTime()).not.toBeNaN()
     await rm(lockFile, { force: true })
   })
   test('stale lock from alive process under 10min blocks', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
+    await resetLock(lockFile)
     await write(lockFile, JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
     const lock = await readJson<{ at: string; pid: number }>(lockFile)
     const age = Date.now() - new Date(lock.at).getTime()
     expect(age).toBeLessThan(600_000)
-    let alive = false
-    try {
-      process.kill(lock.pid, 0)
-      alive = true
-    } catch {
-      /* Not found */
-    }
-    expect(alive).toBe(true)
+    const isAlive = isProcessAlive(lock.pid)
+    expect(isAlive).toBe(true)
     await rm(lockFile, { force: true })
   })
   test('corrupt lock file can be replaced', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
+    await resetLock(lockFile)
     await write(lockFile, 'not json')
-    let parsed = false
-    try {
-      await file(lockFile).json()
-      parsed = true
-    } catch {
-      /* Expected */
-    }
-    expect(parsed).toBe(false)
+    const isParsed = await canParseJson(lockFile)
+    expect(isParsed).toBe(false)
     await rm(lockFile, { force: true })
-    const fd = await open(lockFile, 'wx')
-    await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    await fd.close()
+    await createLockExclusive(lockFile)
     expect(await file(lockFile).exists()).toBe(true)
     await rm(lockFile, { force: true })
   })
@@ -203,33 +229,21 @@ const isCI = Boolean(process.env.CI)
 describe.skipIf(isCI)('fix() function', () => {
   const lockFile = statePath('fix.lock')
   test('blocks when lock held by alive process', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
-    const fd = await open(lockFile, 'wx')
-    await fd.writeFile(JSON.stringify({ at: new Date().toISOString(), pid: process.pid }))
-    await fd.close()
+    await resetLock(lockFile)
+    await createLockExclusive(lockFile)
     await fix()
     expect(await file(lockFile).exists()).toBe(true)
     await rm(lockFile, { force: true })
   })
   test('recovers stale lock from dead process', async () => {
-    await rm(lockFile, { force: true })
-    await mkdir(stateDir(), { recursive: true })
+    await resetLock(lockFile)
     await write(lockFile, JSON.stringify({ at: new Date(0).toISOString(), pid: 999_999 }))
-    const saved = process.cwd()
-    const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
-    process.chdir(pm4aiPath)
-    await fix()
-    process.chdir(saved)
+    await runFixIn(join(import.meta.dirname, '..', '..', '..', '..'))
     expect(await file(lockFile).exists()).toBe(false)
   }, 30_000)
   test('cleans up lock after execution', async () => {
     await rm(lockFile, { force: true })
-    const saved = process.cwd()
-    const pm4aiPath = join(import.meta.dirname, '..', '..', '..', '..')
-    process.chdir(pm4aiPath)
-    await fix()
-    process.chdir(saved)
+    await runFixIn(join(import.meta.dirname, '..', '..', '..', '..'))
     expect(await file(lockFile).exists()).toBe(false)
   }, 30_000)
   test('blocks when git is dirty', async () => {
@@ -242,10 +256,7 @@ describe.skipIf(isCI)('fix() function', () => {
       join(tmp, 'package.json'),
       JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'test', private: true })
     )
-    const saved = process.cwd()
-    process.chdir(tmp)
-    await fix()
-    process.chdir(saved)
+    await runFixIn(tmp)
     expect(await file(lockFile).exists()).toBe(false)
     await rm(tmp, { recursive: true })
   }, 30_000)
@@ -258,24 +269,8 @@ describe('fix() via CLI', () => {
   })
   test('refusing a dirty repo exits non-zero', async () => {
     const cliPath = join(import.meta.dirname, '..', '..', 'dist', 'cli.mjs')
-    const repo = await makeTmp()
-    await $`git init -q .`.cwd(repo).quiet().nothrow()
-    await write(
-      join(repo, 'package.json'),
-      JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe' })
-    )
-    await $`git add -A`.cwd(repo).quiet().nothrow()
-    await $`git -c user.email=t@t -c user.name=t commit -qm init`.cwd(repo).quiet().nothrow()
-    await write(
-      join(repo, 'package.json'),
-      JSON.stringify({ devDependencies: { lintmax: 'latest' }, name: 'dirty-probe', x: 1 })
-    )
-    const fakeHome = await makeTmp()
-    for (const name of ['pm4ai', 'cnsync']) {
-      const src = join(fakeHome, '.pm4ai', 'repos', name)
-      await mkdir(src, { recursive: true })
-      await $`git init -q .`.cwd(src).quiet().nothrow()
-    }
+    const repo = await makeDirtyRepo()
+    const fakeHome = await makeFakeHome()
     const result = await $`bun ${cliPath} fix`
       .cwd(repo)
       .env({ ...process.env, PM4AI_HOME: fakeHome })

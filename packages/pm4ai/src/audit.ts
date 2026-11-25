@@ -11,10 +11,30 @@ import {
 import { parseJson } from './json.js'
 import { ghReleaseSchema, npmVersionSchema, safeParse } from './schemas.js'
 import { DEP_FIELDS } from './types.js'
-import { buildPkgDepMap, collectWorkspacePackages, debug, gitCleanRe, isSkippedPath } from './utils.js'
+import {
+  buildPkgDepMap,
+  collectWorkspacePackages,
+  debug,
+  gitCleanRe,
+  isSkippedPath,
+  providedByWorkspaces
+} from './utils.js'
 interface PkgEntry {
   path: string
   pkg: PackageJson
+}
+const cachedVersion = async (
+  cache: Map<string, Promise<string | undefined>>,
+  key: string,
+  fetcher: () => Promise<string | undefined>
+): Promise<string | undefined> => {
+  const cached = cache.get(key)
+  if (cached) return cached
+  const p = fetcher()
+  cache.set(key, p)
+  const v = await p
+  if (!v) cache.delete(key)
+  return v
 }
 const latestNpmVersionCache = new Map<string, Promise<string | undefined>>()
 const fetchNpmVersion = async (pkg: string): Promise<string | undefined> => {
@@ -27,16 +47,9 @@ const fetchNpmVersion = async (pkg: string): Promise<string | undefined> => {
   const data = safeParse(npmVersionSchema, await res.json())
   return data?.version
 }
-const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> => {
-  const cached = latestNpmVersionCache.get(pkg)
-  if (cached) return cached
-  const p = fetchNpmVersion(pkg)
-  latestNpmVersionCache.set(pkg, p)
-  const v = await p
-  if (!v) latestNpmVersionCache.delete(pkg)
-  return v
-}
-let latestBunVersionCache: Promise<string | undefined> | undefined
+const getLatestNpmVersion = async (pkg: string): Promise<string | undefined> =>
+  cachedVersion(latestNpmVersionCache, pkg, async () => fetchNpmVersion(pkg))
+const latestBunVersionCache = new Map<string, Promise<string | undefined>>()
 const fetchBunVersion = async (): Promise<string | undefined> => {
   const url = 'https://api.github.com/repos/oven-sh/bun/releases/latest'
   const res = await fetch(url).catch(() => undefined)
@@ -47,13 +60,8 @@ const fetchBunVersion = async (): Promise<string | undefined> => {
   const data = safeParse(ghReleaseSchema, await res.json())
   return data?.tag_name.replace('bun-v', '')
 }
-const getLatestBunVersion = async (): Promise<string | undefined> => {
-  if (latestBunVersionCache) return latestBunVersionCache
-  latestBunVersionCache = fetchBunVersion()
-  const v = await latestBunVersionCache
-  if (!v) latestBunVersionCache = undefined
-  return v
-}
+const getLatestBunVersion = async (): Promise<string | undefined> =>
+  cachedVersion(latestBunVersionCache, 'bun', fetchBunVersion)
 const isPublishedPkg = (pkg: PackageJson): boolean =>
   !pkg.private && Boolean(pkg.name) && Boolean(pkg.exports ?? pkg.main ?? pkg.bin)
 const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
@@ -64,48 +72,48 @@ const getDepsFromPkg = (pkg: PackageJson): Map<string, string> => {
   }
   return result
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- flat per-package convention checks; splitting hides the single audit surface
-const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
-  const filtered = pkgs.filter(p => !isSkippedPath(p.path) && p.path !== join(projectPath, 'package.json'))
-  for (const { path: pkgPath, pkg } of filtered) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const isPublished = isPublishedPkg(pkg)
-    if (isPublished) {
-      if (pkg.type !== 'module') issues.push({ detail: `${shortPath} should have "type": "module"`, type: 'drift' })
-      if (!pkg.files) issues.push({ detail: `${shortPath} missing "files" field`, type: 'drift' })
-      if (!pkg.license) issues.push({ detail: `${shortPath} missing "license" field`, type: 'drift' })
-      if (!pkg.repository) issues.push({ detail: `${shortPath} missing "repository" field`, type: 'drift' })
-    }
-    const devDeps = pkg.devDependencies
-    const externalDevDeps = devDeps ? Object.entries(devDeps).filter(([, v]) => !v.startsWith('workspace:')) : []
-    if (externalDevDeps.length > 0)
-      issues.push({ detail: `${shortPath} devDependencies should be hoisted to root`, type: 'drift' })
-  }
-  return issues
+const drift = (checks: [boolean, string][]): Issue[] =>
+  checks.filter(([isFailing]) => isFailing).map(([, detail]) => ({ detail, type: 'drift' }))
+const packageConventionIssues = (pkg: PackageJson, shortPath: string): Issue[] => {
+  const externalDevDeps = Object.entries(pkg.devDependencies ?? {}).filter(([, v]) => !v.startsWith('workspace:'))
+  const publishedChecks: [boolean, string][] = isPublishedPkg(pkg)
+    ? [
+        [pkg.type !== 'module', `${shortPath} should have "type": "module"`],
+        [!pkg.files, `${shortPath} missing "files" field`],
+        [!pkg.license, `${shortPath} missing "license" field`],
+        [!pkg.repository, `${shortPath} missing "repository" field`]
+      ]
+    : []
+  return drift([
+    ...publishedChecks,
+    [externalDevDeps.length > 0, `${shortPath} devDependencies should be hoisted to root`]
+  ])
+}
+const checkPackageConventions = (pkgs: PkgEntry[], projectPath: string): Issue[] =>
+  pkgs
+    .filter(p => !isSkippedPath(p.path) && p.path !== join(projectPath, 'package.json'))
+    .flatMap(({ path: pkgPath, pkg }) => packageConventionIssues(pkg, pkgPath.replace(`${projectPath}/`, '')))
+const duplicateIssues = (
+  { path: pkgPath, pkg }: PkgEntry,
+  projectPath: string,
+  pkgDepsByName: Map<string, Set<string>>
+): Issue[] => {
+  const shortPath = pkgPath.replace(`${projectPath}/`, '')
+  const allDeps = [...getDepsFromPkg(pkg)]
+  const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
+  const ownDeps = new Set(allDeps.filter(([, v]) => !v.startsWith('workspace:')).map(([n]) => n))
+  const providedByWs = providedByWorkspaces(wsDeps, pkgDepsByName)
+  const isRoot = pkgPath === join(projectPath, 'package.json')
+  const isApp = shortPath.startsWith('apps/')
+  return [...ownDeps]
+    .filter(d => providedByWs.has(d) && !(isRoot && REQUIRED_ROOT_DEVDEPS.includes(d)) && !isApp)
+    .map(dep => ({ detail: `${dep} in ${shortPath} already provided by workspace dep`, type: 'duplicate' }))
 }
 const checkDuplicates = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
   const pkgDepsByName = buildPkgDepMap(pkgs)
-  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
-  for (const { path: pkgPath, pkg } of filtered) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const allDeps = [...getDepsFromPkg(pkg)]
-    const wsDeps = allDeps.filter(([, v]) => v.startsWith('workspace:')).map(([n]) => n)
-    const ownDeps = new Set(allDeps.filter(([, v]) => !v.startsWith('workspace:')).map(([n]) => n))
-    const providedByWs = new Set<string>()
-    for (const ws of wsDeps) for (const d of pkgDepsByName.get(ws) ?? []) providedByWs.add(d)
-    const isRoot = pkgPath === join(projectPath, 'package.json')
-    const isApp = shortPath.startsWith('apps/')
-    const duplicated = [...ownDeps].filter(
-      d => providedByWs.has(d) && !(isRoot && REQUIRED_ROOT_DEVDEPS.includes(d)) && !isApp
-    )
-    for (const dep of duplicated)
-      issues.push({ detail: `${dep} in ${shortPath} already provided by workspace dep`, type: 'duplicate' })
-  }
-  return issues
+  return pkgs.filter(p => !isSkippedPath(p.path)).flatMap(entry => duplicateIssues(entry, projectPath, pkgDepsByName))
 }
-const usesForbidden = (cmd: string) =>
+const isForbiddenUsed = (cmd: string) =>
   FORBIDDEN_PM_PREFIXES.some(p => cmd.startsWith(p) || cmd.includes(` && ${p}`) || cmd.includes(` || ${p}`))
 const isLintmaxScript = (script: string | undefined, command: 'check' | 'fix'): boolean => {
   const value = script ?? ''
@@ -116,33 +124,40 @@ const isLintmaxScript = (script: string | undefined, command: 'check' | 'fix'): 
   )
 }
 const turboRe = /\bturbo\b/u
-// eslint-disable-next-line sonarjs/cognitive-complexity -- flat per-script convention checks over each package
-const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
-  const rootPkgPath = join(projectPath, 'package.json')
-  const filtered = pkgs.filter(p => !isSkippedPath(p.path))
-  for (const { path: pkgPath, pkg } of filtered) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    const isRoot = pkgPath === rootPkgPath
-    const scripts = Object.entries(pkg.scripts ?? {})
-    for (const [script, cmd] of scripts) {
-      if (usesForbidden(cmd)) issues.push({ detail: `"${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' })
-      if (isRoot && turboRe.test(cmd) && !cmd.includes(TURBO_FLAG) && !script.startsWith('dev'))
-        issues.push({ detail: `"${script}" missing ${TURBO_FLAG}`, type: 'drift' })
-      if (
-        isRoot &&
-        turboRe.test(cmd) &&
-        cmd.includes(TURBO_FLAG) &&
-        !script.startsWith('dev') &&
-        !cmd.includes(TURBO_WARNING_FILTER)
-      )
-        issues.push({ detail: `"${script}" missing turbo workspace warning filter`, type: 'drift' })
-    }
-    if (!isRoot && scripts.some(([s]) => s === 'clean'))
-      issues.push({ detail: `${shortPath} has redundant "clean" script, use root clean.sh`, type: 'drift' })
-  }
-  return issues
+interface ScriptIssuesArgs {
+  cmd: string
+  isRoot: boolean
+  script: string
+  shortPath: string
 }
+const scriptIssues = ({ cmd, isRoot, script, shortPath }: ScriptIssuesArgs): Issue[] => {
+  const isRootTurbo = isRoot && turboRe.test(cmd) && !script.startsWith('dev')
+  return [
+    ...(isForbiddenUsed(cmd)
+      ? [{ detail: `"${script}" uses non-bun pm in ${shortPath}`, type: 'forbidden' as const }]
+      : []),
+    ...drift([
+      [isRootTurbo && !cmd.includes(TURBO_FLAG), `"${script}" missing ${TURBO_FLAG}`],
+      [
+        isRootTurbo && cmd.includes(TURBO_FLAG) && !cmd.includes(TURBO_WARNING_FILTER),
+        `"${script}" missing turbo workspace warning filter`
+      ]
+    ])
+  ]
+}
+const pkgScriptIssues = ({ path: pkgPath, pkg }: PkgEntry, projectPath: string): Issue[] => {
+  const shortPath = pkgPath.replace(`${projectPath}/`, '')
+  const isRoot = pkgPath === join(projectPath, 'package.json')
+  const scripts = Object.entries(pkg.scripts ?? {})
+  return [
+    ...scripts.flatMap(([script, cmd]) => scriptIssues({ cmd, isRoot, script, shortPath })),
+    ...drift([
+      [!isRoot && scripts.some(([s]) => s === 'clean'), `${shortPath} has redundant "clean" script, use root clean.sh`]
+    ])
+  ]
+}
+const checkScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] =>
+  pkgs.filter(p => !isSkippedPath(p.path)).flatMap(entry => pkgScriptIssues(entry, projectPath))
 const checkRootScripts = (rootPkg: PackageJson): Issue[] => {
   const issues: Issue[] = []
   const scripts = rootPkg.scripts ?? {}
@@ -172,16 +187,17 @@ const checkRootWorkspacesAndDevDeps = (rootPkg: PackageJson): Issue[] => {
   if (!rootPkg.workspaces || rootPkg.workspaces.length === 0)
     issues.push({ detail: 'root missing "workspaces" field', type: 'missing' })
   const allDeps = { ...rootPkg.dependencies, ...rootPkg.devDependencies }
-  for (const dep of REQUIRED_ROOT_DEVDEPS)
-    if (!allDeps[dep]) issues.push({ detail: `root missing "${dep}" in devDependencies`, type: 'missing' })
+  const missingDevDeps = REQUIRED_ROOT_DEVDEPS.filter(dep => !allDeps[dep])
+  issues.push(
+    ...missingDevDeps.map(dep => ({ detail: `root missing "${dep}" in devDependencies`, type: 'missing' as const }))
+  )
   return issues
 }
 const checkTrustedDeps = (rootPkg: PackageJson, requiredTrusted?: string[]): Issue[] => {
-  const issues: Issue[] = []
   const trusted = rootPkg.trustedDependencies ?? []
-  for (const dep of requiredTrusted ?? [])
-    if (!trusted.includes(dep)) issues.push({ detail: `root missing "${dep}" in trustedDependencies`, type: 'missing' })
-  return issues
+  return (requiredTrusted ?? [])
+    .filter(dep => !trusted.includes(dep))
+    .map(dep => ({ detail: `root missing "${dep}" in trustedDependencies`, type: 'missing' }))
 }
 const checkPublishedPkgConventions = async (pkgs: PkgEntry[], projectPath: string): Promise<Issue[]> => {
   const published = pkgs.filter(p => isPublishedPkg(p.pkg))
@@ -213,72 +229,84 @@ const checkAppPackages = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
   }
   return issues
 }
+const subPkgScriptIssues = ({ path: pkgPath, pkg }: PkgEntry, projectPath: string): Issue[] => {
+  const shortPath = pkgPath.replace(`${projectPath}/`, '')
+  return Object.entries(pkg.scripts ?? {})
+    .filter(([, cmd]) => gitCleanRe.test(cmd))
+    .map(([script]) => ({ detail: `"${script}" uses git clean in ${shortPath}, use rm -rf`, type: 'forbidden' }))
+}
 const checkSubPkgScripts = (pkgs: PkgEntry[], projectPath: string): Issue[] => {
-  const issues: Issue[] = []
   const rootPkgPath = join(projectPath, 'package.json')
-  const filtered = pkgs.filter(p => !isSkippedPath(p.path) && p.path !== rootPkgPath)
-  for (const { path: pkgPath, pkg } of filtered) {
-    const shortPath = pkgPath.replace(`${projectPath}/`, '')
-    for (const [script, cmd] of Object.entries(pkg.scripts ?? {}))
-      if (gitCleanRe.test(cmd))
-        issues.push({ detail: `"${script}" uses git clean in ${shortPath}, use rm -rf`, type: 'forbidden' })
+  return pkgs
+    .filter(p => !isSkippedPath(p.path) && p.path !== rootPkgPath)
+    .flatMap(entry => subPkgScriptIssues(entry, projectPath))
+}
+const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000
+interface RegistryDoc {
+  time?: Record<string, string>
+  versions?: Record<string, { deprecated?: string }>
+}
+const fetchRegistryDoc = async (name: string | undefined): Promise<RegistryDoc | undefined> => {
+  const res = await fetch(`https://registry.npmjs.org/${name}`).catch(() => undefined)
+  if (!res?.ok) return
+  try {
+    return parseJson<RegistryDoc>(await res.text())
+  } catch {
+    debug('unparseable registry document:', name)
   }
-  return issues
+}
+const checkPublishedVersions = async (name: string | undefined): Promise<Issue[]> => {
+  const doc = await fetchRegistryDoc(name)
+  if (!doc) return []
+  const manifests = doc.versions ?? {}
+  const versions = Object.keys(manifests).filter(v => manifests[v]?.deprecated === undefined)
+  if (versions.length <= 1) return []
+  const times = doc.time ?? {}
+  const now = Date.now()
+  const stale = versions
+    .slice(0, -1)
+    .filter(v => typeof times[v] === 'string' && now - Date.parse(times[v]) > UNPUBLISH_WINDOW_MS)
+  const detail =
+    stale.length === 0
+      ? `${name} has ${versions.length} versions published, run cleanup`
+      : `${name} has ${versions.length} versions, ${stale.length} unpublishable (>72h) — npm blocks unpublish, deprecate instead`
+  return [{ detail, type: 'drift' }]
+}
+const checkBunVersion = async (rootPkg: PackageJson | undefined): Promise<Issue[]> => {
+  const bunVersion = rootPkg?.packageManager?.replace('bun@', '')
+  if (!bunVersion) return []
+  const latest = await getLatestBunVersion()
+  return latest && bunVersion !== latest ? [{ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' }] : []
+}
+const checkRootPackage = async (rootPkg: PackageJson | undefined): Promise<Issue[]> => {
+  if (!rootPkg) return []
+  const selfPkgFile = file(join(import.meta.dirname, '..', '..', '..', 'package.json'))
+  const selfPkgExists = await selfPkgFile.exists()
+  const selfPkg = selfPkgExists ? parseJson<PackageJson>(await selfPkgFile.text()) : {}
+  return [
+    ...checkRootScripts(rootPkg),
+    ...checkRootWorkspacesAndDevDeps(rootPkg),
+    ...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? [])
+  ]
 }
 const audit = async (projectPath: string): Promise<Issue[]> => {
-  const issues: Issue[] = []
   const entries = await collectWorkspacePackages(projectPath)
   const pkgs: PkgEntry[] = entries.map(e => ({ path: e.path, pkg: e.pkg }))
   const rootPkg = pkgs[0]?.pkg
-  const bunVersion = rootPkg?.packageManager?.replace('bun@', '')
-  if (bunVersion) {
-    const latest = await getLatestBunVersion()
-    if (latest && bunVersion !== latest) issues.push({ detail: `${bunVersion} behind latest ${latest}`, type: 'bun' })
-  }
-  issues.push(...(await checkLintmaxSpec(getDepsFromPkg(rootPkg ?? {}).get(LINTMAX_PKG), projectPath)))
-  if (rootPkg) {
-    issues.push(...checkRootScripts(rootPkg), ...checkRootWorkspacesAndDevDeps(rootPkg))
-    const selfPkgFile = file(join(import.meta.dirname, '..', '..', '..', 'package.json'))
-    const selfPkgExists = await selfPkgFile.exists()
-    const selfPkg = selfPkgExists ? parseJson<PackageJson>(await selfPkgFile.text()) : {}
-    issues.push(...checkTrustedDeps(rootPkg, selfPkg.trustedDependencies ?? []))
-  }
-  issues.push(
+  const issues: Issue[] = [
+    ...(await checkBunVersion(rootPkg)),
+    ...(await checkLintmaxSpec(getDepsFromPkg(rootPkg ?? {}).get(LINTMAX_PKG), projectPath)),
+    ...(await checkRootPackage(rootPkg)),
     ...checkPackageConventions(pkgs, projectPath),
     ...checkDuplicates(pkgs, projectPath),
     ...checkScripts(pkgs, projectPath),
     ...(await checkPublishedPkgConventions(pkgs, projectPath)),
     ...checkAppPackages(pkgs, projectPath),
     ...checkSubPkgScripts(pkgs, projectPath)
-  )
+  ]
   const publishedPkgs = pkgs.filter(p => isPublishedPkg(p.pkg))
-  const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000
-  await Promise.all(
-    publishedPkgs.map(async p => {
-      const res = await fetch(`https://registry.npmjs.org/${p.pkg.name}`).catch(() => undefined)
-      if (!res?.ok) return
-      let doc: { time?: Record<string, string>; versions?: Record<string, { deprecated?: string }> }
-      try {
-        doc = parseJson<typeof doc>(await res.text())
-      } catch {
-        return
-      }
-      const manifests = doc.versions ?? {}
-      const versions = Object.keys(manifests).filter(v => manifests[v]?.deprecated === undefined)
-      if (versions.length <= 1) return
-      const times = doc.time ?? {}
-      const now = Date.now()
-      const stale = versions
-        .slice(0, -1)
-        .filter(v => typeof times[v] === 'string' && now - Date.parse(times[v]) > UNPUBLISH_WINDOW_MS)
-      const detail =
-        stale.length === 0
-          ? `${p.pkg.name} has ${versions.length} versions published, run cleanup`
-          : `${p.pkg.name} has ${versions.length} versions, ${stale.length} unpublishable (>72h) — npm blocks unpublish, deprecate instead`
-      issues.push({ detail, type: 'drift' })
-    })
-  )
-  return issues
+  const versionIssues = await Promise.all(publishedPkgs.map(async p => checkPublishedVersions(p.pkg.name)))
+  return [...issues, ...versionIssues.flat()]
 }
 export {
   audit,
@@ -292,7 +320,7 @@ export {
   checkScripts,
   checkSubPkgScripts,
   checkTrustedDeps,
+  isForbiddenUsed,
   isPublishedPkg,
-  usesForbidden
+  type PkgEntry
 }
-export type { PkgEntry }

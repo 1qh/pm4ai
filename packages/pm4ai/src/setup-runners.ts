@@ -22,24 +22,33 @@ const ensureTarball = async (base: string): Promise<string> => {
     await $`curl -fsSL -o ${tarball} https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz`.nothrow()
   return tarball
 }
-const registerRunner = async (repo: string): Promise<void> => {
-  const safe = repo.split('/').pop() ?? repo.replaceAll('/', '-')
-  const base = join(homedir(), '.actions-runners', safe, '1')
-  await mkdir(base, { recursive: true })
-  const tarball = await ensureTarball(base)
+const extractRunner = async (base: string, tarball: string) => {
   const hasConfig = await file(join(base, 'config.sh')).exists()
   if (!hasConfig) await $`tar xzf ${tarball} -C ${base}`.nothrow()
+}
+const fetchRegistrationToken = async (repo: string): Promise<string> => {
   const tokenResult = await $`gh api -X POST repos/${repo}/actions/runners/registration-token -q .token`.quiet().nothrow()
-  const token = tokenResult.stdout.toString().trim()
-  if (!token) {
-    debug('no registration token for', repo)
-    return
-  }
+  return tokenResult.stdout.toString().trim()
+}
+const startRunner = async ({ base, repo, safe, token }: { base: string; repo: string; safe: string; token: string }) => {
   await $`./config.sh --url https://github.com/${repo} --token ${token} --name ${safe}-mac --labels ${RUNNER_LABEL} --work _work --unattended --replace`
     .cwd(base)
     .nothrow()
   await $`./svc.sh install`.cwd(base).nothrow()
   await $`./svc.sh start`.cwd(base).nothrow()
+}
+const registerRunner = async (repo: string): Promise<void> => {
+  const safe = repo.split('/').pop() ?? repo.replaceAll('/', '-')
+  const base = join(homedir(), '.actions-runners', safe, '1')
+  await mkdir(base, { recursive: true })
+  const tarball = await ensureTarball(base)
+  await extractRunner(base, tarball)
+  const token = await fetchRegistrationToken(repo)
+  if (!token) {
+    debug('no registration token for', repo)
+    return
+  }
+  await startRunner({ base, repo, safe, token })
 }
 const setRepoVars = async (repo: string): Promise<void> => {
   await $`gh variable set RUNNER_LABEL --body ${RUNNER_LABEL} -R ${repo}`.nothrow()

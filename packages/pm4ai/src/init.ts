@@ -32,7 +32,7 @@ const REMOVE_PATHS = [
   'apps/docs/src/app/llms.txt',
   'apps/docs/src/app/api'
 ]
-const pathExists = async (path: string): Promise<boolean> => {
+const doesPathExist = async (path: string): Promise<boolean> => {
   try {
     await access(path)
     return true
@@ -75,28 +75,21 @@ const copyTemplateDir = async (tplDir: string, dstDir: string, projectName: stri
   )
 }
 const patchFile = async (path: string, replacements: [string, string][]) => {
-  if (!(await pathExists(path))) return
+  if (!(await doesPathExist(path))) return
   let content = await file(path).text()
   for (const [from, to] of replacements) content = content.replaceAll(from, to)
   await write(path, content)
 }
 const templateDir = join(dirname(new URL(import.meta.url).pathname), 'templates')
-const init = async (name: string) => {
-  const projectName = basename(resolve(process.cwd(), name))
-  const dir = resolve(process.cwd(), name)
-  if (await pathExists(dir)) {
-    console.log(`${dir} already exists`)
-    process.exitCode = 1
-    return
-  }
-  if (await isInsideExistingRepo(dir)) {
-    console.log(`${dir} is inside an existing git repository — refusing to scaffold`)
-    process.exitCode = 1
-    return
-  }
-  const { self } = await discover()
-  const src = self.path
-  console.log(`scaffolding ${projectName} from ${src}...`)
+const failRefused = (message: string) => {
+  console.log(message)
+  process.exitCode = 1
+}
+const refusalFor = async (dir: string): Promise<string | undefined> => {
+  if (await doesPathExist(dir)) return `${dir} already exists`
+  if (await isInsideExistingRepo(dir)) return `${dir} is inside an existing git repository — refusing to scaffold`
+}
+const scaffoldTree = async (src: string, dir: string, projectName: string) => {
   await mkdir(dir, { recursive: true })
   await copyTree(src, dir, new Set(['packages']))
   await Promise.all(REMOVE_PATHS.map(async p => rm(join(dir, p), { force: true, recursive: true })))
@@ -109,6 +102,8 @@ const init = async (name: string) => {
     copyTemplateDir(join(templateDir, 'web'), join(dir, 'apps', 'web'), projectName),
     copyTemplateDir(join(templateDir, 'docs'), join(dir, 'apps', 'docs'), projectName)
   ])
+}
+const writeProjectFiles = async (dir: string, projectName: string) => {
   const bunVersion = await getBunVersion()
   const rootPkgRaw = await file(join(templateDir, 'root-package.txt')).text()
   const rootPkgText = rootPkgRaw
@@ -120,14 +115,25 @@ const init = async (name: string) => {
     patchFile(join(dir, 'apps', 'docs', 'src', 'lib', 'layout.shared.tsx'), [['pm4ai', projectName]]),
     patchFile(join(dir, 'apps', 'web', 'src', 'app', 'layout.tsx'), [['pm4ai dashboard', projectName]])
   ])
-  await syncClaudeMd(src, dir)
+}
+const wireBook = async (dir: string) => {
   const bookInstall = join(homedir(), 'book', 'install.sh')
   // biome-ignore lint/style/noProcessEnv: opt-out flag for the optional book-rules wiring side effect (set by tests, and by users who scaffold without book)
-  if (process.env.PM4AI_SKIP_BOOK_WIRING !== '1' && (await pathExists(bookInstall)))
+  if (process.env.PM4AI_SKIP_BOOK_WIRING !== '1' && (await doesPathExist(bookInstall)))
     await $`sh ${bookInstall} ${dir}`.quiet().nothrow()
+}
+const scaffold = async (dir: string, projectName: string) => {
+  const { self } = await discover()
+  const src = self.path
+  console.log(`scaffolding ${projectName} from ${src}...`)
+  await scaffoldTree(src, dir, projectName)
+  await writeProjectFiles(dir, projectName)
+  await syncClaudeMd(src, dir)
+  await wireBook(dir)
+}
+const finalize = async (dir: string, projectName: string) => {
   if (await isNestedInRepo(dir)) {
-    console.log(`${dir} is inside an existing git repository — refusing to run git init`)
-    process.exitCode = 1
+    failRefused(`${dir} is inside an existing git repository — refusing to run git init`)
     return
   }
   await $`git init`.cwd(dir).quiet()
@@ -137,5 +143,16 @@ const init = async (name: string) => {
   console.log(`\n  cd ${projectName}`)
   console.log('  bun i')
   console.log('  bun dev')
+}
+const init = async (name: string) => {
+  const projectName = basename(resolve(process.cwd(), name))
+  const dir = resolve(process.cwd(), name)
+  const refusal = await refusalFor(dir)
+  if (refusal) {
+    failRefused(refusal)
+    return
+  }
+  await scaffold(dir, projectName)
+  await finalize(dir, projectName)
 }
 export { init }

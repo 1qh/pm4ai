@@ -22,7 +22,7 @@ const timeAgo = (iso: string): string => {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
-const dirExists = async (p: string): Promise<boolean> => {
+const isDirectory = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
   } catch {
@@ -30,19 +30,76 @@ const dirExists = async (p: string): Promise<boolean> => {
   }
 }
 const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
-  const presence = await Promise.all(allPaths.map(async p => dirExists(join(p, 'readonly', 'ui', 'src'))))
+  const presence = await Promise.all(allPaths.map(async p => isDirectory(join(p, 'readonly', 'ui', 'src'))))
   const firstWithUi = allPaths.find((_p, i) => presence[i])
   if (firstWithUi === undefined) return '?'
   const r = await $`git log -1 --format=%ci -- readonly/ui`.cwd(firstWithUi).quiet().nothrow()
   const out = r.stdout.toString().trim()
   return out ? timeAgo(new Date(out).toISOString()) : '?'
 }
-// eslint-disable-next-line sonarjs/cognitive-complexity -- single SwiftBar menu render assembling per-project lines
-const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
-  const anyReal = [...allIssues.values()].some(hasRealIssues)
+const ciTimeOf = (issues: Issue[]): string => {
+  const ciInfo = issues.find(i => i.type === 'info' || i.type === 'ci')
+  const ciTimestamp = ciInfo?.detail.split(' ').at(-1) ?? ''
+  return (ciTimestamp && !Number.isNaN(new Date(ciTimestamp).getTime()) ? timeAgo(ciTimestamp) : '').padEnd(6)
+}
+const projectMenu = ({
+  issues,
+  name,
+  path,
+  repo
+}: {
+  issues: Issue[]
+  name: string
+  path: string
+  repo: string | undefined
+}): { issueLines: string[]; lines: string[] } => {
+  const f = SWIFTBAR_FONT
+  const realIssues = issues.filter(i => i.type !== 'info')
+  const hasIssues = realIssues.length > 0
+  const issueText = realIssues.map(i => shellEscape(i.detail)).join(String.raw`\n`)
+  const issueCount = hasIssues ? ` ${realIssues.length} issues` : ''
+  const lines = [
+    `${hasIssues ? '🔴' : '🟢'} ${name}  ${ciTimeOf(issues)}${issueCount} ${f}`,
+    ...realIssues.map(issue => `--${issue.detail} ${f} color=#ff6b6b`),
+    ...(repo ? [`--GitHub | href=https://github.com/${repo}`] : []),
+    `--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`,
+    `--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`,
+    ...(hasIssues ? [`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`] : [])
+  ]
+  return { issueLines: realIssues.map(issue => `${name.trim()}: ${issue.detail}`), lines }
+}
+const countRealIssues = (allIssues: Map<string, Issue[]>): number =>
+  [...allIssues.values()].flatMap(i => i.filter(x => x.type !== 'info')).length
+const swiftBarHeader = ({
+  allIssues,
+  bunVer,
+  uiSync
+}: {
+  allIssues: Map<string, Issue[]>
+  bunVer: string
+  uiSync: string
+}): string[] => {
   const total = allIssues.size
   const clean = [...allIssues.values()].filter(i => !hasRealIssues(i)).length
-  const totalIssues = [...allIssues.values()].flatMap(i => i.filter(x => x.type !== 'info')).length
+  const status = [...allIssues.values()].some(hasRealIssues)
+    ? `${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`
+    : `${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`
+  return [
+    status,
+    '---',
+    `${total} projects  ${countRealIssues(allIssues)} issues  bun ${bunVer}  ui ${uiSync} ${SWIFTBAR_FONT}`,
+    '---'
+  ]
+}
+const copyAllLines = (allIssueLines: string[], totalIssues: number): string[] => {
+  if (totalIssues === 0) return []
+  const allText = allIssueLines.map(l => shellEscape(l)).join(String.raw`\n`)
+  return [
+    '---',
+    `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
+  ]
+}
+const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> => {
   const paths = [...allIssues.keys()]
   const [repos, bunVer, uiSync] = await Promise.all([
     Promise.all(paths.map(async p => getGhRepo(p))),
@@ -50,47 +107,19 @@ const formatSwiftBar = async (allIssues: Map<string, Issue[]>): Promise<string> 
     getUiSyncTime(paths)
   ])
   const repoMap = new Map(paths.map((p, i) => [p, repos[i]]))
-  const lines: string[] = []
-  if (anyReal) lines.push(`${clean}/${total} | sfimage=xmark.circle.fill sfcolor=red`)
-  else lines.push(`${total}/${total} | sfimage=checkmark.circle.fill sfcolor=green`)
-  const f = SWIFTBAR_FONT
-  lines.push('---', `${total} projects  ${totalIssues} issues  bun ${bunVer}  ui ${uiSync} ${f}`, '---')
-  const maxName = Math.max(...[...allIssues.keys()].map(p => projectName(p).length))
-  const allIssueLines: string[] = []
-  for (const [path, issues] of allIssues) {
-    const name = projectName(path).padEnd(maxName)
-    const repo = repoMap.get(path)
-    const ghUrl = repo ? `https://github.com/${repo}` : ''
-    const ciInfo = issues.find(i => i.type === 'info' || i.type === 'ci')
-    const ciTimestamp = ciInfo?.detail.split(' ').at(-1) ?? ''
-    const ciTime = (ciTimestamp && !Number.isNaN(new Date(ciTimestamp).getTime()) ? timeAgo(ciTimestamp) : '').padEnd(6)
-    const realIssues = issues.filter(i => i.type !== 'info')
-    const mark = realIssues.length > 0 ? '🔴' : '🟢'
-    const warn = realIssues.length > 0 ? ` ${realIssues.length} issues` : ''
-    lines.push(`${mark} ${name}  ${ciTime}${warn} ${f}`)
-    if (realIssues.length > 0)
-      for (const issue of realIssues) {
-        lines.push(`--${issue.detail} ${f} color=#ff6b6b`)
-        allIssueLines.push(`${name.trim()}: ${issue.detail}`)
-      }
-    if (ghUrl) lines.push(`--GitHub | href=${ghUrl}`)
-    lines.push(
-      `--VS Code | bash=/usr/bin/open param1=-a param2=Visual\\ Studio\\ Code param3=${path} terminal=false`,
-      `--Ghostty | bash=/usr/bin/open param1=-a param2=Ghostty param3=--working-directory=${path} terminal=false`
-    )
-    if (realIssues.length > 0) {
-      const issueText = realIssues.map(i => shellEscape(i.detail)).join(String.raw`\n`)
-      lines.push(`--Copy Issues | bash=/bin/bash param1=-c param2='echo "${issueText}" | pbcopy' terminal=false`)
-    }
-  }
-  if (totalIssues > 0) {
-    lines.push('---')
-    const allText = allIssueLines.map(l => shellEscape(l)).join(String.raw`\n`)
-    lines.push(
-      `Copy All Issues (${totalIssues}) | bash=/bin/bash param1=-c param2='echo "${allText}" | pbcopy' terminal=false`
-    )
-  }
-  lines.push('---', 'Refresh | refresh=true')
-  return lines.join('\n')
+  const maxName = Math.max(...paths.map(p => projectName(p).length))
+  const menus = [...allIssues].map(([path, issues]) =>
+    projectMenu({ issues, name: projectName(path).padEnd(maxName), path, repo: repoMap.get(path) })
+  )
+  return [
+    ...swiftBarHeader({ allIssues, bunVer, uiSync }),
+    ...menus.flatMap(m => m.lines),
+    ...copyAllLines(
+      menus.flatMap(m => m.issueLines),
+      countRealIssues(allIssues)
+    ),
+    '---',
+    'Refresh | refresh=true'
+  ].join('\n')
 }
 export { formatIssues, formatSwiftBar, getUiSyncTime, hasRealIssues, shellEscape, timeAgo }

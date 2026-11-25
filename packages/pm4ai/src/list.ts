@@ -7,19 +7,19 @@ const BEHIND_RE = /-(?<n>\d+)/u
 type ListWriter = (row: string) => void
 const gitStatus = async (
   path: string,
-  includeUpstream: boolean
+  shouldIncludeUpstream: boolean
 ): Promise<{ ahead: number; behind: number; dirty: boolean }> => {
-  const sb = includeUpstream
+  const sb = shouldIncludeUpstream
     ? await $`git -C ${path} status -sb --porcelain=v2 --branch -- .`.quiet().nothrow()
     : await $`git -C ${path} status --porcelain -- .`.quiet().nothrow()
   const out = sb.stdout.toString()
   const aheadMatch = AHEAD_RE.exec(out)
   const behindMatch = BEHIND_RE.exec(out)
-  const dirty = out.split('\n').some(l => l.startsWith('1 ') || l.startsWith('2 ') || l.startsWith('?'))
+  const isDirty = out.split('\n').some(l => l.startsWith('1 ') || l.startsWith('2 ') || l.startsWith('?'))
   return {
     ahead: aheadMatch ? Number(aheadMatch.groups?.n) : 0,
     behind: behindMatch ? Number(behindMatch.groups?.n) : 0,
-    dirty
+    dirty: isDirty
   }
 }
 const list = async (
@@ -30,16 +30,16 @@ const list = async (
   const { consumers } = await discover(searchRoot, excludes, false)
   const rows = await Promise.all(
     consumers.map(async c => {
-      const nested = await isNestedInRepo(c.path)
-      const g = await gitStatus(c.path, !nested)
+      const isNested = await isNestedInRepo(c.path)
+      const g = await gitStatus(c.path, !isNested)
       const counts: string[] = []
-      if (!nested) {
+      if (!isNested) {
         if (g.behind) counts.push(`behind:${g.behind}`)
         if (g.ahead) counts.push(`ahead:${g.ahead}`)
       }
       const flags = [
         g.dirty ? 'dirty' : 'clean',
-        nested ? 'upstream counts skipped: not a repository root' : '',
+        isNested ? 'upstream counts skipped: not a repository root' : '',
         ...counts
       ]
         .filter(Boolean)
@@ -47,6 +47,7 @@ const list = async (
       return `${c.path}\t${flags}`
     })
   )
-  for (const r of rows.toSorted((a, b) => (a < b ? -1 : Number(a > b)))) write(r)
+  const sorted = rows.toSorted((a, b) => (a < b ? -1 : Number(a > b)))
+  for (const r of sorted) write(r)
 }
 export { list }

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-const dirExists = async (p: string): Promise<boolean> => {
+const isDirPresent = async (p: string): Promise<boolean> => {
   try {
     return (await stat(p)).isDirectory()
   } catch {
@@ -45,12 +45,12 @@ describe('dashboard directory detection', () => {
     const tmp = await makeTmp()
     const dashDir = join(tmp, 'apps', 'dashboard')
     await mkdir(dashDir, { recursive: true })
-    expect(await dirExists(dashDir)).toBe(true)
+    expect(await isDirPresent(dashDir)).toBe(true)
     await rm(tmp, { recursive: true })
   })
   test('detects when apps/web is missing', async () => {
     const tmp = await makeTmp()
-    expect(await dirExists(join(tmp, 'apps', 'dashboard'))).toBe(false)
+    expect(await isDirPresent(join(tmp, 'apps', 'dashboard'))).toBe(false)
     await rm(tmp, { recursive: true })
   })
 })

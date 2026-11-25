@@ -13,20 +13,20 @@ import {
   checkScripts,
   checkSubPkgScripts,
   checkTrustedDeps,
-  usesForbidden
+  isForbiddenUsed
 } from '../audit.js'
 setDefaultTimeout(30_000)
 const PROJECT = join(tmpdir(), 'project')
 const entry = (path: string, pkg: PkgEntry['pkg']): PkgEntry => ({ path: `${PROJECT}/${path}`, pkg })
-describe('usesForbidden', () => {
+describe('isForbiddenUsed', () => {
   test('npm publish is forbidden', () => {
-    expect(usesForbidden('npm publish')).toBe(true)
+    expect(isForbiddenUsed('npm publish')).toBe(true)
   })
   test('bun publish is allowed', () => {
-    expect(usesForbidden('bun publish')).toBe(false)
+    expect(isForbiddenUsed('bun publish')).toBe(false)
   })
   test('forbidden after &&', () => {
-    expect(usesForbidden('lintmax fix && npm run build')).toBe(true)
+    expect(isForbiddenUsed('lintmax fix && npm run build')).toBe(true)
   })
 })
 describe('checkDuplicates', () => {
@@ -295,6 +295,6 @@ describe('checkLintmaxSpec', () => {
     expect(issues.some(i => i.detail.includes('is a range, must be "latest"'))).toBe(true)
   })
   test('accepts a workspace spec', async () => {
-    expect(await checkLintmaxSpec('workspace:*', process.cwd())).toEqual([])
+    expect(await checkLintmaxSpec('workspace:*', process.cwd())).toStrictEqual([])
   })
 })

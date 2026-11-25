@@ -34,96 +34,104 @@ import {
 import { discover, discoverSources } from './discover.js'
 import { formatIssues, formatSwiftBar, timeAgo } from './format.js'
 import { checkClaudeMdFresh } from './sync.js'
-import { isInsideProject, projectName } from './utils.js'
+import { projectName, projectRootOf } from './utils.js'
 import { emitToSocket } from './watch-emitter.js'
 import { createEvent } from './watch-types.js'
-const status = async (swiftbar = false, all = false, excludes: readonly string[] = []) => {
-  let allProjects: { name: string; path: string }[]
-  let selfPath: string
-  if (all) {
-    const { cnsync, consumers, self } = await discover(undefined, excludes)
-    selfPath = self.path
-    allProjects = [self, cnsync, ...consumers]
-  } else {
-    const projectPath = await isInsideProject()
+interface StatusTarget {
+  name: string
+  path: string
+}
+const resolveStatusTargets = async (
+  shouldIncludeAll: boolean,
+  excludes: readonly string[]
+): Promise<{ projects: StatusTarget[]; selfPath: string }> => {
+  if (!shouldIncludeAll) {
+    const projectPath = await projectRootOf()
     if (projectPath) {
       const { self } = await discoverSources()
-      selfPath = self.path
-      allProjects = [{ name: projectName(projectPath), path: projectPath }]
-    } else {
-      const { cnsync, consumers, self } = await discover(undefined, excludes)
-      selfPath = self.path
-      allProjects = [self, cnsync, ...consumers]
+      return { projects: [{ name: projectName(projectPath), path: projectPath }], selfPath: self.path }
     }
   }
+  const { cnsync, consumers, self } = await discover(undefined, excludes)
+  return { projects: [self, cnsync, ...consumers], selfPath: self.path }
+}
+const collectIssues = async (projectPath: string, selfPath: string): Promise<Issue[]> => {
+  const results: Issue[][] = await Promise.all([
+    checkGit(projectPath),
+    checkDrift(selfPath, projectPath),
+    checkClaudeMdFresh(selfPath, projectPath),
+    checkRootPkg(projectPath),
+    checkConfigs(projectPath),
+    checkForbidden(projectPath),
+    checkLayouts(projectPath),
+    checkPages(projectPath),
+    checkShadcnClasses(projectPath),
+    checkTailwindSourceCoverage(projectPath),
+    checkDepsLatest(projectPath),
+    checkTypescriptPin(projectPath),
+    checkSherifScope(projectPath),
+    checkActionRunsTests(projectPath),
+    checkNextConfigs(projectPath),
+    checkAppTsconfigs(projectPath),
+    checkBannedImports(projectPath),
+    checkHermeticTests(projectPath),
+    checkFumadocsBuild(projectPath),
+    checkFumadocsGithubUrl(projectPath),
+    checkMergeMarkers(projectPath),
+    checkConvexSelfHosted(projectPath),
+    checkScaffoldNames(projectPath),
+    audit(projectPath)
+  ])
+  return [
+    ...results.flat(),
+    ...(await checkCi(projectPath)),
+    ...(await checkCiRunner(projectPath)),
+    ...(await checkRelease(projectPath)),
+    ...(await checkVercel(projectPath))
+  ]
+}
+const emitCheckResult = async (name: string, issues: Issue[]) => {
+  const hasFails = issues.length > 0
+  await emitToSocket(
+    createEvent({
+      detail: hasFails ? `${issues.length} issues` : undefined,
+      project: name,
+      status: hasFails ? 'fail' : 'ok',
+      step: 'check'
+    })
+  )
+  await emitToSocket(
+    createEvent({
+      detail: hasFails ? `${issues.length} issues` : 'clean',
+      project: name,
+      status: hasFails ? 'fail' : 'ok',
+      step: 'done'
+    })
+  )
+}
+const printIssues = async (allIssues: Map<string, Issue[]>) => {
+  for (const [path, issues] of allIssues) {
+    console.log(formatIssues(path, issues))
+    console.log()
+  }
+  // biome-ignore lint/style/noProcessEnv: this refresh seam is scoped to the macOS side effect
+  if (process.platform === 'darwin' && process.env.PM4AI_NO_SWIFTBAR_REFRESH !== '1')
+    await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
+}
+const status = async (shouldUseSwiftbar = false, shouldIncludeAll = false, excludes: readonly string[] = []) => {
+  const { projects, selfPath } = await resolveStatusTargets(shouldIncludeAll, excludes)
   const allIssues = new Map<string, Issue[]>()
-  const checks = allProjects.map(async project => {
-    const name = projectName(project.path)
-    await emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
-    const issues: Issue[] = []
-    const results: Issue[][] = await Promise.all([
-      checkGit(project.path),
-      checkDrift(selfPath, project.path),
-      checkClaudeMdFresh(selfPath, project.path),
-      checkRootPkg(project.path),
-      checkConfigs(project.path),
-      checkForbidden(project.path),
-      checkLayouts(project.path),
-      checkPages(project.path),
-      checkShadcnClasses(project.path),
-      checkTailwindSourceCoverage(project.path),
-      checkDepsLatest(project.path),
-      checkTypescriptPin(project.path),
-      checkSherifScope(project.path),
-      checkActionRunsTests(project.path),
-      checkNextConfigs(project.path),
-      checkAppTsconfigs(project.path),
-      checkBannedImports(project.path),
-      checkHermeticTests(project.path),
-      checkFumadocsBuild(project.path),
-      checkFumadocsGithubUrl(project.path),
-      checkMergeMarkers(project.path),
-      checkConvexSelfHosted(project.path),
-      checkScaffoldNames(project.path),
-      audit(project.path)
-    ])
-    for (const r of results) issues.push(...r)
-    issues.push(
-      ...(await checkCi(project.path)),
-      ...(await checkCiRunner(project.path)),
-      ...(await checkRelease(project.path)),
-      ...(await checkVercel(project.path))
-    )
-    allIssues.set(project.path, issues)
-    const hasFails = issues.length > 0
-    await emitToSocket(
-      createEvent({
-        detail: hasFails ? `${issues.length} issues` : undefined,
-        project: name,
-        status: hasFails ? 'fail' : 'ok',
-        step: 'check'
-      })
-    )
-    await emitToSocket(
-      createEvent({
-        detail: hasFails ? `${issues.length} issues` : 'clean',
-        project: name,
-        status: hasFails ? 'fail' : 'ok',
-        step: 'done'
-      })
-    )
-  })
-  await Promise.all(checks)
-  await Promise.all(allProjects.map(async project => spawnBackgroundCheck(project.path)))
-  if (swiftbar) console.log(await formatSwiftBar(allIssues))
-  else {
-    for (const [path, issues] of allIssues) {
-      console.log(formatIssues(path, issues))
-      console.log()
-    }
-    // biome-ignore lint/style/noProcessEnv: this refresh seam is scoped to the macOS side effect
-    if (process.platform === 'darwin' && process.env.PM4AI_NO_SWIFTBAR_REFRESH !== '1')
-      await $`open swiftbar://refreshplugin?name=pm4ai`.quiet().nothrow()
-  }
+  await Promise.all(
+    projects.map(async project => {
+      const name = projectName(project.path)
+      await emitToSocket(createEvent({ project: name, status: 'start', step: 'check' }))
+      const issues = await collectIssues(project.path, selfPath)
+      allIssues.set(project.path, issues)
+      await emitCheckResult(name, issues)
+    })
+  )
+  await Promise.all(projects.map(async project => spawnBackgroundCheck(project.path)))
+  if (shouldUseSwiftbar) console.log(await formatSwiftBar(allIssues))
+  else await printIssues(allIssues)
 }
 export { status, timeAgo }

@@ -86,7 +86,8 @@ describe('getProjectsFromCache logic', () => {
   test('check file names decode to absolute paths', async () => {
     const dir = await makeChecksDir()
     await writeCheck(dir, '/x/y/z', { at: 'x', pass: true, violations: 0 })
-    for (const f of await jsonFiles(dir)) {
+    const files = await jsonFiles(dir)
+    for (const f of files) {
       const path = decode(f)
       expect(path.startsWith('/')).toBe(true)
       expect(path.length).toBeGreaterThan(1)
