@@ -44,6 +44,6 @@
     font-family: var(--font-mono), ui-monospace, monospace;
   }
   html > body[data-scroll-locked] {
-    margin-inline-end: 0px !important;
+    margin-inline-end: 0 !important;
   }
 }

@@ -1,6 +1,3 @@
-/** biome-ignore-all lint/nursery/noPlaywrightElementHandle: playwright e2e */
-/** biome-ignore-all lint/nursery/noPlaywrightEval: playwright e2e */
-/** biome-ignore-all lint/nursery/noPlaywrightWaitForSelector: playwright e2e */
 /* eslint-disable no-promise-executor-return, @typescript-eslint/no-unnecessary-condition */
 import type { ChildProcess } from 'node:child_process'
 import type { Browser, Page } from 'playwright'

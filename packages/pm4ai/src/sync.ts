@@ -263,16 +263,16 @@ const syncRootDevDeps = async (pkg: PackageJson, devDeps: Record<string, string>
   for (const [index, dep] of REQUIRED_ROOT_DEVDEPS.entries()) {
     const spec = allDeps[dep]
     const unresolvable = verdicts[index] ?? false
-    if (!spec || unresolvable) {
-      devDeps[dep] = DEFAULT_DEP_VERSION
-      changed = true
-      issues.push({
-        detail: unresolvable
-          ? `unresolvable ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
-          : `added ${dep} to devDependencies`,
-        type: 'synced'
-      })
-    }
+    if (!(!spec || unresolvable)) continue
+
+    devDeps[dep] = DEFAULT_DEP_VERSION
+    changed = true
+    issues.push({
+      detail: unresolvable
+        ? `unresolvable ${dep} "${spec}" rewritten to "${DEFAULT_DEP_VERSION}"`
+        : `added ${dep} to devDependencies`,
+      type: 'synced'
+    })
   }
   return changed
 }
@@ -570,12 +570,12 @@ const fixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean =>
   const scripts = pkg.scripts ?? {}
   for (const [name, cmd] of Object.entries(scripts)) {
     gitCleanRe.lastIndex = 0
-    if (gitCleanRe.test(cmd)) {
-      gitCleanRe.lastIndex = 0
-      scripts[name] = cmd.replace(gitCleanRe, 'rm -rf ')
-      changed = true
-      issues.push({ detail: `${rel} "${name}" replaced git clean with rm -rf`, type: 'synced' })
-    }
+    if (!gitCleanRe.test(cmd)) continue
+
+    gitCleanRe.lastIndex = 0
+    scripts[name] = cmd.replace(gitCleanRe, 'rm -rf ')
+    changed = true
+    issues.push({ detail: `${rel} "${name}" replaced git clean with rm -rf`, type: 'synced' })
   }
   return changed
 }
@@ -673,15 +673,15 @@ const syncSubPackages = async (_selfPath: string, projectPath: string): Promise<
       let dedupChanged = false
       for (const field of DEP_FIELDS) {
         const deps = entry.pkg[field]
-        if (deps) {
-          for (const [name, version] of Object.entries(deps))
-            if (!version.startsWith('workspace:') && providedByWs.has(name)) {
-              delete deps[name]
-              dedupChanged = true
-              issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
-            }
-          if (Object.keys(deps).length === 0) delete entry.pkg[field]
-        }
+        if (!deps) continue
+
+        for (const [name, version] of Object.entries(deps))
+          if (!version.startsWith('workspace:') && providedByWs.has(name)) {
+            delete deps[name]
+            dedupChanged = true
+            issues.push({ detail: `${rel} removed duplicate "${name}" (provided by workspace dep)`, type: 'synced' })
+          }
+        if (Object.keys(deps).length === 0) delete entry.pkg[field]
       }
       if (dedupChanged) writes.push(writeJson(entry.path, entry.pkg))
     }
@@ -747,7 +747,9 @@ const gateNextBuild = (script: string): string =>
     ? script
     : script.replace('bunx --bun next build', `(bunx --bun next build || ${BUILD_ID_GATE})`)
 const patchFumadocsScript = (script: string): string =>
-  gateNextBuild(script.replace(NEXT_BUILD_RE, 'bunx --bun next build').replace(FUMADOCS_MDX_RE, 'bunx --bun fumadocs-mdx'))
+  gateNextBuild(
+    script.replaceAll(NEXT_BUILD_RE, 'bunx --bun next build').replaceAll(FUMADOCS_MDX_RE, 'bunx --bun fumadocs-mdx')
+  )
 const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
   const entries = await collectWorkspacePackages(projectPath)
   const fumadocsApps = entries.filter(e => {
@@ -761,10 +763,10 @@ const syncFumadocsBuild = async (projectPath: string): Promise<Issue[]> => {
       const next = { ...scripts }
       for (const [k, v] of Object.entries(scripts)) {
         const patched = patchFumadocsScript(v)
-        if (patched !== v) {
-          next[k] = patched
-          changed = true
-        }
+        if (!(patched !== v)) continue
+
+        next[k] = patched
+        changed = true
       }
       if (!changed) return
       await write(app.path, `${JSON.stringify({ ...app.pkg, scripts: next }, null, 2)}\n`)

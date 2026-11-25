@@ -259,10 +259,10 @@ const deriveStats = ({
       steps += STEP_COUNT
     }
     steps += s.completedSteps.size
-    if ((s.status === 'done' || s.status === 'failed') && s.elapsed > maxE) {
-      maxE = s.elapsed
-      maxN = n
-    }
+    if (!((s.status === 'done' || s.status === 'failed') && s.elapsed > maxE)) continue
+
+    maxE = s.elapsed
+    maxN = n
   }
   let eta: number | undefined
   if (runningCount > 0)

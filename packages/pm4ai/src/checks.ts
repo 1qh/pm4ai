@@ -922,14 +922,12 @@ const collidingTemplates = (templates: ScaffoldTemplate[]): Issue[] => {
     }
     for (const [produced, dirs] of byProduced) {
       const key = dirs.join(',')
-      if (dirs.length > 1 && !reported.has(key)) {
-        reported.add(key)
-        issues.push(
-          drift(
-            `scaffold templates ${key} both produce workspace package "${produced}" for a project named "${candidate}"`
-          )
-        )
-      }
+      if (!(dirs.length > 1 && !reported.has(key))) continue
+
+      reported.add(key)
+      issues.push(
+        drift(`scaffold templates ${key} both produce workspace package "${produced}" for a project named "${candidate}"`)
+      )
     }
   }
   return issues

@@ -8,15 +8,15 @@ A client-only React single-page app served by `Bun.serve` with Bun's own bundler
 
 ## MUST
 
-#### Runtime and server
+### Runtime and server
 - Serve the frontend from one `Bun.serve` process that imports the HTML entry and serves the SPA, the base path, and a health route. Why: Bun's bundler and server cover build, hot reload, base-path routing and health in one runtime, so a client-only SPA needs no framework server.
 - Mount every route and asset under the deployment base path through `Bun.serve` route patterns, single-sourced from one constant. Why: the base path is the deployment contract when the app is hosted beside another app on one domain.
 
-#### Production JSX
+### Production JSX
 - Pass `Bun.serve` a BOOLEAN `development: false` in production, never an object like `{ hmr: false }`. Why: an object keeps Bun's bundler in development mode and emits the dev JSX runtime (`jsxDEV`), so the served SPA throws `jsxDEV is not a function` and never mounts — an HTML 200 and a healthy health route hide it, because the crash is client-side after load. Gate `development` on the deploy env: `NODE_ENV === 'production' ? false : { hmr: true }`.
 - Prove the SPA MOUNTS, never that the server answers — a committed headless-browser drive that loads the served SPA and asserts the app rendered (a real element, zero console errors). Why: `curl` on the HTML proves the server serves, not that React mounted; the production-JSX crash and every other pre-mount throw pass a 200 and fail the browser.
 
-#### Tailwind and assets
+### Tailwind and assets
 - Register `bun-plugin-tailwind` in `bunfig.toml` under `[serve.static]` `plugins`. Why: the serve and bundler lane reads that list where a bare `bun build` invocation does not, so Tailwind at-rules pass through uncompiled unless the plugin is registered for the serve.
 - Declare Tailwind `@source` globs relative to the serve CWD — the app's own `src` and each `node_modules/<lib>/dist` whose classes are used. Why: bun-plugin-tailwind scans from the process CWD rather than the css file, so a css-file-relative glob misses and those utilities never compile.
 - Build a bundled worker (pdf.js and similar) as its own entry and serve it plus its wasm as static assets, pointing the library's worker and wasm URL at the served paths. Why: a worker referenced by `new URL(..., import.meta.url)` is a runtime asset the client fetches rather than an inlined import, so the bundler does not auto-emit it.
@@ -26,7 +26,7 @@ A client-only React single-page app served by `Bun.serve` with Bun's own bundler
 - List in `trustedDependencies` every dep whose install links a binary through a postinstall — `bun-plugin-tailwind` (and `dprint`) pull the `bun` npm package whose postinstall links `node_modules/.bin/bun`. Why: bun skips an untrusted dep's postinstall, so the `.bin/bun` shim is never linked and the next invocation dies `ENOEXEC` — a failure that names the shim, never the skipped trust.
 - Serve EVERY pdf.js runtime asset the corpus needs under the base path — the worker AND cMaps, standard_fonts, and wasm — and point the library's config (`GlobalWorkerOptions.workerSrc` plus `cMapUrl`/`standardFontDataUrl`/`wasmUrl`) at the served paths. Why: each is referenced by a module-relative `new URL(..., import.meta.url)` the bundler cannot emit, so serving only the worker renders a born-digital page while CJK, standard-font, and image-wasm documents break — the whole asset class is served, not the one that surfaced.
 
-#### Workspace-library typed-lint before a gate that skips the build
+### Workspace-library typed-lint before a gate that skips the build
 - Give a workspace library a `development` export condition pointing at its typed `src`, and set `customConditions: ["development"]` in the consumer `tsconfig`. Why: a gate that typed-lints without building the library's `dist` resolves its import to an absent `.d.ts` and raises a `no-unsafe-*` wall; the `development` condition resolves to typed source so the lint sees real types, while published consumers still resolve `dist`.
 - Build the workspace library before `bun test`, because `bun test` ignores `customConditions`. Why: the test runtime resolves the default export (`dist`) rather than the `development` source, so an unbuilt library fails the test run even though the typed-lint is green.
 

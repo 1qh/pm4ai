@@ -1,6 +1,5 @@
 /* oxlint-disable promise/prefer-await-to-then, react-perf/jsx-no-new-object-as-prop, react/exhaustive-effect-dependencies -- React-Compiler-era rule; these are intentional mount-only + explicit-dep effects in non-compiled React */
 /** biome-ignore-all lint/suspicious/noEmptyBlockStatements: SSE handler */
-/** biome-ignore-all lint/nursery/useNamedCaptureGroup: regex */
 /** biome-ignore-all lint/performance/noAwaitInLoops: SSE stream */
 /** biome-ignore-all lint/performance/useTopLevelRegex: effect */
 /** biome-ignore-all lint/correctness/useExhaustiveDependencies: effects */
@@ -303,7 +302,7 @@ const Dashboard = () => {
           <div className='h-2 bg-secondary rounded-full overflow-hidden'>
             <div
               className={cn(
-                'h-full bg-gradient-to-r from-progress-start to-progress-end',
+                'h-full bg-linear-to-r from-progress-start to-progress-end',
                 'transition-all duration-300 rounded-full'
               )}
               style={{ width: `${pct}%` }}
