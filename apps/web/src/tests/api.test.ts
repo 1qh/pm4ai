@@ -6,24 +6,26 @@ import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
 const dashboardDir = join(import.meta.dirname, '..', '..')
 setDefaultTimeout(60_000)
-/** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
 const PORT = await freePort()
 let server: ChildProcess
 let baseUrl: string
 let distDir: string
 let fixtureDir: string
 let projectPath: string
-/** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
-const waitForReady = async (): Promise<void> =>
+const waitForReady = async (): Promise<undefined> =>
   new Promise((resolve, reject) => {
     let output = ''
-    const fail = (why: string) => reject(new Error(`${why}\n--- server output ---\n${output.trim() || '(silent)'}`))
+    const fail = (why: string) => {
+      const details = output.trim() || '(silent)'
+      const error = new Error(`${why}\n--- server output ---\n${details}`)
+      reject(error)
+    }
     const timeout = setTimeout(() => fail(`server did not print "Ready" within 30s on port ${String(PORT)}`), 30_000)
     const check = (chunk: Buffer) => {
       output += chunk.toString()
       if (output.includes('Ready')) {
         clearTimeout(timeout)
-        resolve()
+        resolve(undefined)
       }
     }
     server.stderr?.on('data', check)
@@ -45,8 +47,7 @@ const isJson = (body: string): boolean => {
     return false
   }
 }
-/** `next dev` compiles a route on its FIRST request, so a warmup that swallows its own result lets the first real test hit a route mid-compile and read an HTML error page as JSON. Waits until the route actually answers with JSON, and fails loud with the last body when it never does. */
-const warmRoute = async (): Promise<void> => {
+const warmRoute = async (): Promise<undefined> => {
   const deadline = Date.now() + 90_000
   let last = '(no response)'
   while (Date.now() < deadline) {
@@ -58,7 +59,7 @@ const warmRoute = async (): Promise<void> => {
       .then(async res => res.text())
       .catch((error: unknown) => `fetch failed: ${String(error)}`)
     last = body
-    if (isJson(body)) return
+    if (isJson(body)) return undefined
     await Bun.sleep(500)
   }
   throw new Error(`/api/rpc/projects never returned JSON within 90s\n--- last body ---\n${last.slice(0, 500)}`)
@@ -100,11 +101,16 @@ describe('web server', () => {
   // biome-ignore lint/nursery/noTestHooks: one dev server is shared by the whole suite
   beforeAll(async () => {
     baseUrl = `http://localhost:${String(PORT)}`
-    const started = await spawnDevServer(dashboardDir, PORT)
-    distDir = started.distDir
-    fixtureDir = started.fixtureDir
-    projectPath = started.projectPath
-    server = started.server
+    const {
+      distDir: buildDirectory,
+      fixtureDir: fixtureDirectory,
+      projectPath: fixtureProjectPath,
+      server: devServer
+    } = await spawnDevServer(dashboardDir, PORT)
+    distDir = buildDirectory
+    fixtureDir = fixtureDirectory
+    projectPath = fixtureProjectPath
+    server = devServer
     await waitForReady()
     await warmRoute()
   }, 120_000)

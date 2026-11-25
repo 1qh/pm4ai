@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
 import { createEvent } from 'pm4ai'
 import { cleanDistDir, spawnDevServer } from './dev-server.js'
 import { freePort } from './free-port.js'
-/** A fixed port is a host-wide singleton, so a second run on the same machine — a CI runner beside a local shell — races it for the bind. */
+const githubProjectUrl = /^https:\/\/github\.com\/1qh\/[\w-]+$/u
 const PORT = await freePort()
 const BASE = `http://localhost:${PORT}`
 setDefaultTimeout(60_000)
@@ -21,17 +21,20 @@ let distDir: string
 let fixtureDir: string
 let projectPath: string
 let stateDirectory: string
-/** Reports what the server actually said — a bare timeout hides the cause (port taken, crash on boot) behind one useless string. */
-const waitForReady = async (): Promise<void> =>
+const waitForReady = async (): Promise<undefined> =>
   new Promise((resolve, reject) => {
     let output = ''
-    const fail = (why: string) => reject(new Error(`${why}\n--- server output ---\n${output.trim() || '(silent)'}`))
+    const fail = (why: string) => {
+      const details = output.trim() || '(silent)'
+      const error = new Error(`${why}\n--- server output ---\n${details}`)
+      reject(error)
+    }
     const timeout = setTimeout(() => fail(`server did not print "Ready" within 30s on port ${String(PORT)}`), 30_000)
     const check = (chunk: Buffer) => {
       output += chunk.toString()
       if (output.includes('Ready')) {
         clearTimeout(timeout)
-        resolve()
+        resolve(undefined)
       }
     }
     server.stderr?.on('data', check)
@@ -45,17 +48,18 @@ const waitForReady = async (): Promise<void> =>
       fail(`server exited before becoming ready (code ${String(code)}, signal ${String(signal)})`)
     })
   })
-const wait = async (ms: number): Promise<void> =>
+const wait = async (ms: number): Promise<undefined> =>
   new Promise(r => {
     setTimeout(r, ms)
   })
-const waitForSocketConnected = async (timeout = 10_000): Promise<void> => {
-  const start = Date.now()
-  while (Date.now() - start < timeout) {
+const waitForSocketConnected = async (timeout = 10_000): Promise<undefined> => {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
     const res = await fetch(`${BASE}/api/rpc/socketStatus`, {
       body: '[]',
       headers: { 'Content-Type': 'application/json' },
-      method: 'POST'
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000)
     })
     const data: unknown = await res.json()
     if (
@@ -68,31 +72,78 @@ const waitForSocketConnected = async (timeout = 10_000): Promise<void> => {
       typeof data.json.connected !== 'boolean'
     )
       throw new Error('unexpected socket status response')
-    if (data.json.connected) return
+    if (data.json.connected) return undefined
     await wait(500)
   }
   throw new Error('socket did not connect in time')
 }
-const connectLiveEvents = async (): Promise<void> => {
+const connectLiveEvents = async (): Promise<undefined> => {
   await page.goto(BASE)
   await page.getByTestId('project-name-pm4ai').waitFor()
   await waitForSocketConnected()
   await wait(1000)
 }
+const sendClientEvents = (client: Socket) => {
+  const startEvent = createEvent({ project: 'pm4ai', status: 'start', step: 'sync' })
+  const completedEvent = createEvent({ detail: '3 synced', project: 'pm4ai', status: 'ok', step: 'sync' })
+  const startMessage = JSON.stringify(startEvent)
+  const completedMessage = JSON.stringify(completedEvent)
+  client.write(`${startMessage}\n`)
+  client.write(`${completedMessage}\n`)
+}
+const sendLiveEvents = async (clients: Set<Socket>) => {
+  for (const client of clients) sendClientEvents(client)
+  await wait(2000)
+  const logText = await page.textContent('.font-mono.text-xs')
+  return logText
+}
+const setupEmitter = async () => {
+  const clients = new Set<Socket>()
+  const emitter = createServer(socket => {
+    clients.add(socket)
+    socket.on('close', () => clients.delete(socket))
+  })
+  await new Promise<undefined>((resolve, reject) => {
+    emitter.once('error', reject)
+    emitter.listen(join(stateDirectory, 'watch.sock'), () => resolve(undefined))
+  })
+  return { clients, emitter }
+}
+const closeEmitter = async ({ clients, emitter }: Awaited<ReturnType<typeof setupEmitter>>) => {
+  for (const client of clients) client.destroy()
+  await new Promise<undefined>((resolve, reject) => {
+    emitter.close(error => {
+      if (error) reject(error)
+      else resolve(undefined)
+    })
+  })
+}
+const setupDevServer = async () => {
+  const {
+    distDir: buildDirectory,
+    fixtureDir: fixtureDirectory,
+    projectPath: fixtureProjectPath,
+    server: devServer,
+    stateDirectory: fixtureStateDirectory
+  } = await spawnDevServer(dashboardDir, PORT)
+  distDir = buildDirectory
+  fixtureDir = fixtureDirectory
+  projectPath = fixtureProjectPath
+  stateDirectory = fixtureStateDirectory
+  server = devServer
+}
+const setupDashboard = async () => {
+  await setupDevServer()
+  await waitForReady()
+  browser = await chromium.launch()
+  page = await browser.newPage()
+  await page.goto(BASE)
+  await page.getByRole('heading', { exact: true, level: 1, name: '⚡ pm4ai' }).waitFor({ timeout: 60_000 })
+}
 describe('dashboard', () => {
   // biome-ignore lint/nursery/noTestHooks: one dev server is shared by the whole suite
   beforeAll(async () => {
-    const started = await spawnDevServer(dashboardDir, PORT)
-    distDir = started.distDir
-    fixtureDir = started.fixtureDir
-    projectPath = started.projectPath
-    stateDirectory = started.stateDirectory
-    server = started.server
-    await waitForReady()
-    browser = await chromium.launch()
-    page = await browser.newPage()
-    await page.goto(BASE)
-    await page.getByRole('heading', { exact: true, level: 1, name: '⚡ pm4ai' }).waitFor({ timeout: 60_000 })
+    await setupDashboard()
   }, 120_000)
   // biome-ignore lint/nursery/noTestHooks: one dev server is shared by the whole suite
   afterAll(async () => {
@@ -170,7 +221,7 @@ describe('dashboard', () => {
         .locator('a[href*="github.com/1qh"]')
         .evaluateAll(els => els.map(e => e.getAttribute('href')))
       expect(hrefs.length).toBeGreaterThan(0)
-      for (const href of hrefs) expect(href).toMatch(/^https:\/\/github\.com\/1qh\/[\w-]+$/u)
+      for (const href of hrefs) expect(href).toMatch(githubProjectUrl)
     })
     test('no console errors on page load', async () => {
       const errors: string[] = []
@@ -215,7 +266,8 @@ describe('dashboard', () => {
         const res = await fetch('/api/rpc/projects', {
           body: '[]',
           headers: { 'Content-Type': 'application/json' },
-          method: 'POST'
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000)
         })
         const json: unknown = await res.json()
         return { data: json, status: res.status }
@@ -232,7 +284,8 @@ describe('dashboard', () => {
         const res = await fetch('/api/rpc/nonexistent', {
           body: '[]',
           headers: { 'Content-Type': 'application/json' },
-          method: 'POST'
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000)
         })
         return res.status
       })
@@ -241,34 +294,14 @@ describe('dashboard', () => {
   })
   describe('dashboard live events e2e', () => {
     test('event log updates when emitter sends events', async () => {
-      const clients = new Set<Socket>()
-      const emitter = createServer(socket => {
-        clients.add(socket)
-        socket.on('close', () => clients.delete(socket))
-      })
-      await new Promise<undefined>((resolve, reject) => {
-        emitter.once('error', reject)
-        emitter.listen(join(stateDirectory, 'watch.sock'), () => resolve(undefined))
-      })
+      const { clients, emitter } = await setupEmitter()
       try {
         await connectLiveEvents()
         expect(clients.size).toBeGreaterThan(0)
-        for (const client of clients) {
-          client.write(`${JSON.stringify(createEvent({ project: 'pm4ai', status: 'start', step: 'sync' }))}\n`)
-          client.write(`${JSON.stringify(createEvent({ detail: '3 synced', project: 'pm4ai', status: 'ok', step: 'sync' }))}\n`)
-        }
-        await wait(2000)
-        const logText = await page.textContent('.font-mono.text-xs')
-        expect(logText).toBeTruthy()
+        expect(await sendLiveEvents(clients)).toBeTruthy()
       } finally {
         expect(clients.size).toBeGreaterThan(0)
-        for (const client of clients) client.destroy()
-        await new Promise<undefined>((resolve, reject) => {
-          emitter.close(error => {
-            if (error) reject(error)
-            else resolve(undefined)
-          })
-        })
+        await closeEmitter({ clients, emitter })
       }
     })
   })
