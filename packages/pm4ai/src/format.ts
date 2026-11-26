@@ -30,7 +30,7 @@ const isDirectory = async (p: string): Promise<boolean> => {
   }
 }
 const getUiSyncTime = async (allPaths: string[]): Promise<string> => {
-  const presence = await Promise.all(allPaths.map(async p => isDirectory(join(p, 'readonly', 'ui', 'src'))))
+  const presence = await Promise.all(allPaths.map(async p => isDirectory(join(p, 'readonly', 'ui'))))
   const firstWithUi = allPaths.find((_p, i) => presence[i])
   if (firstWithUi === undefined) return '?'
   const r = await $`git log -1 --format=%ci -- readonly/ui`.cwd(firstWithUi).quiet().nothrow()

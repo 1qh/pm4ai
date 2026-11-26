@@ -197,7 +197,10 @@ describe('init scaffold', () => {
       'build succeeds',
       async () => {
         const result = await $`bun run build`.cwd(TEST_DIR).quiet().nothrow()
-        expect(result.exitCode).toBe(0)
+        expect({
+          code: result.exitCode,
+          output: result.exitCode === 0 ? '' : `${result.stdout.toString()}${result.stderr.toString()}`.slice(-3000)
+        }).toStrictEqual({ code: 0, output: '' })
       },
       120_000
     )

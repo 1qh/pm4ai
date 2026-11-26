@@ -1062,6 +1062,27 @@ const appRootOf = async (cssPath: string, projectPath: string): Promise<string> 
   const idx = hasPkg.findIndex(Boolean)
   return idx === -1 ? projectPath : (dirs[idx] ?? projectPath)
 }
+const UI_IMPORT_RG = `from ['"]${UI_PACKAGE_NAME}['/]`
+const UI_SOURCE_RE = /@source[^\n]*readonly\/ui['"/]/u
+const uiCoverageIssue = async ({
+  appRoot,
+  css,
+  projectPath,
+  text
+}: {
+  appRoot: string
+  css: string
+  projectPath: string
+  text: string
+}): Promise<Issue | undefined> => {
+  if (text.includes(`${UI_PACKAGE_NAME}/globals.css`) || UI_SOURCE_RE.test(text)) return
+  const used = await $`rg -l --no-messages ${UI_IMPORT_RG} ${appRoot} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE}`.quiet().nothrow()
+  if (used.stdout.toString().trim() === '') return
+  return drift(
+    `${rel(css, projectPath)} imports ${UI_PACKAGE_NAME} but neither imports ${UI_PACKAGE_NAME}/globals.css nor ` +
+      '@source-s readonly/ui — its component classes render inert'
+  )
+}
 const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]> => {
   const cssFiles = await glob('**/*.css', projectPath)
   const entries = (
@@ -1076,7 +1097,8 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
   if (entries.length === 0) return []
   const perEntry = await Promise.all(
     entries.map(async e => {
-      const pkgs = await importedPackages(await appRootOf(e.css, projectPath))
+      const appRoot = await appRootOf(e.css, projectPath)
+      const pkgs = await importedPackages(appRoot)
       const flagged = await Promise.all(
         [...pkgs].map(async name => {
           const depDir = join(projectPath, 'node_modules', name)
@@ -1091,7 +1113,8 @@ const checkTailwindSourceCoverage = async (projectPath: string): Promise<Issue[]
               )
         })
       )
-      return flagged.filter((i): i is Issue => i !== undefined)
+      const uiIssue = await uiCoverageIssue({ appRoot, css: e.css, projectPath, text: e.text })
+      return [...flagged, uiIssue].filter((i): i is Issue => i !== undefined)
     })
   )
   return perEntry.flat()

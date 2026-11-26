@@ -816,6 +816,24 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })
+  test.each([
+    { cssTail: '', hasIssue: true, title: 'flags an app that renders @a/ui with no coverage' },
+    { cssTail: "@source '../../../../readonly/ui';\n", hasIssue: false, title: 'accepts @source of readonly/ui' },
+    { cssTail: "@import '@a/ui/globals.css';\n", hasIssue: false, title: 'accepts importing @a/ui/globals.css' }
+  ])('$title', async ({ cssTail, hasIssue }) => {
+    const tmp = await makeTmp()
+    try {
+      const app = join(tmp, 'apps', 'docs', 'src', 'app')
+      await mkdir(app, { recursive: true })
+      await write(join(tmp, 'apps', 'docs', 'package.json'), '{}')
+      await write(join(app, 'page.tsx'), "import { Button } from '@a/ui/button'\nexport const P = Button\n")
+      await write(join(app, 'global.css'), `@import 'tailwindcss';\n${cssTail}`)
+      const issues = await checkTailwindSourceCoverage(tmp)
+      expect(issues.some(i => i.detail.includes('imports @a/ui but neither'))).toBe(hasIssue)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
   test('no issue for a lib that ships no arbitrary-value utility classes', async () => {
     const tmp = await makeTmp()
     await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'plainlib', tmp })

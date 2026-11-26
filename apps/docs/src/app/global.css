@@ -5,6 +5,7 @@
 @import 'fumadocs-ui/css/preset.css';
 @layer theme, base, components, utilities, app;
 @source '../../../../packages/**/*.{ts,tsx}';
+@source '../../../../readonly/ui';
 @theme inline {
   --color-foreground: var(--color-fd-foreground);
   --color-background: var(--color-fd-background);
