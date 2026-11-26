@@ -26,6 +26,16 @@ const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
 describe('postinstall sherif wrappers', () => {
   test.each([
     { content: 'await $`sherif -i typescript --ignore-package @a/ui`', hasDrift: false, title: 'scoped wrapper' },
+    {
+      content: "spawn({ cmd: ['sherif', '-i', 'typescript', ...excluded] })",
+      hasDrift: false,
+      title: 'array-form scoped wrapper'
+    },
+    {
+      content: "spawn({ cmd: ['sherif', '--ignore-package', 'x'] })",
+      hasDrift: true,
+      title: 'array-form unscoped wrapper'
+    },
     { content: 'console.log("install")', hasDrift: true, title: 'wrapper without sherif' },
     { content: 'await $`sherif`', hasDrift: true, title: 'unscoped wrapper' },
     { content: undefined, hasDrift: true, title: 'missing wrapper' }

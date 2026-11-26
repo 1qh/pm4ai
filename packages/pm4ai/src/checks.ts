@@ -270,7 +270,7 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
 }
 const SHERIF_COMMAND_RE = /^sherif(?:\s|$)/u
 const BUN_SCRIPT_RE = /^bun[ \t]+(?<path>[\w.-]+(?:\/[\w.-]+)*)$/u
-const SCOPED_SHERIF_RE = /\bsherif\b[^\r\n;&|]*?[ \t]-i[ \t]+typescript\b/u
+const SCOPED_SHERIF_RE = /\bsherif\b[^\r\n;&|]*?[\t "'`,]-i['"`]?[\t ,]+['"`]?typescript\b/u
 const hasPostinstallSherif = async (projectPath: string, postinstall: string | undefined): Promise<boolean> => {
   const segments = (postinstall ?? '').split('&&').map(s => s.trim())
   if (segments.some(s => SHERIF_COMMAND_RE.test(s))) return true
