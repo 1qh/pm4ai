@@ -23,6 +23,7 @@ secrets/
 test-results/
 venv/
 CLAUDE.local.md
+.lane-*.md
 .eslintcache
 .output/
 .wxt/
