@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/performance/noAwaitInLoops: ordered fs existence probes return first match */
-import { $, file, write } from 'bun'
+import { $, file, spawn, write } from 'bun'
 import { access, cp, mkdir, readlink, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { DepField, Issue, PackageJson } from './types.js'
@@ -156,7 +156,6 @@ const WS_RE = /\s/gu
 const normalizeGuide = (s: string): string =>
   s.replaceAll(SMART_SINGLE_RE, "'").replaceAll(SMART_DOUBLE_RE, '"').replaceAll(WS_RE, '')
 const lintmaxBinOf = (p: string): string => join(p, 'node_modules', '.bin', 'lintmax')
-/** The running CLI's own workspace install, found by walking up from this file: in a checkout (CI, local development) it holds lintmax even when the scaffold source has no install, and a global install has none, which keeps the skip. */
 const ancestorLintmaxBin = async (start: string): Promise<string | undefined> => {
   const dirs: string[] = []
   for (let dir = start; ; dir = dirname(dir)) {
@@ -167,19 +166,39 @@ const ancestorLintmaxBin = async (start: string): Promise<string | undefined> =>
   const present = await Promise.all(candidates.map(async c => doesPathExist(c)))
   return candidates[present.indexOf(true)]
 }
-/** Canonicalize the written CLAUDE.md with lintmax so it is already lint-clean — the project's own lintmax, else self's (for `init`, where the scaffold has no install yet). Otherwise the project's later `bun run fix` reformats it and the "fix produces no changes" scaffold gate fails. */
-const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Promise<void> => {
+const resolveLintmaxBin = async (projectPath: string, selfPath: string): Promise<string | undefined> => {
   const projectBin = lintmaxBinOf(projectPath)
   const selfBin = lintmaxBinOf(selfPath)
-  let lintmaxBin: string | undefined
-  if (await doesPathExist(projectBin)) lintmaxBin = projectBin
-  else if (await doesPathExist(selfBin)) lintmaxBin = selfBin
-  else {
-    const ancestorBin = await ancestorLintmaxBin(import.meta.dirname)
-    lintmaxBin = ancestorBin
+  if (await doesPathExist(projectBin)) return projectBin
+  if (await doesPathExist(selfBin)) return selfBin
+  const ancestorBin = await ancestorLintmaxBin(import.meta.dirname)
+  return ancestorBin
+}
+const runClaudeMdCanonicalizer = async (projectPath: string, lintmaxBin: string): Promise<string | undefined> => {
+  try {
+    const proc = spawn([lintmaxBin, 'fix', CLAUDE_MD], {
+      cwd: projectPath,
+      stderr: 'pipe',
+      stdin: 'ignore',
+      stdout: 'pipe',
+      timeout: 120_000
+    })
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text()
+    ])
+    if (exitCode !== 0)
+      return `${CLAUDE_MD} canonicalize failed: lintmax fix ${CLAUDE_MD} exited ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+  } catch (error) {
+    return `${CLAUDE_MD} canonicalize failed: ${String(error)}`
   }
-  if (lintmaxBin === undefined) return
-  await $`${lintmaxBin} fix ${CLAUDE_MD}`.cwd(projectPath).quiet().nothrow()
+}
+const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Promise<string | undefined> => {
+  const lintmaxBin = await resolveLintmaxBin(projectPath, selfPath)
+  if (lintmaxBin === undefined) return `${CLAUDE_MD} canonicalize failed: lintmax binary not found`
+  const error = await runClaudeMdCanonicalizer(projectPath, lintmaxBin)
+  return error
 }
 const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
   const result = await generateClaudeMd(selfPath, projectPath)
@@ -189,7 +208,8 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
   if (normalizeGuide(result.content) === normalizeGuide(existing)) return []
   await write(claudeFile, result.content)
-  await canonicalizeClaudeMd(projectPath, selfPath)
+  const canonicalizeError = await canonicalizeClaudeMd(projectPath, selfPath)
+  if (canonicalizeError !== undefined) return [{ detail: canonicalizeError, type: 'error' }]
   return [{ detail: `${CLAUDE_MD} updated`, type: 'synced' }]
 }
 /** Read-only freshness gate for status: regenerate in memory and diff, so a CLAUDE.md that drifted from its source rules fails the gate instead of reading green fleet-wide. */

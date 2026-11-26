@@ -1,6 +1,6 @@
 import { file, write } from 'bun'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseJson } from '../json.js'
@@ -35,6 +35,16 @@ const makePackageOnly = async (pkg: Record<string, unknown>) => {
   await write(join(tmp, 'package.json'), JSON.stringify(pkg))
   return tmp
 }
+const writeLintmaxStub = async (projectDir: string, exitCode: number) => {
+  const binDir = join(projectDir, 'node_modules', '.bin')
+  await mkdir(binDir, { recursive: true })
+  const binPath = join(binDir, 'lintmax')
+  await write(
+    binPath,
+    `#!/bin/sh\nprintf 'canonicalize stdout\\n'\nprintf 'canonicalize stderr\\n' >&2\nexit ${exitCode}\n`
+  )
+  await chmod(binPath, 0o755)
+}
 const makeRulesFixture = async (rules: [string, string][], projectPkg: Record<string, unknown>) => {
   const selfDir = await makeTmp()
   const projectDir = await makeTmp()
@@ -42,12 +52,26 @@ const makeRulesFixture = async (rules: [string, string][], projectPkg: Record<st
   await mkdir(rulesDir, { recursive: true })
   for (const [name, content] of rules) await write(join(rulesDir, name), content)
   await write(join(projectDir, 'package.json'), JSON.stringify(projectPkg))
+  await writeLintmaxStub(projectDir, 0)
   return { projectDir, selfDir }
 }
 const removeDirs = async (dirs: string[]) => {
   for (const dir of dirs) await rm(dir, { recursive: true })
 }
 const plainPkg = { name: 'test', private: true }
+const collectCanonicalizeFailure = async () => {
+  const { projectDir, selfDir } = await makeRulesFixture(
+    [['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase content here']],
+    plainPkg
+  )
+  try {
+    await writeLintmaxStub(projectDir, 1)
+    const issues = await syncClaudeMd(selfDir, projectDir)
+    return issues
+  } finally {
+    await removeDirs([selfDir, projectDir])
+  }
+}
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
     const src = await makeTmp()
@@ -456,13 +480,22 @@ describe('syncTsconfig', () => {
   })
 })
 describe('syncClaudeMd', () => {
+  test('reports canonicalize failure with stdout and stderr when lintmax exits 1', async () => {
+    const issues = await collectCanonicalizeFailure()
+    expect(issues).toHaveLength(1)
+    expect(issues[0]?.type).toBe('error')
+    expect(issues[0]?.detail).toContain('canonicalize failed')
+    expect(issues[0]?.detail).toContain('exited 1')
+    expect(issues[0]?.detail).toContain('canonicalize stdout')
+    expect(issues[0]?.detail).toContain('canonicalize stderr')
+  })
   test('generates CLAUDE.md from always rules', async () => {
     const { projectDir, selfDir } = await makeRulesFixture(
       [['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase content here']],
       plainPkg
     )
     const issues = await syncClaudeMd(selfDir, projectDir)
-    expect(issues.some(i => i.detail.includes('CLAUDE.md'))).toBe(true)
+    expect(issues).toStrictEqual([{ detail: 'CLAUDE.md updated', type: 'synced' }])
     const content = await file(join(projectDir, 'CLAUDE.md')).text()
     expect(content).toContain('base content here')
     await removeDirs([selfDir, projectDir])
