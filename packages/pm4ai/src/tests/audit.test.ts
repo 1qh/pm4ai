@@ -112,6 +112,7 @@ describe('checkScripts', () => {
   test('root turbo script without warning filter is flagged', () => {
     const pkgs = [entry('package.json', { scripts: { test: 'turbo test --output-logs=errors-only' } })]
     const issues = checkScripts(pkgs, PROJECT)
+    expect(issues.length).toBeGreaterThan(0)
     expect(issues.some(i => i.detail.includes('workspace warning filter'))).toBe(true)
   })
   test('root turbo script with warning filter is not flagged', () => {

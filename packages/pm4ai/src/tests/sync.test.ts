@@ -3,6 +3,7 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TURBO_WARNING_FILTER } from '../constants.js'
 import { parseJson } from '../json.js'
 import {
   checkClaudeMdFresh,
@@ -59,6 +60,25 @@ const removeDirs = async (dirs: string[]) => {
   for (const dir of dirs) await rm(dir, { recursive: true })
 }
 const plainPkg = { name: 'test', private: true }
+const setupPreStepAction = async () => {
+  const tmp = await makeTmp()
+  const preStepAction =
+    '[ -f apps/backend/.env ] || cp apps/backend/.env.example apps/backend/.env; sh up.sh && bun run test'
+  await write(
+    join(tmp, 'package.json'),
+    JSON.stringify({ name: 'test', private: true, scripts: { action: preStepAction } })
+  )
+  const issues = await syncPackageJson(tmp, pm4aiRoot)
+  return { issues, preStepAction, tmp }
+}
+const setupCnsyncFixFilter = async () => {
+  const before = `bun run build && bash -c "turbo check:imports --output-logs=errors-only 2> >(grep -vE 'WARNING|Could not resolve workspaces|missing field|Turborepo will still function' >&2)" && lintmax fix`
+  const expected = `bun run build && bash -c "turbo check:imports --output-logs=errors-only 2> >(grep -vE '${TURBO_WARNING_FILTER}' >&2)" && lintmax fix`
+  const tmp = await makePackageOnly({ name: 'test', private: true, scripts: { fix: before } })
+  const issues = await syncPackageJson(tmp, pm4aiRoot)
+  const pkgPath = join(tmp, 'package.json')
+  return { expected, issues, pkgPath, tmp }
+}
 const collectCanonicalizeFailure = async () => {
   const { projectDir, selfDir } = await makeRulesFixture(
     [['base.mdx', '---\ntitle: Base\ninfer: always\n---\nbase content here']],
@@ -227,14 +247,7 @@ describe('syncPackageJson', () => {
   })
   describe('scripts', () => {
     test('leaves an action that already runs sh up.sh after a pre-step untouched', async () => {
-      const tmp = await makeTmp()
-      const preStepAction =
-        '[ -f apps/backend/.env ] || cp apps/backend/.env.example apps/backend/.env; sh up.sh && bun run test'
-      await write(
-        join(tmp, 'package.json'),
-        JSON.stringify({ name: 'test', private: true, scripts: { action: preStepAction } })
-      )
-      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      const { issues, preStepAction, tmp } = await setupPreStepAction()
       expect(issues.some(i => i.detail.includes('action'))).toBe(false)
       const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
       expect(pkg.scripts?.action).toBe(preStepAction)
@@ -301,6 +314,8 @@ describe('syncPackageJson', () => {
       expect(pkg.scripts?.fix).toBe('bun packages/lintmax/dist/cli.mjs fix')
       await rm(tmp, { recursive: true })
     })
+  })
+  describe('scripts, canonical forms', () => {
     test('preserves self-hosted cli check script', async () => {
       const tmp = await makeTmp()
       await write(
@@ -330,6 +345,47 @@ describe('syncPackageJson', () => {
       const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
       expect(pkg.scripts?.test).toContain('grep -vE')
       expect(pkg.scripts?.test).toContain('Could not resolve workspaces?')
+      await rm(tmp, { recursive: true })
+    })
+    test('updates the cnsync fix filter in place and preserves package bytes on a second sync', async () => {
+      const { expected, issues, pkgPath, tmp } = await setupCnsyncFixFilter()
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues.some(i => i.detail === 'updated fix script to filter turbo workspace warning')).toBe(true)
+      const pkg = await readJson<Record<string, Record<string, string>>>(pkgPath)
+      expect(pkg.scripts?.fix).toBe(expected)
+      const once = await file(pkgPath).text()
+      expect(await syncPackageJson(tmp, pm4aiRoot)).toHaveLength(0)
+      expect(await file(pkgPath).text()).toBe(once)
+      await rm(tmp, { recursive: true })
+    })
+    test('wraps only turbo segments of a compound script and remains idempotent', async () => {
+      const tmp = await makePackageOnly({
+        name: 'test',
+        private: true,
+        scripts: { fix: 'bun run build && turbo check:imports --output-logs=errors-only && lintmax fix' }
+      })
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkgPath = join(tmp, 'package.json')
+      const pkg = await readJson<Record<string, Record<string, string>>>(pkgPath)
+      expect(pkg.scripts?.fix).toBe(
+        `bun run build && bash -c "turbo check:imports --output-logs=errors-only 2> >(grep -vE '${TURBO_WARNING_FILTER}' >&2)" && lintmax fix`
+      )
+      const once = await file(pkgPath).text()
+      expect(await syncPackageJson(tmp, pm4aiRoot)).toHaveLength(0)
+      expect(await file(pkgPath).text()).toBe(once)
+      await rm(tmp, { recursive: true })
+    })
+    test('recognizes a standalone wrapper with any filter text', async () => {
+      const tmp = await makePackageOnly({
+        name: 'test',
+        private: true,
+        scripts: { test: `bash -c "turbo test --output-logs=errors-only 2> >(grep -vE 'custom warning' >&2)"` }
+      })
+      await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.test).toBe(
+        `bash -c "turbo test --output-logs=errors-only 2> >(grep -vE '${TURBO_WARNING_FILTER}' >&2)"`
+      )
       await rm(tmp, { recursive: true })
     })
     test('adds packageManager if missing', async () => {

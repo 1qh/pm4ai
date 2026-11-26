@@ -230,13 +230,22 @@ const doesRootScriptNeedUpdate = (scripts: Record<string, string>, name: string,
   if (name === 'clean') return !scripts[name]?.startsWith(value)
   return scripts[name] !== value
 }
+const TURBO_SEGMENT_RE =
+  /(?<wrapped>bash -c "[^"\n]*\bturbo\b[^"\n]* 2> >\(grep -vE '[^'\n]*' >&2\)")|(?<command>\bturbo\b[^&|;"\n]*)/gu
+const TURBO_FILTER_TEXT_RE = /(?<=grep -vE ')[^']*/u
+const syncTurboSegment = (match: string, wrapped: string | undefined, command: string | undefined): string => {
+  if (wrapped) return wrapped.replace(TURBO_FILTER_TEXT_RE, () => TURBO_WARNING_FILTER)
+  if (!command?.includes(TURBO_FLAG)) return match
+  const trimmed = command.trimEnd()
+  return `${filterTurboWorkspaceWarning(trimmed)}${command.slice(trimmed.length)}`
+}
 const didSyncTurboWarningFilter = (scripts: Record<string, string>, issues: Issue[]): boolean => {
-  const targets = Object.entries(scripts).filter(
-    ([name, cmd]) =>
-      !name.startsWith('dev') && cmd.includes('turbo') && cmd.includes(TURBO_FLAG) && !cmd.includes(TURBO_WARNING_FILTER)
-  )
-  for (const [name, cmd] of targets) {
-    scripts[name] = filterTurboWorkspaceWarning(cmd)
+  const targets = Object.entries(scripts)
+    .filter(([name, cmd]) => !name.startsWith('dev') && cmd.includes('turbo') && cmd.includes(TURBO_FLAG))
+    .map(([name, cmd]) => ({ cmd, name, next: cmd.replaceAll(TURBO_SEGMENT_RE, syncTurboSegment) }))
+    .filter(({ cmd, next }) => next !== cmd)
+  for (const { name, next } of targets) {
+    scripts[name] = next
     issues.push({ detail: `updated ${name} script to filter turbo workspace warning`, type: 'synced' })
   }
   return targets.length > 0
