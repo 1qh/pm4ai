@@ -6,12 +6,14 @@ import { join } from 'node:path'
 import {
   checkBannedImports,
   checkCi,
+  checkCiRunner,
   checkConfigs,
   checkConvexSelfHosted,
   checkDrift,
   checkForbidden,
   checkGit,
   checkHermeticTests,
+  checkHostedRunners,
   checkMergeMarkers,
   checkRootPkg,
   checkTailwindSourceCoverage,
@@ -295,6 +297,99 @@ describe('checkCi', () => {
     const issues = await checkCi(pm4aiPath)
     expect(issues.length).toBeGreaterThanOrEqual(0)
     if (issues.length > 0) expect(issues[0]?.type === 'ci' || issues[0]?.type === 'info').toBe(true)
+  })
+})
+describe('checkHostedRunners', () => {
+  test.each([
+    { label: 'ubuntu-latest', value: 'ubuntu-latest' },
+    { label: 'ubuntu-latest', value: `\${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` },
+    { label: 'ubuntu-latest', value: `\${{ github.event_name == 'schedule' && 'ubuntu-latest' || vars.RUNNER_LABEL }}` },
+    { label: 'ubuntu-24.04', value: 'ubuntu-24.04' },
+    { label: 'windows-latest', value: 'windows-latest' },
+    { label: 'macos-15', value: 'macos-15' }
+  ])('reports $value in every workflow extension', async ({ label, value }) => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, '.github', 'workflows'), { recursive: true })
+      const extensions = ['yml', 'yaml']
+      for (const extension of extensions)
+        await write(join(tmp, '.github', 'workflows', `ci.${extension}`), `jobs:\n  check:\n    runs-on: ${value}\n`)
+      const issues = await checkHostedRunners(tmp)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues).toHaveLength(2)
+      for (const extension of extensions)
+        expect(issues).toContainEqual({
+          detail: `.github/workflows/ci.${extension}: runs-on names a GitHub-hosted runner (${label})`,
+          type: 'ci'
+        })
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  const RUNNER_VAR = 'vars.RUNNER_LABEL'
+  test.each([`\${{ ${RUNNER_VAR} }}`, 'self-hosted-win-x64', 'self-hosted-mac-arm64'])('accepts %s', async value => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, '.github', 'workflows'), { recursive: true })
+      await write(join(tmp, '.github', 'workflows', 'ci.yml'), `jobs:\n  check:\n    runs-on: ${value}\n`)
+      const issues = await checkHostedRunners(tmp)
+      expect(issues).toHaveLength(0)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test('reports every hosted runs-on value across jobs', async () => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, '.github', 'workflows'), { recursive: true })
+      await write(
+        join(tmp, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  linux:\n    runs-on: ubuntu-latest\n  windows:\n    runs-on: windows-2025\n'
+      )
+      const issues = await checkHostedRunners(tmp)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues).toStrictEqual([
+        { detail: '.github/workflows/ci.yml: runs-on names a GitHub-hosted runner (ubuntu-latest)', type: 'ci' },
+        { detail: '.github/workflows/ci.yml: runs-on names a GitHub-hosted runner (windows-2025)', type: 'ci' }
+      ])
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test('returns no issues without a workflows folder', async () => {
+    const tmp = await makeTmp()
+    try {
+      const issues = await checkHostedRunners(tmp)
+      expect(issues).toHaveLength(0)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test('runner checks include workflow issues without a GitHub remote', async () => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, '.github', 'workflows'), { recursive: true })
+      await write(join(tmp, '.github', 'workflows', 'ci.yml'), 'jobs:\n  check:\n    runs-on: ubuntu-latest\n')
+      const issues = await checkCiRunner(tmp)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues).toContainEqual({
+        detail: '.github/workflows/ci.yml: runs-on names a GitHub-hosted runner (ubuntu-latest)',
+        type: 'ci'
+      })
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test('reports a workflow that cannot be read as a file', async () => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, '.github', 'workflows', 'ci.yml'), { recursive: true })
+      const issues = await checkHostedRunners(tmp)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues).toContainEqual({ detail: '.github/workflows/ci.yml: cannot read workflow', type: 'ci' })
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
   })
 })
 describe('checkVercel', () => {

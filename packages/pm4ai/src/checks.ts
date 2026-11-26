@@ -139,18 +139,62 @@ const missingVarIssues = async (repo: string): Promise<Issue[]> => {
     ...(names.has('NTFY_TOPIC') ? [] : [issue('ci', 'missing NTFY_TOPIC var')])
   ]
 }
+const RUNS_ON_KEY = 'runs-on:'
+const runsOnValues = (content: string): string[] => {
+  const values: string[] = []
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith(RUNS_ON_KEY)) values.push(trimmed.slice(RUNS_ON_KEY.length))
+  }
+  return values
+}
+const HOSTED_RUNNER_RE = /(?<![\w.-])(?:ubuntu|windows|macos)-[\w.-]+/gu
+const WORKFLOW_EXTENSION_RE = /\.ya?ml$/u
+const hostedRunnerFileIssues = async (workflowPath: string, projectPath: string): Promise<Issue[]> => {
+  const name = rel(workflowPath, projectPath)
+  try {
+    const content = await file(workflowPath).text()
+    const issues: Issue[] = []
+    for (const value of runsOnValues(content)) {
+      const labels = value.matchAll(HOSTED_RUNNER_RE)
+      for (const label of labels) issues.push(issue('ci', `${name}: runs-on names a GitHub-hosted runner (${label[0]})`))
+    }
+    return issues
+  } catch {
+    return [issue('ci', `${name}: cannot read workflow`)]
+  }
+}
+const checkHostedRunners = async (projectPath: string): Promise<Issue[]> => {
+  const workflowsPath = join(projectPath, '.github', 'workflows')
+  try {
+    const entries = await readdir(workflowsPath)
+    const issues = await Promise.all(
+      entries
+        .filter(name => WORKFLOW_EXTENSION_RE.test(name))
+        .map(async name => {
+          const fileIssues = await hostedRunnerFileIssues(join(workflowsPath, name), projectPath)
+          return fileIssues
+        })
+    )
+    return issues.flat()
+  } catch (readError) {
+    if (readError instanceof Error && 'code' in readError && readError.code === 'ENOENT') return []
+    return [issue('ci', '.github/workflows: cannot read workflows')]
+  }
+}
 const checkCiRunner = async (projectPath: string): Promise<Issue[]> => {
+  const hostedIssues = await checkHostedRunners(projectPath)
   const repo = await getGhRepo(projectPath)
-  if (!repo) return []
+  if (!repo) return hostedIssues
   const runners = await $`gh api repos/${repo}/actions/runners --jq '[.runners[]|select(.status=="online")]|length'`
     .quiet()
     .nothrow()
   if (runners.exitCode !== 0) {
     debug('command failed:', `gh api repos/${repo}/actions/runners`)
-    return []
+    return hostedIssues
   }
   const runnerIssues = Number(runners.stdout.toString().trim()) < 1 ? [issue('ci', 'no online self-hosted runner')] : []
-  return [...runnerIssues, ...(await missingVarIssues(repo))]
+  return [...hostedIssues, ...runnerIssues, ...(await missingVarIssues(repo))]
 }
 const checkRelease = async (projectPath: string): Promise<Issue[]> => {
   const caps = await detectCapabilities(projectPath)
@@ -1017,6 +1061,7 @@ export {
   checkFumadocsGithubUrl,
   checkGit,
   checkHermeticTests,
+  checkHostedRunners,
   checkLayouts,
   checkMergeMarkers,
   checkNextConfigs,

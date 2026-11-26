@@ -17,11 +17,9 @@ permissions:
   contents: read
 jobs:
   ci:
-    runs-on: ${{ github.event_name == 'schedule' && 'ubuntu-latest' || vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
       - uses: actions/checkout@v7
-      - if: runner.os == 'Linux'
-        run: sudo apt-get install -y zsh
       - uses: oven-sh/setup-bun@v2
       - run: bun action
       - name: prune prior CI runs
