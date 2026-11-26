@@ -1,10 +1,11 @@
 /** biome-ignore-all lint/performance/noDelete: must delete pkg keys */
 /** biome-ignore-all lint/performance/noAwaitInLoops: ordered fs existence probes return first match */
 import { $, file, spawn, write } from 'bun'
-import { access, cp, mkdir, readlink, rm } from 'node:fs/promises'
+import { access, cp, mkdir, readdir, readlink, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { DepField, Issue, PackageJson } from './types.js'
 import { isPublishedPkg } from './audit.js'
+import { hasPostinstallSherif } from './checks.js'
 import {
   CLAUDE_MD,
   DEFAULT_DEP_VERSION,
@@ -250,9 +251,15 @@ const didSyncTurboWarningFilter = (scripts: Record<string, string>, issues: Issu
   }
   return targets.length > 0
 }
-const didSyncPostinstall = (scripts: Record<string, string>, issues: Issue[]): boolean => {
-  if (scripts.postinstall?.includes('sherif')) return false
-  scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && sherif` : DEFAULT_SCRIPTS.postinstall
+const didSyncPostinstall = async (
+  projectPath: string,
+  scripts: Record<string, string>,
+  issues: Issue[]
+): Promise<boolean> => {
+  if (await hasPostinstallSherif(projectPath, scripts.postinstall)) return false
+  scripts.postinstall = scripts.postinstall
+    ? `${scripts.postinstall} && ${DEFAULT_SCRIPTS.postinstall}`
+    : DEFAULT_SCRIPTS.postinstall
   issues.push({ detail: 'added sherif to postinstall', type: 'synced' })
   return true
 }
@@ -263,7 +270,7 @@ interface RootScriptArgs {
   value: string
 }
 const didSyncRootScript = ({ issues, name, scripts, value }: RootScriptArgs): boolean => {
-  if (name === 'postinstall') return didSyncPostinstall(scripts, issues)
+  if (name === 'postinstall') return false
   if (!doesRootScriptNeedUpdate(scripts, name, value)) return false
   const action = scripts[name] ? 'updated' : 'added'
   scripts[name] = value
@@ -426,17 +433,24 @@ const didSyncRootSettings = async ({ issues, pkg, selfPath }: SyncRootPkgArgs): 
   const isActionSet = didSetActionScript(pkg.scripts ?? {}, issues)
   return isActionSet || isTrustedSynced
 }
-const didSyncRootPkg = async ({ issues, pkg, projectPath, selfPath }: SyncRootPkgArgs): Promise<boolean> => {
-  const areBasicsChanged = didSyncRootBasics(pkg, issues)
+const didSyncRootDependencies = async ({ issues, pkg, projectPath }: SyncRootPkgArgs): Promise<boolean> => {
   const devDeps = pkg.devDependencies ?? {}
   pkg.devDependencies = devDeps
   const areDevDepsSynced = await didSyncRootDevDeps(pkg, devDeps, issues)
   const redundant = await findRedundantDevDeps({ devDeps, pkg, projectPath })
   const isDeduped = didDropRootDevDeps(pkg, redundant, issues)
+  return areDevDepsSynced || isDeduped
+}
+const didSyncRootPkg = async ({ issues, pkg, projectPath, selfPath }: SyncRootPkgArgs): Promise<boolean> => {
+  const areBasicsChanged = didSyncRootBasics(pkg, issues)
+  const isPostinstallSynced = await didSyncPostinstall(projectPath, pkg.scripts ?? {}, issues)
+  const areDependenciesChanged = await didSyncRootDependencies({ issues, pkg, projectPath, selfPath })
   const bunVersion = await bunVersionText()
   const isPackageManagerSet = didSetPackageManager(pkg, issues, bunVersion)
   const areSettingsChanged = await didSyncRootSettings({ issues, pkg, projectPath, selfPath })
-  return [areBasicsChanged, areDevDepsSynced, areSettingsChanged, isDeduped, isPackageManagerSet].includes(true)
+  return [areBasicsChanged, areDependenciesChanged, areSettingsChanged, isPackageManagerSet, isPostinstallSynced].includes(
+    true
+  )
 }
 const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -886,11 +900,15 @@ const syncUiWorkspace = async (projectPath: string, issues: Issue[]): Promise<vo
   await write(pkgPath, `${JSON.stringify(pkg, undefined, 2)}\n`)
   issues.push({ detail: `added ${READONLY_UI} to workspaces`, type: 'synced' })
 }
-const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]> => {
-  const src = join(cnsyncPath, READONLY_UI)
-  const dst = join(projectPath, READONLY_UI)
-  if (!(await doesPathExist(src))) return [{ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' }]
-  if (projectPath === cnsyncPath) return []
+const emptyUiDestination = async (dst: string): Promise<void> => {
+  await mkdir(dst, { recursive: true })
+  const entries = await readdir(dst)
+  await Promise.all(
+    entries.filter(name => name !== 'node_modules').map(async name => rm(join(dst, name), { recursive: true }))
+  )
+}
+const mirrorUi = async (src: string, dst: string): Promise<void> => {
+  await emptyUiDestination(dst)
   await cp(src, dst, { recursive: true })
   await Promise.all(
     ['mjs', 'ts', 'js'].map(async ext => {
@@ -898,6 +916,13 @@ const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]>
       if (await doesPathExist(p)) await rm(p)
     })
   )
+}
+const syncUi = async (cnsyncPath: string, projectPath: string): Promise<Issue[]> => {
+  const src = join(cnsyncPath, READONLY_UI)
+  const dst = join(projectPath, READONLY_UI)
+  if (!(await doesPathExist(src))) return [{ detail: `${READONLY_UI} not found in cnsync repo`, type: 'error' }]
+  if (projectPath === cnsyncPath) return []
+  await mirrorUi(src, dst)
   const issues: Issue[] = []
   await syncUiWorkspace(projectPath, issues)
   issues.push({ detail: `${READONLY_UI} updated`, type: 'synced' })

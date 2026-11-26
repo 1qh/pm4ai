@@ -16,12 +16,67 @@ import {
   checkHostedRunners,
   checkMergeMarkers,
   checkRootPkg,
+  checkSherifScope,
   checkTailwindSourceCoverage,
   checkVercel,
   deployStateFailed
 } from '../checks.js'
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-test-'))
+describe('postinstall sherif wrappers', () => {
+  test.each([
+    { content: 'await $`sherif -i typescript --ignore-package @a/ui`', hasDrift: false, title: 'scoped wrapper' },
+    { content: 'console.log("install")', hasDrift: true, title: 'wrapper without sherif' },
+    { content: 'await $`sherif`', hasDrift: true, title: 'unscoped wrapper' },
+    { content: undefined, hasDrift: true, title: 'missing wrapper' }
+  ])('$title', async ({ content, hasDrift }) => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, 'tools'))
+      if (content !== undefined) await write(join(tmp, 'tools', 'wrap.ts'), content)
+      await write(
+        join(tmp, 'package.json'),
+        JSON.stringify({
+          packageManager: 'bun@1.2.0',
+          private: true,
+          scripts: { postinstall: 'bun tools/wrap.ts', prepare: 'bunx simple-git-hooks' },
+          'simple-git-hooks': { 'pre-commit': 'sh up.sh && git add -u' }
+        })
+      )
+      const issues = await checkRootPkg(tmp)
+      if (hasDrift) {
+        expect(issues.length).toBeGreaterThan(0)
+        expect(issues).toContainEqual({ detail: 'postinstall should include "sherif -i typescript"', type: 'drift' })
+      } else expect(issues).toHaveLength(0)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+})
+describe('checkSherifScope', () => {
+  test.each([
+    { hasDrift: true, postinstall: 'bun x.ts && sherif' },
+    { hasDrift: true, postinstall: 'sherif -i typescript && bun x.ts && sherif' },
+    { hasDrift: true, postinstall: 'sherif && bun x.ts' },
+    { hasDrift: false, postinstall: 'bun x.ts && sherif -i typescript' }
+  ])('$postinstall', async ({ hasDrift, postinstall }) => {
+    const tmp = await makeTmp()
+    try {
+      await mkdir(join(tmp, 'readonly', 'ui'), { recursive: true })
+      await write(join(tmp, 'package.json'), JSON.stringify({ scripts: { postinstall } }))
+      const issues = await checkSherifScope(tmp)
+      if (hasDrift) {
+        expect(issues.length).toBeGreaterThan(0)
+        expect(issues).toContainEqual({
+          detail: 'postinstall sherif should scope "-i typescript" (workspace ~6.0 vs readonly/ui ^5)',
+          type: 'drift'
+        })
+      } else expect(issues).toHaveLength(0)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+})
 describe('checkRootPkg', () => {
   test('reports missing fields for minimal package.json', async () => {
     const tmp = await makeTmp()

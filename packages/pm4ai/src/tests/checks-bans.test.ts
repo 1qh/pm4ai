@@ -1,6 +1,6 @@
-import { write } from 'bun'
+import { file, which, write } from 'bun'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkBannedImports } from '../checks.js'
@@ -10,6 +10,28 @@ const AWS_ALLOWED = '@aws-sdk/client-s3'
 const AWS_BANNED = '@aws-sdk/client-dynamodb'
 const BUN_CLS = 'S3Client'
 const BUN_REF = `Bun.${BUN_CLS}`
+const ESCAPED_QUOTE = String.raw`'\''`
+const shellQuote = (value: string): string => `'${value.replaceAll("'", ESCAPED_QUOTE)}'`
+const realRg = (): string => {
+  const path = which('rg')
+  if (path === null) throw new Error('rg is required for banned import tests')
+  return path
+}
+const withRgShim = async (tmp: string, script: (executable: string) => string, run: () => Promise<void>) => {
+  const bin = join(tmp, 'bin')
+  await mkdir(bin)
+  const shim = join(bin, 'rg')
+  await write(shim, script(realRg()))
+  await chmod(shim, 0o755)
+  const previousPath = process.env.PATH
+  process.env.PATH = `${bin}:${previousPath ?? ''}`
+  try {
+    await run()
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH
+    else process.env.PATH = previousPath
+  }
+}
 const makeProject = async (pkg: Record<string, unknown>, files: Record<string, string>): Promise<string> => {
   const tmp = await mkdtemp(join(tmpdir(), 'pm4ai-bans-'))
   await write(join(tmp, 'package.json'), JSON.stringify({ private: true, ...pkg }))
@@ -23,6 +45,84 @@ const makeProject = async (pkg: Record<string, unknown>, files: Record<string, s
   return tmp
 }
 describe('checkBannedImports', () => {
+  test('reports each banned package only for the file that imports it, in ban order', async () => {
+    const tmp = await makeProject(
+      {},
+      {
+        'src/blocked.ts': `import '${URL_MOD}'\nimport 'undici'\n`,
+        'src/clean.tsx': 'export const value = 1\n'
+      }
+    )
+    try {
+      const issues = await checkBannedImports(tmp)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues).toStrictEqual([
+        { detail: `"${URL_MOD}" banned, use URL: src/blocked.ts`, type: 'forbidden' },
+        { detail: '"undici" banned, use fetch: src/blocked.ts', type: 'forbidden' }
+      ])
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test.each(['app', 'lintmax'])('starts exactly two rg processes for %s bans', async name => {
+    const tmp = await makeProject({}, {})
+    try {
+      const project = join(tmp, name)
+      const countPath = join(tmp, 'rg-count')
+      await mkdir(project)
+      await write(join(project, 'a.ts'), `import 'undici'\nimport '@a/ui/lib/utils'\nconst c = new ${BUN_REF}({})\n`)
+      await withRgShim(
+        tmp,
+        executable => `#!/bin/sh\nprintf '%s\\n' rg >> ${shellQuote(countPath)}\nexec ${shellQuote(executable)} "$@"\n`,
+        async () => {
+          const issues = await checkBannedImports(project)
+          const calls = (await file(countPath).text()).trim().split('\n').filter(Boolean)
+          expect({
+            calls: calls.length,
+            deepPath: issues.some(i => i.detail.includes('not deep paths')),
+            issues: issues.length,
+            namedImports: issues.some(i => i.detail.includes('use named imports'))
+          }).toStrictEqual({ calls: 2, deepPath: true, issues: 3, namedImports: true })
+        }
+      )
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test.each(['-f', '-g'])('surfaces an rg failure in the %s search', async argument => {
+    const tmp = await makeProject({}, { 'src/clean.ts': 'export const value = 1\n' })
+    try {
+      await withRgShim(
+        tmp,
+        executable =>
+          `#!/bin/sh\nif [ "$1" = ${shellQuote(argument)} ]; then\nprintf '%s\\n' 'scan unavailable' >&2\nexit 2\nfi\nexec ${shellQuote(executable)} "$@"\n`,
+        async () => {
+          const issues = await checkBannedImports(tmp)
+          expect(issues.length).toBeGreaterThan(0)
+          expect(issues).toStrictEqual([
+            { detail: 'banned import scan failed: rg failed (2): scan unavailable', type: 'forbidden' }
+          ])
+        }
+      )
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+  test.each(['ts', 'js'])('preserves the Bun external exemption in tsdown.config.%s', async extension => {
+    const tmp = await makeProject(
+      {},
+      {
+        'src/s3.ts': `const c = new ${BUN_REF}({})\nexport { c }\n`,
+        [`tsdown.config.${extension}`]: "export default { deps: { neverBundle: ['bun'] } }\n"
+      }
+    )
+    try {
+      const issues = await checkBannedImports(tmp)
+      expect(issues).toHaveLength(0)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
   test('does not flag a banned package name inside a JSON-key string', async () => {
     const tmp = await makeProject({}, { 'src/a.ts': `const fmt = '{"${URL_MOD}":"x","q":"y"}'\nexport { fmt }\n` })
     const issues = await checkBannedImports(tmp)

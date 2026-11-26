@@ -1,6 +1,6 @@
 import { file, write } from 'bun'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TURBO_WARNING_FILTER } from '../constants.js'
@@ -92,6 +92,28 @@ const collectCanonicalizeFailure = async () => {
     await removeDirs([selfDir, projectDir])
   }
 }
+describe('syncPackageJson postinstall wrappers', () => {
+  test.each([
+    { content: 'await $`sherif -i typescript --ignore-package @a/ui`', shouldAppend: false, title: 'scoped wrapper' },
+    { content: 'console.log("install")', shouldAppend: true, title: 'wrapper without sherif' },
+    { content: undefined, shouldAppend: true, title: 'missing wrapper' }
+  ])('$title', async ({ content, shouldAppend }) => {
+    const tmp = await makePackageOnly({ scripts: { postinstall: 'bun tools/wrap.ts' } })
+    try {
+      await mkdir(join(tmp, 'tools'))
+      if (content !== undefined) await write(join(tmp, 'tools', 'wrap.ts'), content)
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues.some(i => i.detail === 'added sherif to postinstall')).toBe(shouldAppend)
+      expect(pkg.scripts?.postinstall).toBe(
+        shouldAppend ? 'bun tools/wrap.ts && sherif -i typescript' : 'bun tools/wrap.ts'
+      )
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
+})
 describe('syncConfigs', () => {
   test('copies verbatim files from source to dest', async () => {
     const src = await makeTmp()
@@ -617,6 +639,38 @@ describe('checkClaudeMdFresh', () => {
   })
 })
 describe('syncUi', () => {
+  const UI_FIXTURE: [side: 'dst' | 'src', path: string, content: string][] = [
+    ['src', 'components/a.tsx', 'export const A = () => null'],
+    ['src', 'postcss.config.ts', 'export default {}'],
+    ['dst', 'src/old.tsx', 'export const Old = () => null'],
+    ['dst', 'node_modules/keep.txt', 'workspace install'],
+    ['dst', 'stale.json', '{}']
+  ]
+  const makeUiFixture = async (cnsync: string, project: string): Promise<{ dst: string; src: string }> => {
+    const roots = { dst: join(project, 'readonly', 'ui'), src: join(cnsync, 'readonly', 'ui') }
+    for (const [side, path, content] of UI_FIXTURE) await write(join(roots[side], path), content)
+    return roots
+  }
+  const readMirror = async (dst: string, issues: { detail: string; type: string }[]) => ({
+    entries: (await readdir(dst)).toSorted((a, b) => a.localeCompare(b)),
+    kept: await Promise.all(['components/a.tsx', 'node_modules/keep.txt'].map(async f => file(join(dst, f)).text())),
+    updated: issues.some(i => i.detail === 'readonly/ui updated' && i.type === 'synced')
+  })
+  test('mirrors source entries while preserving the workspace install', async () => {
+    const cnsync = await makeTmp()
+    const project = await makeTmp()
+    try {
+      const { dst } = await makeUiFixture(cnsync, project)
+      const issues = await syncUi(cnsync, project)
+      expect(await readMirror(dst, issues)).toStrictEqual({
+        entries: ['components', 'node_modules'],
+        kept: ['export const A = () => null', 'workspace install'],
+        updated: true
+      })
+    } finally {
+      await removeDirs([cnsync, project])
+    }
+  })
   test('copies readonly/ui from cnsync to project', async () => {
     const cnsync = await makeTmp()
     const project = await makeTmp()

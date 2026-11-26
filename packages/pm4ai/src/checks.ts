@@ -1,5 +1,6 @@
-import { $, file, Glob } from 'bun'
-import { readdir, stat } from 'node:fs/promises'
+import { $, env, file, Glob, spawn, write } from 'bun'
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Issue, IssueType, PackageJson } from './types.js'
 import { ALL_BANNED, BUN_GLOBALS, LINTMAX_ONLY, TEMPORARY, TEMPORARY_ALLOWED_PACKAGES } from './banned.js'
@@ -46,8 +47,20 @@ const doesPathExist = async (p: string): Promise<boolean> => {
   }
 }
 const shell = async (projectPath: string, ...args: string[]) => {
-  const result = await $`rg ${args} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE} -l`.quiet().nothrow()
-  return result.stdout.toString().trim()
+  const proc = spawn(['rg', ...args, projectPath, '-g', '*.ts', '-g', '*.tsx', ...RG_EXCLUDE, '-l'], {
+    env,
+    stderr: 'pipe',
+    stdout: 'pipe',
+    timeout: 15_000
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited
+  ])
+  if (proc.signalCode || (exitCode !== 0 && exitCode !== 1))
+    throw new Error(`rg failed (${proc.signalCode ?? exitCode}): ${stderr.trim()}`)
+  return stdout.trim()
 }
 const importPattern = (ban: string): string => {
   const isExact = ban.endsWith('"')
@@ -77,15 +90,28 @@ const hasBlockedImport = (content: string, ban: string): boolean => {
   }
   return false
 }
-const filterBlockedImportFiles = async (files: string, ban: string): Promise<string> => {
-  const blocked: string[] = []
-  await Promise.all(
-    files.split('\n').map(async sourceFile => {
-      const content = await file(sourceFile).text()
-      if (hasBlockedImport(content, ban)) blocked.push(sourceFile)
-    })
+const readSources = async (files: string, cache: Map<string, string>): Promise<Map<string, string>> => {
+  const entries = await Promise.all(
+    files
+      .split('\n')
+      .filter(Boolean)
+      .map(async path => {
+        const content = cache.get(path) ?? (await file(path).text())
+        cache.set(path, content)
+        return [path, content] as const
+      })
   )
-  return blocked.join('\n')
+  return new Map(entries)
+}
+const bannedImportFiles = async (projectPath: string, patterns: string[]): Promise<string> => {
+  const tmp = await mkdtemp(join(tmpdir(), 'pm4ai-imports-'))
+  try {
+    const path = join(tmp, 'patterns')
+    await write(path, patterns.join('\n'))
+    return await shell(projectPath, '-f', path)
+  } finally {
+    await rm(tmp, { recursive: true })
+  }
 }
 const relList = (files: string, base: string) =>
   files
@@ -242,6 +268,26 @@ const checkDrift = async (selfPath: string, projectPath: string): Promise<Issue[
   )
   return results.filter((r): r is Issue => r !== undefined)
 }
+const SHERIF_COMMAND_RE = /^sherif(?:\s|$)/u
+const BUN_SCRIPT_RE = /^bun[ \t]+(?<path>[\w.-]+(?:\/[\w.-]+)*)$/u
+const SCOPED_SHERIF_RE = /\bsherif\b[^\r\n;&|]*?[ \t]-i[ \t]+typescript\b/u
+const hasPostinstallSherif = async (projectPath: string, postinstall: string | undefined): Promise<boolean> => {
+  const segments = (postinstall ?? '').split('&&').map(s => s.trim())
+  if (segments.some(s => SHERIF_COMMAND_RE.test(s))) return true
+  const wrappers = await Promise.all(
+    segments.map(async s => {
+      const scriptPath = BUN_SCRIPT_RE.exec(s)?.groups?.path
+      if (scriptPath === undefined) return false
+      try {
+        const content = await file(join(projectPath, scriptPath)).text()
+        return SCOPED_SHERIF_RE.test(content)
+      } catch {
+        return false
+      }
+    })
+  )
+  return wrappers.includes(true)
+}
 const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
   const issues: Issue[] = []
   const pkg = await readPkg(join(projectPath, 'package.json'))
@@ -253,7 +299,7 @@ const checkRootPkg = async (projectPath: string): Promise<Issue[]> => {
     issues.push(drift(`pre-commit should end with "${EXPECTED.preCommit}"`))
   if (pkg.scripts?.prepare !== DEFAULT_SCRIPTS.prepare)
     issues.push(drift(`prepare should be "${DEFAULT_SCRIPTS.prepare}"`))
-  if (!pkg.scripts?.postinstall?.includes('sherif'))
+  if (!(await hasPostinstallSherif(projectPath, pkg.scripts?.postinstall)))
     issues.push(drift(`postinstall should include "${DEFAULT_SCRIPTS.postinstall}"`))
   if (pkg.scripts?.clean && !pkg.scripts.clean.startsWith(DEFAULT_SCRIPTS.clean))
     issues.push(drift(`clean should start with "${DEFAULT_SCRIPTS.clean}"`))
@@ -472,8 +518,11 @@ const checkSherifScope = async (projectPath: string): Promise<Issue[]> => {
   if (!hasReadonlyUi) return []
   const pkg = await readPkg(join(projectPath, 'package.json'))
   const postinstall = pkg?.scripts?.postinstall
-  if (typeof postinstall !== 'string' || !postinstall.startsWith('sherif')) return []
-  if (postinstall.includes(SHERIF_SCOPE)) return []
+  const hasUnscopedSherif = (postinstall ?? '')
+    .split('&&')
+    .map(s => s.trim())
+    .some(s => SHERIF_COMMAND_RE.test(s) && !s.includes(SHERIF_SCOPE))
+  if (!hasUnscopedSherif) return []
   return [drift(`postinstall sherif should scope "${SHERIF_SCOPE}" (workspace ~6.0 vs ${READONLY_UI} ^5)`)]
 }
 const checkActionRunsTests = async (projectPath: string): Promise<Issue[]> => {
@@ -553,7 +602,11 @@ const checkForbidden = async (projectPath: string): Promise<Issue[]> => {
   if (tsNoCheckFiles) issues.push(forbidden(`@ts-nocheck in: ${relList(tsNoCheckFiles, projectPath)}`))
   return issues
 }
-const bunGlobalIssues = async (projectPath: string, pkgJsonFiles: string[]): Promise<Issue[]> => {
+const BUN_GLOBAL_RE = /Bun\.\w+/gu
+const BUN_EXTERNAL_RE = /neverBundle.*bun/u
+const TSDOWN_CONFIG_RE = /(?:^|\/)tsdown\.config\.[jt]s$/u
+const TS_SOURCE_RE = /\.(?:ts|tsx)$/u
+const bunGlobalIssues = async (sources: Map<string, string>, pkgJsonFiles: string[]): Promise<Issue[]> => {
   const hasNext = (
     await Promise.all(
       pkgJsonFiles.map(async pkgPath => {
@@ -564,35 +617,41 @@ const bunGlobalIssues = async (projectPath: string, pkgJsonFiles: string[]): Pro
       })
     )
   ).some(Boolean)
-  const bunGlobalResult =
-    await $`rg 'Bun\.\w+' ${projectPath} -g '*.ts' -g '*.tsx' -g '!*.d.ts' ${RG_EXCLUDE} -o --no-filename`
-      .quiet()
-      .nothrow()
-  const bunGlobals = bunGlobalResult.stdout.toString().trim()
-  const doesKeepBunExternal =
-    (
-      await $`rg -q 'neverBundle.*bun' ${projectPath} -g 'tsdown.config.ts' -g 'tsdown.config.js' ${RG_EXCLUDE}`
-        .quiet()
-        .nothrow()
-    ).exitCode === 0
-  if (!bunGlobals || hasNext || doesKeepBunExternal) return []
-  const fixable = [...new Set(bunGlobals.split('\n'))].filter(g => BUN_GLOBALS[g])
+  const entries = [...sources]
+  const doesKeepBunExternal = entries.some(
+    ([path, content]) => TSDOWN_CONFIG_RE.test(path) && BUN_EXTERNAL_RE.test(content)
+  )
+  if (hasNext || doesKeepBunExternal) return []
+  const bunGlobals = entries
+    .filter(([path]) => TS_SOURCE_RE.test(path) && !path.endsWith('.d.ts'))
+    .flatMap(([, content]) => content.match(BUN_GLOBAL_RE) ?? [])
+  const fixable = [...new Set(bunGlobals)].filter(g => BUN_GLOBALS[g])
   if (fixable.length === 0) return []
   const imports = fixable.map(g => `${g} → ${BUN_GLOBALS[g]}`).join(', ')
   return [forbidden(`use named imports: ${imports}`)]
 }
-const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
-  const isLintmax = projectPath.includes('/lintmax')
-  const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
-  const sourceResults = await Promise.all(
-    banned.map(async ({ ban, fix }) => {
-      const files = await shell(projectPath, importPattern(ban))
-      const blockedFiles = files ? await filterBlockedImportFiles(files, ban) : ''
-      if (blockedFiles) return { ban, files: blockedFiles, fix }
-    })
+type Banned = typeof ALL_BANNED
+interface BanResult {
+  ban: string
+  files: string
+  fix: string
+}
+const sourceBanResults = async (projectPath: string, banned: Banned, cache: Map<string, string>) => {
+  const candidates = await bannedImportFiles(
+    projectPath,
+    banned.map(({ ban }) => importPattern(ban))
   )
-  const pkgJsonFiles = await glob('**/package.json', projectPath)
-  const pkgResults = await Promise.all(
+  const sources = await readSources(candidates, cache)
+  return banned.map(({ ban, fix }): BanResult | undefined => {
+    const files = [...sources]
+      .filter(([, content]) => hasBlockedImport(content, ban))
+      .map(([path]) => path)
+      .join('\n')
+    return files ? { ban, files, fix } : undefined
+  })
+}
+const pkgBanResults = async (pkgJsonFiles: string[], banned: Banned): Promise<BanResult[]> => {
+  const results = await Promise.all(
     pkgJsonFiles.map(async pkgPath => {
       const raw = await readPkg(pkgPath)
       if (!raw) return []
@@ -607,14 +666,49 @@ const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
         .map(({ ban, fix }) => ({ ban, files: pkgPath, fix }))
     })
   )
-  const issues = [...sourceResults, ...pkgResults.flat()].flatMap(r =>
-    r ? [forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`)] : []
+  return results.flat()
+}
+const diagnosticIssues = async (projectPath: string, cache: Map<string, string>, pkgJsonFiles: string[]) => {
+  const diagnostics = await shell(
+    projectPath,
+    '-g',
+    'tsdown.config.js',
+    '-e',
+    `${UI_PACKAGE_NAME}/lib/`,
+    '-e',
+    String.raw`Bun\.\w+`,
+    '-e',
+    BUN_EXTERNAL_RE.source
   )
-  issues.push(...(await bunGlobalIssues(projectPath, pkgJsonFiles)))
-  const deepUi = await shell(projectPath, `${UI_PACKAGE_NAME}/lib/`)
+  const diagnosticSources = await readSources(diagnostics, cache)
+  const issues = await bunGlobalIssues(diagnosticSources, pkgJsonFiles)
+  const deepUi = [...diagnosticSources]
+    .filter(([path, content]) => TS_SOURCE_RE.test(path) && content.includes(`${UI_PACKAGE_NAME}/lib/`))
+    .map(([path]) => path)
+    .join('\n')
   if (deepUi)
     issues.push(forbidden(`use import { cn } from '${UI_PACKAGE_NAME}', not deep paths: ${relList(deepUi, projectPath)}`))
   return issues
+}
+const bannedImportIssues = async (projectPath: string): Promise<Issue[]> => {
+  const isLintmax = projectPath.includes('/lintmax')
+  const banned = [...ALL_BANNED, ...(isLintmax ? [] : LINTMAX_ONLY)].filter(b => !TEMPORARY.has(b.ban))
+  const cache = new Map<string, string>()
+  const sourceResults = await sourceBanResults(projectPath, banned, cache)
+  const pkgJsonFiles = await glob('**/package.json', projectPath)
+  const pkgResults = await pkgBanResults(pkgJsonFiles, banned)
+  const issues = [...sourceResults, ...pkgResults].flatMap(r =>
+    r ? [forbidden(`${r.ban} banned, use ${r.fix}: ${relList(r.files, projectPath)}`)] : []
+  )
+  issues.push(...(await diagnosticIssues(projectPath, cache, pkgJsonFiles)))
+  return issues
+}
+const checkBannedImports = async (projectPath: string): Promise<Issue[]> => {
+  try {
+    return await bannedImportIssues(projectPath)
+  } catch (scanError) {
+    return [forbidden(`banned import scan failed: ${scanError instanceof Error ? scanError.message : String(scanError)}`)]
+  }
 }
 /** Vercel posts its deploy status to the GitHub deployments API, so checkVercel reads the auto-deploy
  * pipeline's health there as reliable JSON — not the TTY-only `vercel ls` table, which prints URLs with no
@@ -1074,5 +1168,6 @@ export {
   checkTailwindSourceCoverage,
   checkTypescriptPin,
   checkVercel,
-  isDeployStateFailed as deployStateFailed
+  isDeployStateFailed as deployStateFailed,
+  hasPostinstallSherif
 }
