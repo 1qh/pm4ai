@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { $, file } from 'bun'
+import { $, file, spawn } from 'bun'
 import { copyFile, mkdir, open, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Project } from './discover.js'
@@ -12,6 +12,7 @@ import { updateLog } from './log.js'
 import { lockSchema, safeParseJson } from './schemas.js'
 import { stateDir, statePath } from './state-dir.js'
 import {
+  canonicalizeClaudeMd,
   syncClaudeMd,
   syncConfigs,
   syncFumadocsBuild,
@@ -68,13 +69,27 @@ const recordFailure = async (projectPath: string, stderr: string): Promise<Issue
   await writeCheckResult({ pass: false, projectPath, summary: errorLine, violations })
   return [{ detail: `failed: ${errorLine}`, type: 'up.sh' }]
 }
-const maintain = async (projectPath: string): Promise<Issue[]> => {
+const runUpSh = async (projectPath: string) => {
+  const proc = spawn(['sh', 'up.sh'], { cwd: projectPath, stderr: 'pipe', stdout: 'pipe', timeout: 600_000 })
+  const [exitCode, stdout, outputError] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text()
+  ])
+  const stderr = [stdout, outputError].join('\n').trim()
+  return { exitCode, stderr }
+}
+const canonicalizeMaintainedGuide = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
+  if (selfPath === undefined) return []
+  const canonicalizeError = await canonicalizeClaudeMd(projectPath, selfPath)
+  return canonicalizeError === undefined ? [] : [{ detail: canonicalizeError, type: 'error' }]
+}
+const maintain = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const upShExists = await file(join(projectPath, 'up.sh')).exists()
   if (!upShExists) return [{ detail: 'missing, cannot maintain', type: 'up.sh' }]
-  const result = await $`sh up.sh`.cwd(projectPath).quiet().nothrow()
-  const { exitCode } = result
-  const stderr = [result.stdout.toString(), result.stderr.toString()].join('\n').trim()
+  const { exitCode, stderr } = await runUpSh(projectPath)
   const issues = exitCode === 0 ? await recordSuccess(projectPath) : await recordFailure(projectPath, stderr)
+  issues.push(...(await canonicalizeMaintainedGuide(projectPath, selfPath)))
   await updateLog({
     at: new Date().toISOString(),
     error: exitCode === 0 ? undefined : stderr.slice(0, 500),
@@ -88,9 +103,15 @@ const logIssues = (issues: Issue[]): void => {
   for (const i of issues) console.log(`  ${i.type} ${i.detail}`)
 }
 /** pm4ai syncs itself too — its sub-packages and its own CLAUDE.md, generated from the same .mdx it ships to everyone, so the manager's own guidance never rots against its source. */
-const syncSelf = async (selfPath: string): Promise<void> => {
+const syncSelf = async (selfPath: string) => {
   logIssues(await syncSubPackages(selfPath, selfPath))
-  logIssues(await syncClaudeMd(selfPath, selfPath))
+  const issues = await syncClaudeMd(selfPath, selfPath, true)
+  logIssues(issues)
+  if (issues.some(i => i.type === 'synced')) {
+    const maintainIssues = await maintain(selfPath, selfPath)
+    logIssues(maintainIssues)
+    if (maintainIssues.length > 0) process.exitCode = 1
+  }
 }
 const refuse = (message: string) => {
   console.log(message)
@@ -208,7 +229,7 @@ const syncProject = async (project: Project, selfPath: string, cnsyncPath: strin
   await emitToSocket(createEvent({ project: name, status: 'start', step: 'sync' }))
   const parallelIssues = await Promise.all([
     syncConfigs(selfPath, project.path),
-    syncClaudeMd(selfPath, project.path),
+    syncClaudeMd(selfPath, project.path, true),
     syncPackageJson(project.path, selfPath),
     syncTsconfig(project.path),
     syncFumadocsBuild(project.path),
@@ -236,15 +257,15 @@ const auditProject = async (name: string, projectPath: string): Promise<Issue[]>
   )
   return auditIssues
 }
-const maintainProject = async (name: string, projectPath: string): Promise<Issue[]> => {
+const maintainProject = async (name: string, projectPath: string, selfPath?: string): Promise<Issue[]> => {
   await emitToSocket(createEvent({ project: name, status: 'start', step: 'maintain' }))
   const preMaintain = await $`git status --porcelain -- .`.cwd(projectPath).quiet().nothrow()
   const isDocsOnly = isDocsOnlyChange(preMaintain.stdout.toString().trim())
-  if (isDocsOnly) {
+  if (isDocsOnly && selfPath === undefined) {
     await emitToSocket(createEvent({ detail: 'docs-only, gate skipped', project: name, status: 'ok', step: 'maintain' }))
     return []
   }
-  const maintainIssues = await maintain(projectPath)
+  const maintainIssues = await maintain(projectPath, selfPath)
   await emitToSocket(
     createEvent({
       detail: maintainIssues[0]?.detail,
@@ -257,10 +278,12 @@ const maintainProject = async (name: string, projectPath: string): Promise<Issue
 }
 const runProject = async (project: Project, selfPath: string, cnsyncPath: string): Promise<Issue[]> => {
   const name = projectName(project.path)
+  const syncIssues = await syncProject(project, selfPath, cnsyncPath)
+  const didRegenerateGuide = syncIssues.some(i => i.type === 'synced' && i.detail === 'CLAUDE.md updated')
   const issues = [
-    ...(await syncProject(project, selfPath, cnsyncPath)),
+    ...syncIssues,
     ...(await auditProject(name, project.path)),
-    ...(await maintainProject(name, project.path))
+    ...(await maintainProject(name, project.path, didRegenerateGuide ? selfPath : undefined))
   ]
   const fileCount = await modifiedCount(project.path)
   await emitToSocket(
@@ -301,7 +324,7 @@ const runFix = async (shouldIncludeAll: boolean, excludes: readonly string[]) =>
   if (findings.length > 0) process.exitCode = 1
   await reportChanges(allTargets)
 }
-export const fix = async (shouldIncludeAll = false, excludes: readonly string[] = []) => {
+const fix = async (shouldIncludeAll = false, excludes: readonly string[] = []) => {
   const lockFile = statePath('fix.lock')
   await mkdir(stateDir(), { recursive: true })
   const refusal = await acquireFixLock(lockFile)
@@ -315,4 +338,4 @@ export const fix = async (shouldIncludeAll = false, excludes: readonly string[] 
     await rm(lockFile, { force: true })
   }
 }
-export { isDocsOnlyChange, maintain }
+export { fix, isDocsOnlyChange, maintain }

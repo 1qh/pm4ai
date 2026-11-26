@@ -200,7 +200,7 @@ const canonicalizeClaudeMd = async (projectPath: string, selfPath: string): Prom
   const error = await runClaudeMdCanonicalizer(projectPath, lintmaxBin)
   return error
 }
-const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issue[]> => {
+const syncClaudeMd = async (selfPath: string, projectPath: string, shouldDeferCanonicalize = false): Promise<Issue[]> => {
   const result = await generateClaudeMd(selfPath, projectPath)
   if (result.error !== undefined || result.content === undefined)
     return [{ detail: result.error ?? 'generate failed', type: 'error' }]
@@ -208,7 +208,7 @@ const syncClaudeMd = async (selfPath: string, projectPath: string): Promise<Issu
   const existing = (await claudeFile.exists()) ? await claudeFile.text() : ''
   if (normalizeGuide(result.content) === normalizeGuide(existing)) return []
   await write(claudeFile, result.content)
-  const canonicalizeError = await canonicalizeClaudeMd(projectPath, selfPath)
+  const canonicalizeError = shouldDeferCanonicalize ? undefined : await canonicalizeClaudeMd(projectPath, selfPath)
   if (canonicalizeError !== undefined) return [{ detail: canonicalizeError, type: 'error' }]
   return [{ detail: `${CLAUDE_MD} updated`, type: 'synced' }]
 }
@@ -1012,6 +1012,7 @@ const syncFumadocsGithubUrl = async (projectPath: string): Promise<Issue[]> => {
   return results.filter((r): r is Issue => r !== undefined)
 }
 export {
+  canonicalizeClaudeMd,
   checkClaudeMdFresh,
   patchFumadocsScript,
   didRemoveStalePublishScripts as removeStalePublishScripts,

@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { fix, isDocsOnlyChange, maintain } from '../fix.js'
 import { parseJson } from '../json.js'
 import { stateDir, statePath } from '../state-dir.js'
+import { checkClaudeMdFresh, syncClaudeMd } from '../sync.js'
 setDefaultTimeout(30_000)
 const readJson = async <T>(path: string): Promise<T> => parseJson<T>(await file(path).text())
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-fix-'))
@@ -72,7 +73,61 @@ const makeFakeHome = async () => {
   }
   return fakeHome
 }
+const setupGuideInstall = async (tmp: string, self: string) => {
+  const rules = join(self, 'apps', 'docs', 'content', 'rules')
+  await mkdir(rules, { recursive: true })
+  await write(join(rules, 'base.mdx'), '---\ntitle: Base\ninfer: always\n---\n‘base rule’')
+  await write(join(tmp, 'package.json'), JSON.stringify({ name: 'ordering', private: true }))
+  const scriptBytes = await write(
+    join(tmp, 'up.sh'),
+    `#!/bin/sh
+set -eu
+printf 'install\\n' >> calls
+mkdir -p node_modules/.bin
+cat > node_modules/.bin/lintmax <<'SCRIPT'
+#!/bin/sh
+set -eu
+printf 'canonicalize\\n' >> calls
+sed "s/‘/'/g; s/’/'/g" CLAUDE.md > canonical.md
+mv canonical.md CLAUDE.md
+SCRIPT
+chmod +x node_modules/.bin/lintmax
+`
+  )
+  return scriptBytes
+}
+const runGuideMaintain = async (tmp: string, self: string) => {
+  await setupGuideInstall(tmp, self)
+  const hasLintmaxBefore = await file(join(tmp, 'node_modules', '.bin', 'lintmax')).exists()
+  const synced = await syncClaudeMd(self, tmp, true)
+  const hasCallsBefore = await file(join(tmp, 'calls')).exists()
+  const issues = await maintain(tmp, self)
+  const calls = (await file(join(tmp, 'calls')).text()).trim().split('\n')
+  const guide = await file(join(tmp, 'CLAUDE.md')).text()
+  const stale = await checkClaudeMdFresh(self, tmp)
+  return { calls, guide, hasCallsBefore, hasLintmaxBefore, issues, stale, synced }
+}
 describe('maintain', () => {
+  test('canonicalizes a regenerated guide after install provides lintmax', async () => {
+    const tmp = await makeTmp()
+    const self = await makeTmp()
+    try {
+      const run = await runGuideMaintain(tmp, self)
+      expect(run.calls.length).toBeGreaterThan(0)
+      expect({ ...run, guide: run.guide.includes("'base rule'") }).toStrictEqual({
+        calls: ['install', 'canonicalize'],
+        guide: true,
+        hasCallsBefore: false,
+        hasLintmaxBefore: false,
+        issues: [],
+        stale: [],
+        synced: [{ detail: 'CLAUDE.md updated', type: 'synced' }]
+      })
+    } finally {
+      await rm(tmp, { recursive: true })
+      await rm(self, { recursive: true })
+    }
+  })
   test('returns missing issue when up.sh does not exist', async () => {
     const tmp = await makeTmp()
     const issues = await maintain(tmp)
@@ -88,6 +143,8 @@ describe('maintain', () => {
     expect(issues.filter(i => i.type === 'up.sh')).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })
+})
+describe('maintain, continued', () => {
   test('returns failure issue when up.sh fails', async () => {
     const tmp = await makeTmp()
     await write(join(tmp, 'up.sh'), '#!/bin/sh\necho "3 errors found" >&2\nexit 1')
