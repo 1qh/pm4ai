@@ -7,6 +7,7 @@
 import type { WatchEvent } from 'pm4ai'
 import type { DerivedStats, ProjectInfo, ProjectState, RunAction, RunState } from 'pm4ai/watch-state'
 import { cn } from '@a/ui'
+import { toast } from '@a/ui/components/toast'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { watchEventSchema } from 'pm4ai/schemas'
 import {
@@ -23,7 +24,6 @@ import {
   timeAgo
 } from 'pm4ai/watch-state'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { client } from '@/lib/client'
 import { parseJson } from '@/lib/json'
 interface ApiProject {
@@ -271,13 +271,13 @@ const useRunTimers = ({
 const DashboardHeader = ({ projectCount, state }: { projectCount: number; state: RunState }) => {
   const fixMutation = useMutation({
     mutationFn: async () => client.fixAll({ all: true }),
-    onError: () => toast.error('Fix failed'),
-    onSuccess: () => toast.success('Fix started')
+    onError: () => toast.add({ title: 'Fix failed', type: 'error' }),
+    onSuccess: () => toast.add({ title: 'Fix started', type: 'success' })
   })
   const statusMutation = useMutation({
     mutationFn: async () => client.refreshStatus({ all: true }),
-    onError: () => toast.error('Status check failed'),
-    onSuccess: () => toast.success('Status check started')
+    onError: () => toast.add({ title: 'Status check failed', type: 'error' }),
+    onSuccess: () => toast.add({ title: 'Status check started', type: 'success' })
   })
   return (
     <header className='mb-6 flex items-center justify-between'>

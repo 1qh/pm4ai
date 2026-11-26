@@ -41,7 +41,7 @@ pm4ai manages every repo with lintmax in deps — syncs configs, generates `CLAU
 
 - **pm4ai** — manager; rules `apps/docs/content/rules/*.mdx`, checks `packages/pm4ai/src/`.
 - **lintmax** — max-strict lint/format orchestrator; every project depends on it.
-- **cnsync** — canonical `readonly/ui` (shadcn + ai-elements).
+- **cnsync** — canonical `readonly/ui` (every shadcn Base UI component) and `readonly/examples` (their generated demos).
 
 ### Commands
 
@@ -375,6 +375,7 @@ Fixes, not suppressions:
 - lintmax keeps only its single newest release, so a consumer with a LOCKED lockfile 404s the moment lintmax prunes the pinned version, and it fails in the invisible shape — the developer’s warm `node_modules` keeps the pruned copy so local commands work while a fresh install resolves nothing and CI dies on whatever first reads the package (a `tsconfig extends lintmax/tsconfig` reports an unresolvable path). A consumer manifest may only carry `lintmax: latest`; on a fresh-install lane that cannot resolve, `bun update lintmax` and re-commit — removing the lock trades the 404 for a permanent unresolved error on a restricted/offline runner.
 - PUBLISH a lintmax capability BEFORE any consumer declares config data only the new version understands — a consumer’s CI installs the PUBLISHED lintmax, not a local build, so the local tree goes green while the lane reds on the same commit. Worse, a config schema that DENIES UNKNOWN FIELDS fails the whole file to parse, silently dropping every exception the project had declared, and the lane then fails its supply-chain stage on advisories and duplicates that were exempted for good reasons — pointing at the dependency tree rather than at the one added key, with nothing naming the version. So ACCEPT an unknown field in a project-supplied config/exceptions file rather than denying it, once consumers upgrade independently: denying is right for catching a typo and wrong for a shared schema that grows, because a consumer running last week’s lintmax cannot parse this week’s file at all, and a project could never adopt a new key without every lane failing until each is upgraded.
 - When 2 rules demand opposite fixes for 1 shape, write a third shape that satisfies both rather than suppressing either: `useEarlyContinue` against `noContinue` → filter the collection before the loop; `noMapSpread` against `unicorn/prefer-spread` → a plain loop adding to a `Set`, or `[a, b].flat()`.
+- A child tool the gate runs only when it is found on the PATH makes the verdict depend on the machine: flowmark ran on 1 runner that had it and curled apostrophes there, so a generated-file check failed only on that runner. Every child tool runs on every machine through a self-installing runner (`uvx` for flowmark), in `fix` and `check` alike, and a tool that cannot be obtained fails the gate by name.
 - biome `noMisplacedAssertion` accepts `expect` only lexically inside a test callback: a module-level helper that asserts fails the gate, so return the value from the helper and assert it inside the test.
 - A test that iterates a list passes vacuously on an empty one, so assert the list is non-empty before the loop.
 
@@ -515,6 +516,8 @@ Building + publishing library packages with tsdown.
 - `prepublishOnly` builds before publish. Why: never ship stale `dist/`.
 - Export every type used in the public API. Why: DTS generation fails on unexported internal types leaking through re-exports.
 - Test-publish a new package name before wiring the repo to it. Why: npm’s name-similarity policy REJECTS a short/common single word at `publish` (403 `Package name too similar to existing packages`) even though `npm view` says it is free — the block fires only at publish, so a name that passes availability can still fail. A dashless one-word name has the widest collision surface (`leat`≈lit/lab/tea1, `sigil`≈sigil_ both blocked); pick a more distinctive real word (`leat`→`headrace`, `sigil`→`escutcheon`) and confirm with one throwaway `publish` before renaming the root, member, repo and every consumer dep.
+- Retire old versions through `pm4ai cleanup`, which the synced release runs on every run, never through a script beside the package. Why: one implementation, holding the release’s own token.
+- Judge an npm version retired by re-reading the registry, never by npm’s exit code. Why: `npm unpublish` exits 0 and prints `- name@version` when its write returns 404, as it does for a refused or expired token.
 
 ### NEVER
 

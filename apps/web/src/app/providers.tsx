@@ -1,7 +1,7 @@
 'use client'
 /* eslint-disable react/hook-use-state */
 import type { ReactNode } from 'react'
-import { Toaster } from '@a/ui/components/sonner'
+import { Toaster } from '@a/ui/components/toast'
 import { TooltipProvider } from '@a/ui/components/tooltip'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
@@ -12,8 +12,7 @@ const Providers = ({ children }: { children: ReactNode }) => {
     <ThemeProvider attribute='class' defaultTheme='dark' disableTransitionOnChange enableSystem={false}>
       <QueryClientProvider client={qc}>
         <TooltipProvider>
-          {children}
-          <Toaster />
+          <Toaster>{children}</Toaster>
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
