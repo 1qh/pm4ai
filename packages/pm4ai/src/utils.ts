@@ -5,7 +5,13 @@ import { $, file, Glob, write } from 'bun'
 import { access, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { PackageJson } from './types.js'
-import { CONDITIONAL_VERBATIM_FILES, EXTENDABLE_VERBATIM_FILES, LINTMAX_PKG, VERBATIM_FILES } from './constants.js'
+import {
+  CONDITIONAL_VERBATIM_FILES,
+  EXTENDABLE_VERBATIM_FILES,
+  LINTMAX_PKG,
+  RETIRED_MANAGED_FILES,
+  VERBATIM_FILES
+} from './constants.js'
 import { parseJson } from './json.js'
 const doesPathExist = async (path: string): Promise<boolean> => {
   try {
@@ -185,12 +191,10 @@ const resolveManagedFiles = async (projectPath: string): Promise<ManagedFile[]> 
   }))
   return [...verbatim, ...conditional]
 }
-/** Conditional files a project USED to warrant and no longer does, so a leftover copy from when it had that
- * capability is stale cruft — a publishable-only prune-versions.ts sitting in a repo that is now private,
- * which sync neither refreshes nor removes, so it drifts forever while `fix` reports zero-diff because it is
- * no longer managed. github is excluded: it is detected from the git remote, which is transiently absent
- * mid-setup, and deleting a workflow on that false negative is destructive and not self-evidently
- * recoverable, where a content-based capability (publishable, fumadocs, tailwind) is stable. */
+const retiredManagedFiles = async (projectPath: string): Promise<string[]> => {
+  const present = await Promise.all(RETIRED_MANAGED_FILES.map(async name => file(join(projectPath, name)).exists()))
+  return RETIRED_MANAGED_FILES.filter((_, index) => present[index])
+}
 const staleConditionalFiles = async (projectPath: string): Promise<string[]> => {
   const caps = await detectCapabilities(projectPath)
   return CONDITIONAL_VERBATIM_FILES.filter(c => c.when !== 'github' && !caps[c.when]).map(c => c.path)
@@ -253,6 +257,7 @@ const providedByWorkspaces = (wsDeps: string[], pkgDepsByName: Map<string, Set<s
 }
 export {
   buildPkgDepMap,
+  type Capabilities,
   collectWorkspacePackages,
   debug,
   detectCapabilities,
@@ -273,8 +278,8 @@ export {
   readPkg,
   rel,
   resolveManagedFiles,
+  retiredManagedFiles,
   setVerbose,
   staleConditionalFiles,
   writeJson
 }
-export type { Capabilities }

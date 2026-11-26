@@ -5,7 +5,29 @@ import { join } from 'node:path'
 import { audit } from '../audit.js'
 setDefaultTimeout(30_000)
 const makeTmp = async () => mkdtemp(join(tmpdir(), 'pm4ai-audit-'))
+const setupRetiredFile = async (tmp: string, isPrivate: boolean) => {
+  await writeFile(join(tmp, 'package.json'), JSON.stringify({ name: 'consumer', private: isPrivate }))
+  await mkdir(join(tmp, 'tools'))
+  await writeFile(join(tmp, 'tools', 'prune-versions.ts'), 'export {}')
+}
 describe('audit integration', () => {
+  test.each([false, true])('reports retired managed files as drift when private is %s', async isPrivate => {
+    const tmp = await makeTmp()
+    try {
+      await setupRetiredFile(tmp, isPrivate)
+      const issues = await audit(tmp)
+      expect(issues).toContainEqual({
+        detail: 'tools/prune-versions.ts present (retired managed file) — run pm4ai fix',
+        type: 'drift'
+      })
+      await rm(join(tmp, 'tools', 'prune-versions.ts'))
+      const cleanIssues = await audit(tmp)
+      expect(cleanIssues.length).toBeGreaterThan(0)
+      expect(cleanIssues.some(i => i.detail.includes('retired managed file'))).toBe(false)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
   describe('root manifest', () => {
     test('clean project produces no critical issues', async () => {
       const tmp = await makeTmp()

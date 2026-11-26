@@ -1,7 +1,29 @@
 #!/usr/bin/env bun
-/* eslint-disable no-console */
-import { $, file, Glob } from 'bun'
+/* eslint-disable no-console -- release diagnostics are CLI output */
+import { file, Glob, spawn } from 'bun'
 import { dirname, join } from 'node:path'
+interface CommandResult {
+  exitCode: number
+  stderr: string
+  stdout: string
+}
+const runCommand = async (cmd: string[], cwd = process.cwd(), timeout = 60_000): Promise<CommandResult> => {
+  const proc = spawn(cmd, {
+    cwd,
+    // biome-ignore lint/style/noProcessEnv: release subprocesses inherit the caller's npm credentials and PATH
+    env: process.env,
+    stderr: 'pipe',
+    stdin: 'ignore',
+    stdout: 'pipe',
+    timeout
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text()
+  ])
+  return { exitCode, stderr, stdout }
+}
 const nameVer = (p: { name: string; version: string }): string => `${p.name}@${p.version}`
 interface Pkg {
   name?: string
@@ -16,7 +38,6 @@ interface Target {
   published: boolean
   version: string
 }
-/** Only a 404 means the package is genuinely not on npm; every other npm failure is the registry declining to answer. */
 const notFoundRe = /E404|404 Not Found/u
 const toVersionList = (parsed: unknown): string[] => {
   if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === 'string')
@@ -46,13 +67,12 @@ const pkgs = await Promise.all(
   }))
 )
 const resolve = async (path: string, pkg: Pkg): Promise<Target | undefined> => {
-  if (!(pkg.name && pkg.version) || pkg.private) return undefined
-  const view = await $`npm view ${pkg.name} versions --json`.quiet().nothrow()
-  if (view.exitCode !== 0 && !notFoundRe.test(view.stderr.toString()))
-    throw new Error(
-      `npm view ${pkg.name} failed, so whether it needs publishing is unknown: ${view.stderr.toString().trim()}`
-    )
-  const all = toVersionList(view.exitCode === 0 ? JSON.parse(view.stdout.toString().trim() || '[]') : [])
+  if (pkg.name === undefined || pkg.name === '' || pkg.version === undefined || pkg.version === '' || pkg.private)
+    return undefined
+  const view = await runCommand(['npm', 'view', pkg.name, 'versions', '--json'])
+  if (view.exitCode !== 0 && !notFoundRe.test(view.stderr))
+    throw new Error(`npm view ${pkg.name} failed, so whether it needs publishing is unknown: ${view.stderr.trim()}`)
+  const all = toVersionList(view.exitCode === 0 ? JSON.parse(view.stdout.trim() || '[]') : [])
   return {
     dir: dirname(path),
     name: pkg.name,
@@ -62,17 +82,18 @@ const resolve = async (path: string, pkg: Pkg): Promise<Target | undefined> => {
   }
 }
 const publishOne = async (t: Target): Promise<Target & { ok: boolean }> => {
-  const pub = await $`bun publish --access public`.cwd(t.dir).nothrow()
+  const pub = await runCommand(['bun', 'publish', '--access', 'public'], t.dir)
   if (pub.exitCode === 0) return { ...t, ok: true }
-  const recheck = await $`npm view ${t.name}@${t.version} version`.quiet().nothrow()
-  return { ...t, ok: recheck.exitCode === 0 && recheck.stdout.toString().trim().length > 0 }
+  const recheck = await runCommand(['npm', 'view', `${t.name}@${t.version}`, 'version'])
+  const isPublished = recheck.exitCode === 0 && recheck.stdout.trim().length > 0
+  if (!isPublished) console.error(`${nameVer(t)} publish failed: ${pub.stderr.trim()}\n${recheck.stderr.trim()}`)
+  return { ...t, ok: isPublished }
 }
 const staleTags = async (tag: string): Promise<string[]> => {
-  const ls = await $`git ls-remote --tags origin`.quiet().nothrow()
+  const ls = await runCommand(['git', 'ls-remote', '--tags', 'origin'])
   if (ls.exitCode !== 0)
-    throw new Error(`cannot list remote tags, so whether older ones remain is unknown: ${ls.stderr.toString().trim()}`)
+    throw new Error(`cannot list remote tags, so whether older ones remain is unknown: ${ls.stderr.trim()}`)
   const names = ls.stdout
-    .toString()
     .split('\n')
     .map(line => line.split('/').at(-1) ?? '')
     .filter(t => t && t !== tag && !t.endsWith('^{}'))
@@ -81,21 +102,19 @@ const staleTags = async (tag: string): Promise<string[]> => {
 const tagAndRelease = async (results: Target[]): Promise<{ code: number; tag: string }> => {
   const first = results[0]
   const tag = `v${first?.version ?? '0.0.0'}`
-  const tagged = await $`git tag ${tag}`.nothrow()
-  const pushed = tagged.exitCode === 0 ? await $`git push origin ${tag}`.nothrow() : tagged
+  const tagged = await runCommand(['git', 'tag', tag])
+  const pushed = tagged.exitCode === 0 ? await runCommand(['git', 'push', 'origin', tag]) : tagged
   const released =
-    pushed.exitCode === 0 ? await $`gh release create ${tag} --title ${tag} --generate-notes`.nothrow() : pushed
+    pushed.exitCode === 0 ? await runCommand(['gh', 'release', 'create', tag, '--title', tag, '--generate-notes']) : pushed
   if (released.exitCode === 0) return { code: 0, tag }
-  console.error(
-    `published ${results.map(nameVer).join(', ')} but ${tag} did not land: ${released.stderr.toString().trim()}`
-  )
+  console.error(`published ${results.map(nameVer).join(', ')} but ${tag} did not land: ${released.stderr.trim()}`)
   return { code: 1, tag }
 }
 const pruneStaleTags = async (tag: string): Promise<number> => {
   await Promise.all(
     (await staleTags(tag)).map(async t => {
-      await $`gh release delete ${t} --yes --cleanup-tag`.nothrow()
-      await $`git push origin :refs/tags/${t}`.nothrow()
+      await runCommand(['gh', 'release', 'delete', t, '--yes', '--cleanup-tag'])
+      await runCommand(['git', 'push', 'origin', `:refs/tags/${t}`])
     })
   )
   const survivors = await staleTags(tag)
@@ -132,13 +151,31 @@ const selectToPublish = (resolved: Target[]): Target[] | undefined => {
   console.log(`already published: ${onNpm.map(nameVer).join(', ')}`)
   return undefined
 }
+const cleanupOne = async (target: Target): Promise<number> => {
+  try {
+    const result = await runCommand(['bunx', 'pm4ai@latest', 'cleanup'], target.dir, 15 * 60_000)
+    if (result.stdout !== '') console.log(result.stdout)
+    if (result.stderr !== '') console.error(result.stderr)
+    if (result.exitCode !== 0) console.error(`${nameVer(target)} cleanup failed: exit ${result.exitCode}`)
+    return result.exitCode
+  } catch (error) {
+    console.error(`${nameVer(target)} cleanup failed: ${String(error)}`)
+    return 1
+  }
+}
 const main = async (): Promise<number> => {
   const resolved = (await Promise.all(pkgs.map(async ({ path, pkg }) => resolve(path, pkg)))).filter(
     (t): t is Target => t !== undefined
   )
   const toPublish = selectToPublish(resolved)
-  if (toPublish === undefined) return 0
-  const code = await publishAll(toPublish)
-  return code
+  let code = 0
+  try {
+    if (toPublish !== undefined) code = await publishAll(toPublish)
+  } catch (error) {
+    console.error(`release failed: ${String(error)}`)
+    code = 1
+  }
+  const pruned = await Promise.all(resolved.filter(t => t.onNpm).map(cleanupOne))
+  return code !== 0 || pruned.some(result => result !== 0) ? 1 : 0
 }
 process.exitCode = await main()

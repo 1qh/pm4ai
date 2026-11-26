@@ -213,7 +213,9 @@ describe('staleConditionalFiles', () => {
     const tmp = await makeTmp()
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'x', private: true }))
     const stale = await staleConditionalFiles(tmp)
-    expect(stale).toContain('tools/prune-versions.ts')
+    expect(stale.length).toBeGreaterThan(0)
+    expect(stale).toContain('tools/release.ts')
+    expect(stale).not.toContain('tools/prune-versions.ts')
     expect(stale).not.toContain('.github/workflows/ci.yml')
     await rm(tmp, { force: true, recursive: true })
   })
@@ -222,7 +224,24 @@ describe('staleConditionalFiles', () => {
     const tmp = await makeTmp()
     await write(join(tmp, 'package.json'), JSON.stringify({ name: 'x' }))
     const stale = await staleConditionalFiles(tmp)
+    expect(stale.length).toBeGreaterThan(0)
+    expect(stale).not.toContain('tools/release.ts')
     expect(stale).not.toContain('tools/prune-versions.ts')
     await rm(tmp, { force: true, recursive: true })
+  })
+})
+describe('resolveManagedFiles', () => {
+  test('manages release without distributing retired files to a publishable consumer', async () => {
+    const { resolveManagedFiles } = await import('../utils.js')
+    const tmp = await makeTmp()
+    try {
+      await writePkgAt(tmp, { name: 'consumer' })
+      const managed = await resolveManagedFiles(tmp)
+      const paths = managed.map(m => m.path)
+      expect(paths).toContain('tools/release.ts')
+      expect(paths).not.toContain('tools/prune-versions.ts')
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
   })
 })

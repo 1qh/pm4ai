@@ -1042,7 +1042,7 @@ const packageOfSpecifier = (spec: string): string | undefined => {
 }
 const importedPackages = async (projectPath: string): Promise<Set<string>> => {
   const out = (
-    await $`rg -oN --no-messages ${IMPORT_SPECIFIER} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE}`.nothrow()
+    await $`rg -oN --no-messages ${IMPORT_SPECIFIER} ${projectPath} -g '*.ts' -g '*.tsx' ${RG_EXCLUDE}`.quiet().nothrow()
   ).stdout.toString()
   const names = new Set<string>()
   for (const m of out.matchAll(IMPORT_MATCH)) {

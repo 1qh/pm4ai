@@ -14,6 +14,7 @@ import {
   DEFAULT_SCRIPTS,
   EXPECTED,
   filterTurboWorkspaceWarning,
+  PRUNE_POSTPUBLISH,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
   TSDOWN_BASE,
@@ -36,6 +37,7 @@ import {
   readJson,
   readPkg,
   resolveManagedFiles,
+  retiredManagedFiles,
   staleConditionalFiles,
   writeJson
 } from './utils.js'
@@ -112,13 +114,16 @@ const syncConfigs = async (selfPath: string, projectPath: string): Promise<Issue
       }
     })
   )
-  const stale = await staleConditionalFiles(projectPath)
+  const [stale, retired] = await Promise.all([staleConditionalFiles(projectPath), retiredManagedFiles(projectPath)])
   const removals = await Promise.all(
-    stale.map(async name => {
+    [...stale, ...retired].map(async name => {
       const dst = join(projectPath, name)
       if (!(await file(dst).exists())) return
       await rm(dst)
-      return { detail: `${name} removed — no longer applies to this project`, type: 'synced' } satisfies Issue
+      const detail = retired.includes(name)
+        ? `${name} removed (retired managed file)`
+        : `${name} removed — no longer applies to this project`
+      return { detail, type: 'synced' } satisfies Issue
     })
   )
   return [...results, ...removals].filter((r): r is Issue => r !== undefined)
@@ -441,16 +446,30 @@ const didSyncRootDependencies = async ({ issues, pkg, projectPath }: SyncRootPkg
   const isDeduped = didDropRootDevDeps(pkg, redundant, issues)
   return areDevDepsSynced || isDeduped
 }
+const didRemoveStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
+  const { scripts } = pkg
+  if (scripts?.postpublish !== PRUNE_POSTPUBLISH) return false
+  delete scripts.postpublish
+  if (Object.keys(scripts).length === 0) delete pkg.scripts
+  issues.push({ detail: `${rel} removed stale postpublish prune hook`, type: 'synced' })
+  return true
+}
 const didSyncRootPkg = async ({ issues, pkg, projectPath, selfPath }: SyncRootPkgArgs): Promise<boolean> => {
   const areBasicsChanged = didSyncRootBasics(pkg, issues)
+  const isPruneHookRemoved = didRemoveStalePublishScripts(pkg, 'package.json', issues)
   const isPostinstallSynced = await didSyncPostinstall(projectPath, pkg.scripts ?? {}, issues)
   const areDependenciesChanged = await didSyncRootDependencies({ issues, pkg, projectPath, selfPath })
   const bunVersion = await bunVersionText()
   const isPackageManagerSet = didSetPackageManager(pkg, issues, bunVersion)
   const areSettingsChanged = await didSyncRootSettings({ issues, pkg, projectPath, selfPath })
-  return [areBasicsChanged, areDependenciesChanged, areSettingsChanged, isPackageManagerSet, isPostinstallSynced].includes(
-    true
-  )
+  return [
+    areBasicsChanged,
+    areDependenciesChanged,
+    areSettingsChanged,
+    isPackageManagerSet,
+    isPostinstallSynced,
+    isPruneHookRemoved
+  ].includes(true)
 }
 const syncPackageJson = async (projectPath: string, selfPath?: string): Promise<Issue[]> => {
   const issues: Issue[] = []
@@ -615,18 +634,6 @@ const didSyncReadmeSymlink = async ({
   issues.push({ detail: `${rel} synced README.md`, type: 'synced' })
   return true
 }
-const PRUNE_POSTPUBLISH = 'bun ../../tools/prune-versions.ts'
-/** A package that is no longer published keeps the postpublish prune hook fixPublishedPkg set while it WAS
- * published — a script pointing at the tools/prune-versions.ts that syncConfigs now removes, so leaving it
- * dangles the reference. Remove only the pm4ai-set hook, never a project's own custom postpublish. */
-const didRemoveStalePublishScripts = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
-  const { scripts } = pkg
-  if (scripts?.postpublish !== PRUNE_POSTPUBLISH) return false
-  delete scripts.postpublish
-  if (Object.keys(scripts).length === 0) delete pkg.scripts
-  issues.push({ detail: `${rel} removed stale postpublish prune hook`, type: 'synced' })
-  return true
-}
 const didSetModuleType = ({ issues, pkg, rel }: FixPublishedPkgArgs): boolean => {
   if (pkg.type === 'module') return false
   pkg.type = 'module'
@@ -670,24 +677,15 @@ const syncTsdownConfig = async ({ issues, pkg, pkgPath, rel }: FixPublishedPkgAr
   await write(tsdownConfigPath, generatedContent)
   issues.push({ detail: `${rel} generated tsdown.config.ts`, type: 'synced' })
 }
-interface PublishScriptPlan {
-  willSetPostpublish: boolean
-  willSetPrepublish: boolean
-}
-const applyPublishScripts = (
-  { issues, rel }: FixPublishedPkgArgs,
-  pubScripts: Record<string, string>,
-  plan: PublishScriptPlan
-): void => {
-  if (plan.willSetPostpublish) {
-    pubScripts.postpublish = PRUNE_POSTPUBLISH
-    delete pubScripts['cleanup-old-versions']
-    issues.push({ detail: `${rel} set postpublish to prune-versions script`, type: 'synced' })
-  }
-  if (plan.willSetPrepublish) {
-    pubScripts.prepublishOnly = 'bun run build'
-    issues.push({ detail: `${rel} set prepublishOnly to always build before publish`, type: 'synced' })
-  }
+const didSetPrepublishScript = (
+  { issues, pkg, rel }: FixPublishedPkgArgs,
+  pubScripts: Record<string, string>
+): boolean => {
+  if (!pubScripts.build || pubScripts.prepublishOnly === 'bun run build') return false
+  pubScripts.prepublishOnly = 'bun run build'
+  pkg.scripts = pubScripts
+  issues.push({ detail: `${rel} set prepublishOnly to always build before publish`, type: 'synced' })
+  return true
 }
 const didFixPublishedPkg = async (args: FixPublishedPkgArgs): Promise<boolean> => {
   const pubScripts = args.pkg.scripts ?? {}
@@ -698,11 +696,7 @@ const didFixPublishedPkg = async (args: FixPublishedPkgArgs): Promise<boolean> =
     didSetModuleType(args),
     didSetRepository(args)
   ].includes(true)
-  const plan: PublishScriptPlan = {
-    willSetPostpublish: pubScripts.postpublish !== PRUNE_POSTPUBLISH,
-    willSetPrepublish: Boolean(pubScripts.build) && pubScripts.prepublishOnly !== 'bun run build'
-  }
-  if (plan.willSetPostpublish || plan.willSetPrepublish) args.pkg.scripts = pubScripts
+  const isPrepublishChanged = didSetPrepublishScript(args, pubScripts)
   await syncTsdownConfig(args)
   const pkgDir = dirname(args.pkgPath)
   await didSyncReadmeSymlink({
@@ -711,8 +705,7 @@ const didFixPublishedPkg = async (args: FixPublishedPkgArgs): Promise<boolean> =
     pkgDir,
     rel: args.rel
   })
-  applyPublishScripts(args, pubScripts, plan)
-  return isMetaChanged || plan.willSetPostpublish || plan.willSetPrepublish
+  return isMetaChanged || isPrepublishChanged
 }
 const didFixGitClean = (pkg: PackageJson, rel: string, issues: Issue[]): boolean => {
   const scripts = pkg.scripts ?? {}
@@ -774,11 +767,12 @@ const didFixSubEntry = async ({ entry, issues, projectPath, repo }: FixSubEntryA
   const rel = entry.path.replace(`${projectPath}/`, '')
   if (isSkippedPath(rel)) return false
   const isPrivateSet = didSetAppPrivate(entry.pkg, rel, issues)
+  const isPruneHookRemoved = didRemoveStalePublishScripts(entry.pkg, rel, issues)
   const isPubChanged = isPublishedPkg(entry.pkg)
     ? await didFixPublishedPkg({ issues, pkg: entry.pkg, pkgPath: entry.path, rel, repo })
-    : didRemoveStalePublishScripts(entry.pkg, rel, issues)
+    : false
   const isCleanRemoved = didRemoveCleanScript(entry.pkg, rel, issues)
-  return didFixGitClean(entry.pkg, rel, issues) || isPrivateSet || isPubChanged || isCleanRemoved
+  return didFixGitClean(entry.pkg, rel, issues) || isPrivateSet || isPubChanged || isCleanRemoved || isPruneHookRemoved
 }
 interface HoistSubEntryArgs {
   entry: { path: string; pkg: PackageJson }

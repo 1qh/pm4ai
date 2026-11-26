@@ -92,6 +92,25 @@ const collectCanonicalizeFailure = async () => {
     await removeDirs([selfDir, projectDir])
   }
 }
+const setupReleaseFile = async () => {
+  const src = await makeTmp()
+  const dst = await makePackageOnly({ name: 'x', private: true })
+  await mkdir(join(dst, 'tools'), { recursive: true })
+  await write(join(dst, 'tools', 'release.ts'), 'export {}')
+  return { dst, src }
+}
+const setupRetiredFiles = async (isPrivate: boolean) => {
+  const src = await makeTmp()
+  const dst = await makePackageOnly({ name: 'consumer', private: isPrivate })
+  await write(join(src, 'tools', 'prune-versions.ts'), 'export {}')
+  await write(join(dst, 'tools', 'prune-versions.ts'), 'export {}')
+  return { dst, src }
+}
+const makePublishedHookProject = async (hook: string) =>
+  makeProject(
+    { private: true, workspaces: ['packages/*'] },
+    { 'packages/lib/package.json': { bin: './cli.js', name: 'my-lib', scripts: { build: 'tsdown', postpublish: hook } } }
+  )
 describe('syncPackageJson postinstall wrappers', () => {
   test.each([
     { content: 'await $`sherif -i typescript --ignore-package @a/ui`', shouldAppend: false, title: 'scoped wrapper' },
@@ -138,20 +157,46 @@ describe('syncConfigs', () => {
     await rm(src, { recursive: true })
     await rm(dst, { recursive: true })
   })
-  test('removes a leftover publishable-only file from a now-private project', async () => {
-    const src = await makeTmp()
-    const dst = await makeTmp()
-    await write(join(dst, 'package.json'), JSON.stringify({ name: 'x', private: true }))
-    await mkdir(join(dst, 'tools'), { recursive: true })
-    await write(join(dst, 'tools', 'prune-versions.ts'), '// stale')
+  test('removes a leftover publishable-only release file from a private project', async () => {
+    const { dst, src } = await setupReleaseFile()
     const issues = await syncConfigs(src, dst)
-    expect(await file(join(dst, 'tools', 'prune-versions.ts')).exists()).toBe(false)
-    expect(issues.some(i => i.detail.includes('tools/prune-versions.ts removed'))).toBe(true)
+    expect(issues.length).toBeGreaterThan(0)
+    expect(await file(join(dst, 'tools', 'release.ts')).exists()).toBe(false)
+    expect(issues.some(i => i.detail === 'tools/release.ts removed — no longer applies to this project')).toBe(true)
     await rm(src, { recursive: true })
     await rm(dst, { recursive: true })
   })
+  test.each([false, true])('removes retired managed files when private is %s', async isPrivate => {
+    const { dst, src } = await setupRetiredFiles(isPrivate)
+    try {
+      const issues = await syncConfigs(src, dst)
+      expect(issues).toContainEqual({
+        detail: 'tools/prune-versions.ts removed (retired managed file)',
+        type: 'synced'
+      })
+      expect(await file(join(dst, 'tools', 'prune-versions.ts')).exists()).toBe(false)
+      expect(await syncConfigs(src, dst)).toHaveLength(0)
+    } finally {
+      await removeDirs([src, dst])
+    }
+  })
 })
 describe('syncPackageJson', () => {
+  test.each([
+    { hook: 'bun ../../tools/prune-versions.ts', removed: true },
+    { hook: 'echo hi', removed: false }
+  ])('handles root postpublish $hook', async ({ hook, removed }) => {
+    const tmp = await makePackageOnly({ name: 'consumer', private: true, scripts: { postpublish: hook } })
+    try {
+      const issues = await syncPackageJson(tmp, pm4aiRoot)
+      expect(issues.length).toBeGreaterThan(0)
+      expect(issues.some(i => i.detail === 'package.json removed stale postpublish prune hook')).toBe(removed)
+      const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'package.json'))
+      expect(pkg.scripts?.postpublish).toBe(removed ? undefined : hook)
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
+  })
   describe('deps and trust', () => {
     test('adds sherif and hooks to minimal package.json', async () => {
       const tmp = await makePackageOnly({ name: 'test', private: true })
@@ -420,6 +465,20 @@ describe('syncPackageJson', () => {
     })
   })
 })
+const syncHookTwice = async (selfPath: string, tmp: string) => {
+  const issues = await syncSubPackages(selfPath, tmp)
+  const pkgPath = join(tmp, 'packages/lib/package.json')
+  const pkg = await readJson<Record<string, Record<string, string>>>(pkgPath)
+  const once = await file(pkgPath).text()
+  const second = await syncSubPackages(selfPath, tmp)
+  return {
+    build: pkg.scripts?.build,
+    postpublish: pkg.scripts?.postpublish,
+    removedHook: issues.some(i => i.detail === 'packages/lib/package.json removed stale postpublish prune hook'),
+    secondRunIssues: second.length,
+    unchanged: (await file(pkgPath).text()) === once
+  }
+}
 describe('syncSubPackages', () => {
   const selfPath = join(import.meta.dirname, '..', '..')
   test('sets apps to private', async () => {
@@ -446,16 +505,34 @@ describe('syncSubPackages', () => {
     expect(pkg.scripts).toBeUndefined()
     await rm(tmp, { recursive: true })
   })
-  test('adds postpublish to published packages', async () => {
+  test('leaves published packages without postpublish', async () => {
     const tmp = await makeProject(
       { private: true, workspaces: ['packages/*'] },
       { 'packages/lib/package.json': { bin: './cli.js', name: 'my-lib' } }
     )
     const issues = await syncSubPackages(selfPath, tmp)
-    expect(issues.some(i => i.detail.includes('postpublish'))).toBe(true)
+    expect(issues.length).toBeGreaterThan(0)
+    expect(issues.some(i => i.detail.includes('postpublish'))).toBe(false)
     const pkg = await readJson<Record<string, Record<string, string>>>(join(tmp, 'packages/lib/package.json'))
-    expect(pkg.scripts?.postpublish).toBe('bun ../../tools/prune-versions.ts')
+    expect(pkg.scripts?.postpublish).toBeUndefined()
     await rm(tmp, { recursive: true })
+  })
+  test.each([
+    { hook: 'bun ../../tools/prune-versions.ts', removed: true },
+    { hook: 'echo hi', removed: false }
+  ])('handles published postpublish $hook', async ({ hook, removed }) => {
+    const tmp = await makePublishedHookProject(hook)
+    try {
+      expect(await syncHookTwice(selfPath, tmp)).toStrictEqual({
+        build: 'tsdown',
+        postpublish: removed ? undefined : hook,
+        removedHook: removed,
+        secondRunIssues: 0,
+        unchanged: true
+      })
+    } finally {
+      await rm(tmp, { recursive: true })
+    }
   })
   test('adds prepublishOnly to packages with build script', async () => {
     const tmp = await makeProject(

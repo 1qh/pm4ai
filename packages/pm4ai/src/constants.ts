@@ -20,6 +20,7 @@ const TSDOWN_BASE = {
 const DEFAULT_FILES = [TSDOWN_BASE.outDir]
 const REQUIRED_ROOT_DEVDEPS = selfPkg.requiredDevDeps ?? []
 const DEFAULT_DEP_VERSION = 'latest'
+const PRUNE_POSTPUBLISH = 'bun ../../tools/prune-versions.ts'
 const CLAUDE_MD = 'CLAUDE.md'
 const EXPECTED = {
   preCommit: 'sh up.sh && git add -u',
@@ -71,6 +72,7 @@ html > body[data-scroll-locked] {
 }`
 const SKIP_PATTERNS = ['/readonly/', '/.next/']
 const VERBATIM_FILES = ['clean.sh', 'up.sh', 'bunfig.toml', '.gitignore']
+const RETIRED_MANAGED_FILES = ['tools/prune-versions.ts']
 /** A purely additive list, so a consumer's own ignores append after the canonical head — unlike the executable canon of clean.sh/up.sh, which admits no local edit. */
 const EXTENDABLE_VERBATIM_FILES = new Set(['.gitignore'])
 interface ConditionalFile {
@@ -83,7 +85,6 @@ const CONDITIONAL_VERBATIM_FILES: ConditionalFile[] = [
   { path: '.github/scripts/prune-ci-runs.sh', when: 'github' },
   { path: 'postcss.config.ts', when: 'tailwind' },
   { path: 'apps/docs/src/app/global.css', when: 'fumadocs' },
-  { path: 'tools/prune-versions.ts', when: 'publishable' },
   { path: 'tools/release.ts', when: 'publishable' },
   { path: '.github/workflows/release.yml', when: 'publishable' }
 ]
@@ -96,6 +97,7 @@ export {
   CLAUDE_MD,
   CONDITIONAL_MUST_EXIST_FILES,
   CONDITIONAL_VERBATIM_FILES,
+  type ConditionalFile,
   DEFAULT_DEP_VERSION,
   DEFAULT_FILES,
   DEFAULT_LICENSE,
@@ -111,8 +113,10 @@ export {
   MONOREPO_NAME,
   MUST_EXIST_FILES,
   PKG_NAME,
+  PRUNE_POSTPUBLISH,
   READONLY_UI,
   REQUIRED_ROOT_DEVDEPS,
+  RETIRED_MANAGED_FILES,
   RG_EXCLUDE,
   SKIP_PATTERNS,
   SWIFTBAR_FONT,
@@ -122,4 +126,3 @@ export {
   UI_PACKAGE_NAME,
   VERBATIM_FILES
 }
-export type { ConditionalFile }

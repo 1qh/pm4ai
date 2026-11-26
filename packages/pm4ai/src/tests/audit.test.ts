@@ -237,17 +237,37 @@ describe('checkTrustedDeps', () => {
   })
 })
 describe('checkPublishedPkgConventions', () => {
-  test('published pkg without postpublish is flagged', async () => {
+  test('published pkg without postpublish has no postpublish drift', async () => {
     const pkgs = [entry('packages/lib/package.json', { bin: './cli.js', name: 'lib', scripts: {} })]
+    expect(pkgs.length).toBeGreaterThan(0)
     const issues = await checkPublishedPkgConventions(pkgs, PROJECT)
-    expect(issues.some(i => i.detail.includes('postpublish'))).toBe(true)
+    expect(issues.length).toBeGreaterThan(0)
+    expect(issues.some(i => i.detail.includes('postpublish'))).toBe(false)
+  })
+  test('published pkg with the retired prune hook is flagged', async () => {
+    const pkgs = [
+      entry('packages/lib/package.json', {
+        bin: './cli.js',
+        name: 'lib',
+        scripts: { postpublish: 'bun ../../tools/prune-versions.ts' }
+      })
+    ]
+    expect(pkgs.length).toBeGreaterThan(0)
+    const issues = await checkPublishedPkgConventions(pkgs, PROJECT)
+    expect(issues.length).toBeGreaterThan(0)
+    expect(issues).toContainEqual({
+      detail: 'packages/lib/package.json has retired postpublish prune hook — run pm4ai fix',
+      type: 'drift'
+    })
   })
   test('published pkg with postpublish has no postpublish drift', async () => {
     const pkgs = [
       entry('packages/lib/package.json', { bin: './cli.js', name: 'lib', scripts: { postpublish: 'bun run cleanup' } })
     ]
+    expect(pkgs.length).toBeGreaterThan(0)
     const issues = await checkPublishedPkgConventions(pkgs, PROJECT)
-    expect(issues.filter(i => i.detail.includes('missing "postpublish"'))).toHaveLength(0)
+    expect(issues.length).toBeGreaterThan(0)
+    expect(issues.filter(i => i.detail.includes('postpublish'))).toHaveLength(0)
   })
   test('private pkg without postpublish is not flagged', async () => {
     const pkgs = [entry('packages/lib/package.json', { name: 'lib', private: true })]

@@ -4,6 +4,7 @@ import type { Issue, PackageJson } from './types.js'
 import {
   FORBIDDEN_PM_PREFIXES,
   LINTMAX_PKG,
+  PRUNE_POSTPUBLISH,
   REQUIRED_ROOT_DEVDEPS,
   TURBO_FLAG,
   TURBO_WARNING_FILTER
@@ -17,7 +18,8 @@ import {
   debug,
   gitCleanRe,
   isSkippedPath,
-  providedByWorkspaces
+  providedByWorkspaces,
+  retiredManagedFiles
 } from './utils.js'
 interface PkgEntry {
   path: string
@@ -205,8 +207,8 @@ const checkPublishedPkgConventions = async (pkgs: PkgEntry[], projectPath: strin
     published.map(async ({ path: pkgPath, pkg }) => {
       const issues: Issue[] = []
       const shortPath = pkgPath.replace(`${projectPath}/`, '')
-      if (!pkg.scripts?.postpublish)
-        issues.push({ detail: `${shortPath} published but missing "postpublish" cleanup`, type: 'drift' })
+      if (pkg.scripts?.postpublish === PRUNE_POSTPUBLISH)
+        issues.push({ detail: `${shortPath} has retired postpublish prune hook — run pm4ai fix`, type: 'drift' })
       if (pkg.scripts?.build && pkg.scripts.build !== 'tsdown')
         issues.push({ detail: `${shortPath} build must be exactly "tsdown"`, type: 'drift' })
       if (pkg.scripts?.build && pkg.scripts.prepublishOnly !== 'bun run build')
@@ -294,6 +296,9 @@ const audit = async (projectPath: string): Promise<Issue[]> => {
   const pkgs: PkgEntry[] = entries.map(e => ({ path: e.path, pkg: e.pkg }))
   const rootPkg = pkgs[0]?.pkg
   const issues: Issue[] = [
+    ...(await retiredManagedFiles(projectPath)).map(
+      (name): Issue => ({ detail: `${name} present (retired managed file) — run pm4ai fix`, type: 'drift' })
+    ),
     ...(await checkBunVersion(rootPkg)),
     ...(await checkLintmaxSpec(getDepsFromPkg(rootPkg ?? {}).get(LINTMAX_PKG), projectPath)),
     ...(await checkRootPackage(rootPkg)),
