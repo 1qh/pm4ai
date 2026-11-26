@@ -806,6 +806,16 @@ describe('checkTailwindSourceCoverage', () => {
     expect(issues).toHaveLength(0)
     await rm(tmp, { recursive: true })
   })
+  test('no issue for a lib whose only utility classes sit in a prebuilt standalone app bundle', async () => {
+    const tmp = await makeTmp()
+    await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'nextlike', tmp })
+    const chunks = join(tmp, 'node_modules', 'nextlike', 'dist', 'analyzer', '_next', 'static', 'chunks')
+    await mkdir(chunks, { recursive: true })
+    await write(join(chunks, 'app.js'), jsxDist)
+    const issues = await checkTailwindSourceCoverage(tmp)
+    expect(issues).toHaveLength(0)
+    await rm(tmp, { recursive: true })
+  })
   test('no issue for a lib that ships no arbitrary-value utility classes', async () => {
     const tmp = await makeTmp()
     await scaffold({ depIndex: 'export const X = () => 42\n', depName: 'plainlib', tmp })

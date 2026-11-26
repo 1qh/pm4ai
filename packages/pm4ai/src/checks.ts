@@ -1008,10 +1008,27 @@ const UTILITY_CLASS =
   String.raw`(class(Name)?[=:]\s*["'\`][^"'\`]*)(p[trblxy]?|m[trblxy]?|w|h|gap|text|bg|rounded|border|flex|` +
   String.raw`grid-cols|grid-rows|leading|tracking|size|inset|top|left|right|bottom|space-[xy]|min-[wh]|max-[wh])-\[`
 const IMPORT_SPECIFIER = `from ['"][^'"]+['"]`
-const UTILITY_GLOBS = ['-g', '*.js', '-g', '*.mjs', '-g', '*.cjs', '-g', '*.jsx', '-g', '*.tsx', '-g', '*.css']
+const UTILITY_GLOBS = [
+  '-g',
+  '*.js',
+  '-g',
+  '*.mjs',
+  '-g',
+  '*.cjs',
+  '-g',
+  '*.jsx',
+  '-g',
+  '*.tsx',
+  '-g',
+  '*.css',
+  '-g',
+  '!**/_next/static/**',
+  '-g',
+  '!**/static/chunks/**'
+]
 const doesShipUtilityClasses = async (depDir: string): Promise<boolean> => {
   const out = (
-    await $`rg -c --max-count=3 --no-ignore --no-messages ${UTILITY_GLOBS} ${UTILITY_CLASS} ${depDir}`.nothrow()
+    await $`rg -c --max-count=3 --no-ignore --no-messages ${UTILITY_GLOBS} ${UTILITY_CLASS} ${depDir}`.quiet().nothrow()
   ).stdout.toString()
   const total = out.split('\n').reduce((sum, line) => sum + (Number(line.split(':').pop()) || 0), 0)
   return total >= 3
