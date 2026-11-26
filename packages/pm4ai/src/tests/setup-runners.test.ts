@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { nextRunnerName, runnerBase } from '../setup-runners.js'
 describe('runner names', () => {
@@ -20,13 +19,14 @@ describe('runner names', () => {
     for (const part of hostName.replaceAll('.', '-').split('-')) expect(name).not.toContain(part)
   })
 })
+const HOME = join('home', 'runner')
 describe('runner installation directories', () => {
   test('uses the repo and selected numeric name beneath the runners directory', () => {
     const name = nextRunnerName(['1', '2', '4'])
-    expect(runnerBase('owner/project', name)).toBe(join(homedir(), '.actions-runners', 'project', '3'))
+    expect(runnerBase('owner/project', name, HOME)).toBe(join(HOME, '.actions-runners', 'project', '3'))
   })
   test('allocates numbers independently for each repo', () => {
-    expect(runnerBase('owner/first', nextRunnerName(['1']))).toBe(join(homedir(), '.actions-runners', 'first', '2'))
-    expect(runnerBase('owner/second', nextRunnerName([]))).toBe(join(homedir(), '.actions-runners', 'second', '1'))
+    expect(runnerBase('owner/first', nextRunnerName(['1']), HOME)).toBe(join(HOME, '.actions-runners', 'first', '2'))
+    expect(runnerBase('owner/second', nextRunnerName([]), HOME)).toBe(join(HOME, '.actions-runners', 'second', '1'))
   })
 })

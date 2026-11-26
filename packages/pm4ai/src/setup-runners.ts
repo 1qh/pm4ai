@@ -20,9 +20,9 @@ const nextRunnerName = (registeredNames: readonly string[]): string => {
   while (names.has(String(number))) number += 1
   return String(number)
 }
-const runnerBase = (repo: string, name: string): string => {
+const runnerBase = (repo: string, name: string, home: string): string => {
   const directory = repo.split('/').pop() ?? repo.replaceAll('/', '-')
-  return join(homedir(), '.actions-runners', directory, name)
+  return join(home, '.actions-runners', directory, name)
 }
 const onlineRunnerCount = async (repo: string): Promise<number> => {
   const output = await runRunnerCommand([
@@ -96,7 +96,7 @@ const registerRunner = async (repo: string) => {
     '.runners[].name'
   ])
   const name = nextRunnerName(output.split('\n'))
-  const base = runnerBase(repo, name)
+  const base = runnerBase(repo, name, homedir())
   await mkdir(base, { recursive: true })
   const tarball = await ensureTarball(base)
   await extractRunner(base, tarball)

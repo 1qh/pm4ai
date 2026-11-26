@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { checkBannedImports } from '../checks.js'
 setDefaultTimeout(30_000)
 const URL_MOD = 'url'
+const UNDICI = 'undici'
+const UI_PACKAGE = '@a/ui'
 const AWS_ALLOWED = '@aws-sdk/client-s3'
 const AWS_BANNED = '@aws-sdk/client-dynamodb'
 const BUN_CLS = 'S3Client'
@@ -49,7 +51,7 @@ describe('checkBannedImports', () => {
     const tmp = await makeProject(
       {},
       {
-        'src/blocked.ts': `import '${URL_MOD}'\nimport 'undici'\n`,
+        'src/blocked.ts': `import '${URL_MOD}'\nimport '${UNDICI}'\n`,
         'src/clean.tsx': 'export const value = 1\n'
       }
     )
@@ -70,7 +72,10 @@ describe('checkBannedImports', () => {
       const project = join(tmp, name)
       const countPath = join(tmp, 'rg-count')
       await mkdir(project)
-      await write(join(project, 'a.ts'), `import 'undici'\nimport '@a/ui/lib/utils'\nconst c = new ${BUN_REF}({})\n`)
+      await write(
+        join(project, 'a.ts'),
+        `import '${UNDICI}'\nimport '${UI_PACKAGE}/lib/utils'\nconst c = new ${BUN_REF}({})\n`
+      )
       await withRgShim(
         tmp,
         executable => `#!/bin/sh\nprintf '%s\\n' rg >> ${shellQuote(countPath)}\nexec ${shellQuote(executable)} "$@"\n`,
